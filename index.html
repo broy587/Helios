@@ -55,7 +55,7 @@ const TIME_SLOTS = [
   "2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM",
   "5:00 PM","5:30 PM","6:00 PM","6:30 PM","7:00 PM","7:30 PM","8:00 PM",
 ];
-const emptyForm = { name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",stage:STAGES[0],billPhotos:[],close:"",decisionMakers:"" };
+const emptyForm = { name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",stage:STAGES[0],billPhotos:[],closerInside:"",knewSolar:"",decisionMakers:"" };
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const getDaysInMonth = (m,y) => new Date(y,m+1,0).getDate();
 const inputStyle = { width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit" };
@@ -428,27 +428,24 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, currentUser })
         <div style={{ marginBottom:22, background:"#f8fafc", borderRadius:12, padding:"14px 14px 16px", border:"1.5px solid #e2e8f0" }}>
           <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:12, textTransform:"uppercase", letterSpacing:"0.05em" }}>Close</label>
 
-          <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.05em" }}>Sit or No Sit?</div>
-          <div style={{ display:"flex", gap:10, marginBottom:14 }}>
-            {["Sit","No Sit"].map(opt=>(
-              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,close:f.close===opt?"":opt}))}
-                style={{ flex:1, padding:"10px 0", borderRadius:8, border:`2px solid ${form.close===opt?"#f97316":"#e2e8f0"}`, background:form.close===opt?"#fff7ed":"#fff", color:form.close===opt?"#f97316":"#64748b", fontWeight:form.close===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                <span style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${form.close===opt?"#f97316":"#cbd5e1"}`, background:form.close===opt?"#f97316":"transparent", display:"inline-block", flexShrink:0 }} />
-                {opt}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.05em" }}>Were All Decision Makers Present?</div>
-          <div style={{ display:"flex", gap:10 }}>
-            {["Yes","No"].map(opt=>(
-              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,decisionMakers:f.decisionMakers===opt?"":opt}))}
-                style={{ flex:1, padding:"10px 0", borderRadius:8, border:`2px solid ${form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`, background:form.decisionMakers===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff", color:form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b", fontWeight:form.decisionMakers===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                <span style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`, background:form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent", display:"inline-block", flexShrink:0 }} />
-                {opt}
-              </button>
-            ))}
-          </div>
+          {[
+            ["closerInside","Did homeowner let closer inside?"],
+            ["knewSolar","Did homeowner know solar was/could be involved?"],
+            ["decisionMakers","Were all decision makers present?"],
+          ].map(([field, question], idx) => (
+            <div key={field} style={{ marginBottom: idx < 2 ? 14 : 0 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:"#64748b", marginBottom:8, lineHeight:1.4 }}>{question}</div>
+              <div style={{ display:"flex", gap:10 }}>
+                {["Yes","No"].map(opt=>(
+                  <button key={opt} type="button" onClick={()=>setForm(f=>({...f,[field]:f[field]===opt?"":opt}))}
+                    style={{ flex:1, padding:"10px 0", borderRadius:8, border:`2px solid ${form[field]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`, background:form[field]===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff", color:form[field]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b", fontWeight:form[field]===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                    <span style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${form[field]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`, background:form[field]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent", display:"inline-block", flexShrink:0 }} />
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         <div style={{ display:"flex", gap:10 }}>
@@ -484,7 +481,7 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
             <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>×</button>
           </div>
 
-          {[["📍 Address",lead.address],["📞 Phone",lead.phone],["📅 Appointment",lead.appointment],["⚡ ESIID",lead.esiid],["🔢 Meter #",lead.meter],["🤝 Close",lead.close],["👥 Decision Makers Present",lead.decision_makers]].map(([l,v])=>v?(
+          {[["📍 Address",lead.address],["📞 Phone",lead.phone],["📅 Appointment",lead.appointment],["⚡ ESIID",lead.esiid],["🔢 Meter #",lead.meter]].map(([l,v])=>v?(
             <div key={l} style={{ marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>{l}</div>
               <div style={{ fontSize:14, color:"#1e293b" }}>{v}</div>
@@ -495,6 +492,39 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
             <div style={{ marginBottom:14 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>📝 Notes</div>
               <div style={{ fontSize:14, color:"#475569", background:"#f8fafc", borderRadius:8, padding:"10px 12px", lineHeight:1.5 }}>{lead.notes}</div>
+            </div>
+          )}
+
+          {(lead.closer_inside||lead.knew_solar||lead.decision_makers)&&(
+            <div style={{ marginBottom:14, background:"#f8fafc", borderRadius:12, padding:"12px 14px", border:"1.5px solid #e2e8f0" }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>🤝 Close</div>
+              {[
+                ["Did homeowner let closer inside?", lead.closer_inside],
+                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
+                ["Were all decision makers present?", lead.decision_makers],
+              ].map(([q,v])=>v?(
+                <div key={q} style={{ marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ fontSize:12, color:"#64748b", flex:1, paddingRight:8, lineHeight:1.4 }}>{q}</div>
+                  <span style={{ padding:"2px 10px", borderRadius:20, fontSize:12, fontWeight:700, background:v==="Yes"?"#d1fae5":"#fee2e2", color:v==="Yes"?"#065f46":"#7f1d1d", whiteSpace:"nowrap" }}>{v}</span>
+                </div>
+              ):null)}
+            </div>
+          )}
+
+          {(lead.closer_inside||lead.knew_solar||lead.bill_retrieved||lead.decision_makers) && (
+            <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>🤝 Close</div>
+              {[
+                ["Was a bill retrieved and input before the closer's arrival?", lead.bill_retrieved],
+                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
+                ["Did homeowner let closer inside?", lead.closer_inside],
+                ["Were all decision makers present?", lead.decision_makers],
+              ].filter(([,v])=>v).map(([q,v])=>(
+                <div key={q} style={{ marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                  <div style={{ fontSize:12, color:"#64748b", flex:1, lineHeight:1.4 }}>{q}</div>
+                  <span style={{ padding:"2px 10px", borderRadius:20, fontSize:12, fontWeight:700, background:v==="Yes"?"#d1fae5":"#fee2e2", color:v==="Yes"?"#065f46":"#7f1d1d", whiteSpace:"nowrap" }}>{v}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -509,6 +539,23 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {(lead.closer_inside||lead.decision_makers||lead.knew_solar||lead.bill_retrieved) && (
+            <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>🤝 Close</div>
+              {[
+                ["Did homeowner let closer inside?", lead.closer_inside],
+                ["Were all decision makers present?", lead.decision_makers],
+                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
+                ["Was a bill retrieved and input before the close?", lead.bill_retrieved],
+              ].filter(([,v])=>v).map(([question, val])=>(
+                <div key={question} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:12, color:"#64748b", flex:1, lineHeight:1.4, paddingRight:8 }}>{question}</div>
+                  <span style={{ background:val==="Yes"?"#d1fae5":"#fee2e2", color:val==="Yes"?"#065f46":"#7f1d1d", borderRadius:20, padding:"2px 10px", fontSize:12, fontWeight:700, flexShrink:0 }}>{val}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -749,7 +796,7 @@ function App() {
       ? (changes.length>0 ? [{ ts:formatTs(), changes }, ...(existing.history||[])] : (existing.history||[]))
       : [{ ts:formatTs(), changes:["Lead created"] }];
 
-    const payload = { name:form.name, address:form.address, phone:form.phone, appointment:form.appointment, esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage, bill_photos:form.billPhotos||[], close:form.close||"", decision_makers:form.decisionMakers||"", history:newHistory, updated_at:new Date().toISOString() };
+    const payload = { name:form.name, address:form.address, phone:form.phone, appointment:form.appointment, esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage, bill_photos:form.billPhotos||[], closer_inside:form.closerInside||"", knew_solar:form.knewSolar||"", decision_makers:form.decisionMakers||"", history:newHistory, updated_at:new Date().toISOString() };
 
     if (modal.lead?.id) {
       await sb.from("leads").update(payload).eq("id", modal.lead.id);
@@ -851,7 +898,7 @@ function App() {
       </div>
 
       {/* Lead form modal */}
-      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} initial={modal.lead ? {...modal.lead, billPhotos:modal.lead.bill_photos||[], decisionMakers:modal.lead.decision_makers||""} : null} repProfiles={repProfiles} currentUser={profile} />
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} initial={modal.lead ? {...modal.lead, billPhotos:modal.lead.bill_photos||[], closerInside:modal.lead.closer_inside||"", knewSolar:modal.lead.knew_solar||"", decisionMakers:modal.lead.decision_makers||""} : null} repProfiles={repProfiles} currentUser={profile} />
 
       {/* Detail modal */}
       <DetailModal
