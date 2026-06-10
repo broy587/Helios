@@ -429,8 +429,9 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, currentUser })
           <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:12, textTransform:"uppercase", letterSpacing:"0.05em" }}>Close</label>
 
           {[
-            ["closerInside","Did homeowner let closer inside?"],
+            ["billRetrieved","Was a bill retrieved and input before the closers arrival?"],
             ["knewSolar","Did homeowner know solar was/could be involved?"],
+            ["closerInside","Did homeowner let closer inside?"],
             ["decisionMakers","Were all decision makers present?"],
           ].map(([field, question], idx) => (
             <div key={field} style={{ marginBottom: idx < 2 ? 14 : 0 }}>
@@ -496,38 +497,6 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
           )}
 
           {(lead.closer_inside||lead.knew_solar||lead.decision_makers)&&(
-            <div style={{ marginBottom:14, background:"#f8fafc", borderRadius:12, padding:"12px 14px", border:"1.5px solid #e2e8f0" }}>
-              <div style={{ fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>🤝 Close</div>
-              {[
-                ["Did homeowner let closer inside?", lead.closer_inside],
-                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
-                ["Were all decision makers present?", lead.decision_makers],
-              ].map(([q,v])=>v?(
-                <div key={q} style={{ marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ fontSize:12, color:"#64748b", flex:1, paddingRight:8, lineHeight:1.4 }}>{q}</div>
-                  <span style={{ padding:"2px 10px", borderRadius:20, fontSize:12, fontWeight:700, background:v==="Yes"?"#d1fae5":"#fee2e2", color:v==="Yes"?"#065f46":"#7f1d1d", whiteSpace:"nowrap" }}>{v}</span>
-                </div>
-              ):null)}
-            </div>
-          )}
-
-          {(lead.closer_inside||lead.knew_solar||lead.bill_retrieved||lead.decision_makers) && (
-            <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>🤝 Close</div>
-              {[
-                ["Was a bill retrieved and input before the closer's arrival?", lead.bill_retrieved],
-                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
-                ["Did homeowner let closer inside?", lead.closer_inside],
-                ["Were all decision makers present?", lead.decision_makers],
-              ].filter(([,v])=>v).map(([q,v])=>(
-                <div key={q} style={{ marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
-                  <div style={{ fontSize:12, color:"#64748b", flex:1, lineHeight:1.4 }}>{q}</div>
-                  <span style={{ padding:"2px 10px", borderRadius:20, fontSize:12, fontWeight:700, background:v==="Yes"?"#d1fae5":"#fee2e2", color:v==="Yes"?"#065f46":"#7f1d1d", whiteSpace:"nowrap" }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           {lead.bill_photos?.length>0&&(
             <div style={{ marginBottom:18 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>📄 Utility Bills ({lead.bill_photos.length})</div>
@@ -542,28 +511,11 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
             </div>
           )}
 
-          {(lead.closer_inside||lead.decision_makers||lead.knew_solar||lead.bill_retrieved) && (
-            <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>🤝 Close</div>
-              {[
-                ["Did homeowner let closer inside?", lead.closer_inside],
-                ["Were all decision makers present?", lead.decision_makers],
-                ["Did homeowner know solar was/could be involved?", lead.knew_solar],
-                ["Was a bill retrieved and input before the close?", lead.bill_retrieved],
-              ].filter(([,v])=>v).map(([question, val])=>(
-                <div key={question} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ fontSize:12, color:"#64748b", flex:1, lineHeight:1.4, paddingRight:8 }}>{question}</div>
-                  <span style={{ background:val==="Yes"?"#d1fae5":"#fee2e2", color:val==="Yes"?"#065f46":"#7f1d1d", borderRadius:20, padding:"2px 10px", fontSize:12, fontWeight:700, flexShrink:0 }}>{val}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           {(lead.bill_retrieved||lead.knew_solar||lead.closer_inside||lead.decision_makers) && (
             <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
               <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>🤝 Close</div>
               {[
-                ["Was a bill retrieved and input before the closer's arrival?", lead.bill_retrieved],
+                ["Was a bill retrieved and input before the closers arrival?", lead.bill_retrieved],
                 ["Did homeowner know solar was/could be involved?", lead.knew_solar],
                 ["Did homeowner let closer inside?", lead.closer_inside],
                 ["Were all decision makers present?", lead.decision_makers],
