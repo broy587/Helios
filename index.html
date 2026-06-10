@@ -28,25 +28,41 @@ const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const STAGES = [
-  "1. Lead: Need Bill/Appointment","2. AC","3. No Show / Need Rescheduled",
-  "4. No Close / No Numbers","5. No Close / Numbers","6. Failed Credit","7. VC / SRA",
-  "8. Cap / Permitting","9. Install Scheduled","10. Install","11. PTO / REP","12. ARC / Cancels",
+  "Lead: Need Bill/Appointment","AC","No Show / Need Rescheduled",
+  "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels",
 ];
 
-const STAGE_COLORS = {
-  "1. Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
-  "2. AC":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
-  "3. No Show / Need Rescheduled":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  "4. No Close / No Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  "5. No Close / Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  "6. Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
-  "7. VC / SRA":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  "8. Cap / Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  "9. Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  "10. Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  "11. PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  "12. ARC / Cancels":{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
-};
+const BASE_STAGE_COLORS = [
+  {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
+  {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  {bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
+  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
+];
+
+const COLOR_CYCLE = [
+  {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
+  {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  {bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
+  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
+];
+
+function getStageColor(stage, stages) {
+  const idx = stages.indexOf(stage);
+  if (idx >= 0 && idx < BASE_STAGE_COLORS.length) return BASE_STAGE_COLORS[idx];
+  return COLOR_CYCLE[Math.abs(idx) % COLOR_CYCLE.length] || COLOR_CYCLE[0];
+}
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const TIME_SLOTS = [
@@ -219,16 +235,17 @@ function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCo
 }
 
 // SUMMARY DASHBOARD
-function SummaryDashboard({ profiles, leads, currentUser }) {
+function SummaryDashboard({ profiles, leads, currentUser, stages }) {
   const repProfiles = profiles.filter(p => p.role === "rep");
-  const stageStats = STAGES.map(s => ({ stage:s, count:leads.filter(l=>l.stage===s).length }));
+  const allStagesToShow = stages && stages.length > 0 ? stages : STAGES;
+  const stageStats = allStagesToShow.map(s => ({ stage:s, count:leads.filter(l=>l.stage===s).length }));
   return (
     <div style={{ padding:"20px 16px" }}>
       <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Performance Summary</div>
       <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>Team-wide pipeline snapshot</div>
       <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Pipeline Breakdown</div>
       {stageStats.filter(s=>s.count>0).map(({ stage, count }) => {
-        const colors = STAGE_COLORS[stage];
+        const colors = getStageColor(stage, stages||STAGES);
         const pct = leads.length ? Math.round((count/leads.length)*100) : 0;
         return (
           <div key={stage} style={{ marginBottom:10 }}>
@@ -384,13 +401,13 @@ function CloseSection({ form, setForm, readOnly, lead }) {
 }
 
 // DETAIL MODAL
-function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer }) {
+function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer, stages }) {
   const [imgOpen, setImgOpen] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTo, setTransferTo] = useState("");
   if (!lead) return null;
-  const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+  const colors = getStageColor(lead.stage, stages||STAGES);
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:1000 }}>
@@ -507,7 +524,7 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
 }
 
 // LEAD FORM MODAL
-function LeadModal({ open, onClose, onSave, initial, repProfiles }) {
+function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
   const [form, setForm] = useState(initial || emptyForm);
   const fileInputRef = useRef(null);
   useEffect(() => { setForm(initial || emptyForm); }, [initial, open]);
@@ -570,7 +587,7 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles }) {
         <div style={{ marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Pipeline Stage</label>
           <select value={form.stage} onChange={set("stage")} style={inputStyle}>
-            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+            {(stages||STAGES).map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <CloseSection form={form} setForm={setForm} readOnly={false} />
@@ -587,7 +604,7 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles }) {
 
 // LEAD CARD
 function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
-  const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+  const colors = getStageColor(lead.stage, stages||STAGES);
   const holdTimer = useRef(null);
   const moved = useRef(false);
   const startPos = useRef(null);
@@ -617,13 +634,23 @@ function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
 }
 
 // PIPELINE BOARD
-function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }) {
+function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, stages, isManager, onSaveStages }) {
   const [dragId, setDragId] = useState(null);
   const [dragPos, setDragPos] = useState({x:0,y:0});
   const [dragOver, setDragOver] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [search, setSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  // Column drag-to-reorder
+  const [colDragIdx, setColDragIdx] = useState(null);
+  const [colDragOverIdx, setColDragOverIdx] = useState(null);
+  const [colDragPos, setColDragPos] = useState({x:0,y:0});
+  // Rename
+  const [renamingStage, setRenamingStage] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  // Add new stage
+  const [showAddStage, setShowAddStage] = useState(false);
+  const [newStageName, setNewStageName] = useState("");
   const columnRefs = useRef({});
   const boardRef = useRef(null);
   const scrollAnim = useRef(null);
@@ -632,6 +659,81 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
     [l.name, l.phone, l.address, l.esiid, l.meter, l.notes]
       .some(v => v?.toLowerCase().includes(search.toLowerCase()))
   ).slice(0, 8) : [];
+
+  // Column touch drag for reordering
+  const handleColTouchStart = (e, idx) => {
+    if (!isManager) return;
+    const startX = e.touches[0].clientX;
+    const startY = e.touches[0].clientY;
+    let moved = false;
+    let holdTimer = setTimeout(() => {
+      setColDragIdx(idx);
+      setColDragPos({x:e.touches[0].clientX, y:e.touches[0].clientY});
+      const onMove = (ev) => {
+        ev.preventDefault();
+        const x = ev.touches[0].clientX;
+        const y = ev.touches[0].clientY;
+        setColDragPos({x,y});
+        // Find which column we're over by index
+        let found = null;
+        const cols = [];
+        for(let ci=0;ci<stages.length;ci++){const el=document.getElementById(`col-${ci}`);if(el)cols.push(el);}
+        if (cols) {
+          cols.forEach(col => {
+            const r = col.getBoundingClientRect();
+            if (x >= r.left && x <= r.right) found = parseInt(col.id.replace('col-',''));
+          });
+        }
+        setColDragOverIdx(found);
+      };
+      const onEnd = () => {
+        setColDragIdx(null);
+        setColDragOverIdx(overIdx => {
+          if (overIdx !== null && overIdx !== idx) {
+            const newStages = [...stages];
+            const [removed] = newStages.splice(idx, 1);
+            newStages.splice(overIdx, 0, removed);
+            onSaveStages(newStages);
+          }
+          return null;
+        });
+        window.removeEventListener("touchmove", onMove);
+        window.removeEventListener("touchend", onEnd);
+      };
+      window.addEventListener("touchmove", onMove, {passive:false});
+      window.addEventListener("touchend", onEnd);
+    }, 400);
+
+    const cancelHold = () => { clearTimeout(holdTimer); };
+    e.target.addEventListener("touchend", cancelHold, {once:true});
+    e.target.addEventListener("touchmove", () => { clearTimeout(holdTimer); }, {once:true});
+  };
+
+  const startRename = (stage) => {
+    setRenamingStage(stage);
+    setRenameValue(stage);
+  };
+
+  const commitRename = () => {
+    if (!renameValue.trim() || renameValue.trim() === renamingStage) { setRenamingStage(null); return; }
+    const newStages = stages.map(s => s === renamingStage ? renameValue.trim() : s);
+    onSaveStages(newStages);
+    setRenamingStage(null);
+  };
+
+  const addStage = () => {
+    if (!newStageName.trim()) return;
+    const newStages = [...stages, newStageName.trim()];
+    onSaveStages(newStages);
+    setNewStageName("");
+    setShowAddStage(false);
+  };
+
+  const deleteStage = (stage) => {
+    if (leads.filter(l=>l.stage===stage).length > 0) { return; }
+    const newStages = stages.filter(s => s !== stage);
+    onSaveStages(newStages);
+  };
 
   const handleTouchDragStart = (e, id) => {
     setDragId(id);
@@ -672,7 +774,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
     window.addEventListener("touchend",onEnd);
   };
 
-  const filtered = search ? leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v?.toLowerCase().includes(search.toLowerCase()))) : leads;
+  const filtered = search && !showDropdown ? leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v?.toLowerCase().includes(search.toLowerCase()))) : leads;
   const detailLead = (allLeads||leads).find(l=>l.id===detailId)||null;
 
   return (
@@ -690,7 +792,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
           {showDropdown && search && dropdownResults.length > 0 && (
             <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, maxHeight:280, overflowY:"auto", zIndex:300 }}>
               {dropdownResults.map(lead => {
-                const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+                const colors = getStageColor(lead.stage, stages||STAGES);
                 return (
                   <div key={lead.id}
                     onMouseDown={() => { setSearch(""); setShowDropdown(false); setDetailId(lead.id); }}
@@ -717,7 +819,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
       </div>
       <div ref={boardRef} style={{ display:"flex", gap:14, padding:"14px 16px 40px", overflowX:"auto", alignItems:"flex-start", flex:1 }}>
         {STAGES.map(stage => {
-          const colors = STAGE_COLORS[stage];
+          const colors = getStageColor(stage, stages||STAGES);
           const stageLeads = filtered.filter(l=>l.stage===stage);
           const isOver = dragOver===stage;
           return (
@@ -750,6 +852,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
           onDelete={id => { onLeadView(id,"delete"); setDetailId(null); }}
           repProfiles={[]}
           onTransfer={() => {}}
+          stages={stages||STAGES}
         />
       )}
     </div>
@@ -768,6 +871,7 @@ function App() {
   const [viewingRep, setViewingRep] = useState(null);
   const [modal, setModal] = useState({ open:false, lead:null });
   const [detailId, setDetailId] = useState(null);
+  const [stages, setStages] = useState(STAGES);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data }) => {
@@ -785,6 +889,9 @@ function App() {
 
   const loadData = async (u, prof) => {
     const p = prof || profile;
+    // Load pipeline config for everyone
+    const { data: config } = await sb.from("pipeline_config").select("*").eq("id","default").single();
+    if (config?.stages && config.stages.length > 0) setStages(config.stages);
     if (p?.role === "manager") {
       const { data: allLeads } = await sb.from("leads").select("*").order("created_at",{ascending:false});
       const { data: allProfiles } = await sb.from("profiles").select("*");
@@ -798,6 +905,11 @@ function App() {
       setLeads(myLeads||[]);
       setProfiles(allProfiles||[]);
     }
+  };
+
+  const saveStages = async (newStages) => {
+    setStages(newStages);
+    await sb.from("pipeline_config").update({ stages: newStages, updated_at: new Date().toISOString() }).eq("id","default");
   };
 
   const saveLead = async (form) => {
@@ -913,8 +1025,11 @@ function App() {
           <PipelineBoard
             leads={visibleLeads}
             allLeads={leads}
+            stages={stages}
+            isManager={profile.role==="manager"}
             onAddLead={() => setModal({open:true,lead:null})}
             onStageChange={handleStageChange}
+            onSaveStages={saveStages}
             onLeadView={(l,action) => {
               if(action==="edit") setModal({open:true,lead:l});
               else if(action==="delete") deleteLead(l);
@@ -922,7 +1037,7 @@ function App() {
             }}
           />
         )}
-        {tab==="dashboard"&&!viewingRep&&<SummaryDashboard profiles={profiles} leads={leads} currentUser={profile} />}
+        {tab==="dashboard"&&!viewingRep&&<SummaryDashboard profiles={profiles} leads={leads} currentUser={profile} stages={stages} />}
         {tab==="team"&&!viewingRep&&profile.role==="manager"&&(
           <ManagerDashboard profiles={profiles} leads={leads} onViewRep={rep=>{setViewingRep(rep);setTab("pipeline");}} onGenerateCode={generateCode} inviteCodes={inviteCodes} />
         )}
@@ -941,6 +1056,7 @@ function App() {
           decisionMakers:modal.lead.decision_makers||""
         } : null}
         repProfiles={repProfiles}
+        stages={stages}
       />
 
       {detailId && (
@@ -951,6 +1067,7 @@ function App() {
           onDelete={id => { deleteLead(id); setDetailId(null); }}
           repProfiles={repProfiles}
           onTransfer={handleTransfer}
+          stages={stages}
         />
       )}
     </div>
