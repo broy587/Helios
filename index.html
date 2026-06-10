@@ -336,7 +336,7 @@ function AppointmentPicker({ value, onChange }) {
 // CLOSE SECTION (reusable)
 function CloseSection({ form, setForm, readOnly, lead }) {
   const questions = [
-    { key:"billRetrieved", db:"bill_retrieved", label:"Was a bill retrieved and input before the closers arrival?" },
+    { key:"billRetrieved", db:"bill_retrieved", label:"Was the bill input?" },
     { key:"knewSolar", db:"knew_solar", label:"Did homeowner know solar was/could be involved?" },
     { key:"closerInside", db:"closer_inside", label:"Did homeowner let closer inside?" },
     { key:"decisionMakers", db:"decision_makers", label:"Were all decision makers present?" },
@@ -623,10 +623,15 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
   const [dragOver, setDragOver] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [search, setSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
   const columnRefs = useRef({});
   const boardRef = useRef(null);
   const scrollAnim = useRef(null);
   const draggingLead = leads.find(l=>l.id===dragId);
+  const dropdownResults = search.length > 0 ? leads.filter(l =>
+    [l.name, l.phone, l.address, l.esiid, l.meter, l.notes]
+      .some(v => v?.toLowerCase().includes(search.toLowerCase()))
+  ).slice(0, 8) : [];
 
   const handleTouchDragStart = (e, id) => {
     setDragId(id);
@@ -672,8 +677,42 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
-      <div style={{ display:"flex", gap:8, padding:"12px 16px 0", alignItems:"center" }}>
-        <input placeholder="Search leads..." value={search} onChange={e=>setSearch(e.target.value)} style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", background:"#fff" }} />
+      <div style={{ display:"flex", gap:8, padding:"12px 16px 0", alignItems:"center", position:"relative", zIndex:200 }}>
+        <div style={{ flex:1, position:"relative" }}>
+          <input
+            placeholder="Search by name, phone, address..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
+            onFocus={() => { if(search) setShowDropdown(true); }}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", background:"#fff", boxSizing:"border-box" }}
+          />
+          {showDropdown && search && dropdownResults.length > 0 && (
+            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, maxHeight:280, overflowY:"auto", zIndex:300 }}>
+              {dropdownResults.map(lead => {
+                const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+                return (
+                  <div key={lead.id}
+                    onMouseDown={() => { setSearch(""); setShowDropdown(false); setDetailId(lead.id); }}
+                    style={{ padding:"10px 14px", borderBottom:"1px solid #f1f5f9", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14, color:"#0f172a" }}>{lead.name||"Unnamed"}</div>
+                      <div style={{ fontSize:12, color:"#94a3b8", marginTop:1 }}>
+                        {[lead.phone, lead.address].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <span style={{ background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap", marginLeft:8 }}>{lead.stage.split(". ")[0]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {showDropdown && search && dropdownResults.length === 0 && (
+            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, padding:"14px", textAlign:"center", color:"#94a3b8", fontSize:13, zIndex:300 }}>
+              No leads found
+            </div>
+          )}
+        </div>
         <button onClick={onAddLead} style={{ background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", fontWeight:700, cursor:"pointer", fontSize:14, whiteSpace:"nowrap" }}>+ Add</button>
       </div>
       <div ref={boardRef} style={{ display:"flex", gap:14, padding:"14px 16px 40px", overflowX:"auto", alignItems:"flex-start", flex:1 }}>
