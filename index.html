@@ -134,7 +134,7 @@ function AuthScreen({ onAuth }) {
         </div>
         <div style={{ marginBottom: mode==="signup" ? 14 : 22 }}>
           <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Password</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="password" style={inputStyle} />
         </div>
         {mode === "signup" && (
           <div style={{ marginBottom:22 }}>
