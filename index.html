@@ -28,15 +28,16 @@ const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const STAGES = [
-  "Lead: Need Bill/Appointment","AC","No Show / Need Rescheduled",
+  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
   "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
 ];
 
 const STAGE_COLORS = {
   "Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
-  "AC":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
-  "No Show / Need Rescheduled":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "AC / Scheduled":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  "No Show / No Contact":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
+  "No Show / Contact":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / No Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
@@ -62,7 +63,7 @@ const TIME_SLOTS = [
 
 const emptyForm = {
   name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",
-  stage:STAGES[0],billPhotos:[],billRetrieved:"",knewSolar:"",closerInside:"",decisionMakers:""
+  stage:STAGES[0],billPhotos:[],billRetrieved:"",knewSolar:"",closerInside:"",decisionMakers:"",contactStatus:""
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -386,6 +387,12 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:"#0f172a" }}>{lead.name||"Unnamed Lead"}</div>
               <span style={{ display:"inline-block", marginTop:4, background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700 }}>{lead.stage}</span>
+              {lead.stage === "No Show / Contact" && lead.contact_status && (
+                <span style={{ display:"inline-flex", alignItems:"center", gap:6, marginTop:6, marginLeft:6 }}>
+                  <span style={{ width:14, height:14, borderRadius:"50%", background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#fff", border:`2px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#cbd5e1"}`, display:"inline-block" }} />
+                  <span style={{ fontSize:12, fontWeight:600, color:"#475569" }}>{lead.contact_status==="good"?"Good":lead.contact_status==="bad"?"Bad":"Neutral"}</span>
+                </span>
+              )}
             </div>
             <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>x</button>
           </div>
@@ -546,6 +553,24 @@ function LeadModal({ open, onClose, onSave, initial }) {
             {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {form.stage === "No Show / Contact" && (
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:8, textTransform:"uppercase", letterSpacing:"0.05em" }}>Contact Status</label>
+            <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+              {[
+                { val:"good", color:"#22c55e", border:"#16a34a", label:"Good" },
+                { val:"neutral", color:"#fff", border:"#cbd5e1", label:"Neutral" },
+                { val:"bad", color:"#ef4444", border:"#dc2626", label:"Bad" }
+              ].map(opt => (
+                <button key={opt.val} type="button" onClick={() => setForm(f => ({...f, contactStatus: f.contactStatus===opt.val?"":opt.val}))}
+                  style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", padding:"4px 8px" }}>
+                  <div style={{ width:32, height:32, borderRadius:"50%", background:opt.color, border:`3px solid ${form.contactStatus===opt.val?"#0f172a":opt.border}`, boxShadow:form.contactStatus===opt.val?"0 0 0 3px #f97316":"none", transition:"box-shadow 0.15s" }} />
+                  <span style={{ fontSize:11, fontWeight:form.contactStatus===opt.val?700:500, color:form.contactStatus===opt.val?"#f97316":"#64748b" }}>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <CloseSection form={form} setForm={setForm} readOnly={false} />
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
@@ -583,7 +608,12 @@ function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
       onClick={() => { if(!moved.current) onView(lead); }}
       style={{ background:"#fff", border:`1.5px solid ${colors.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, cursor:"grab", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", userSelect:"none", WebkitUserSelect:"none", display:"flex", alignItems:"center", justifyContent:"space-between", opacity:isDragging?0.3:1, touchAction:"none" }}>
       <div style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>{lead.name||"Unnamed Lead"}</div>
-      <div style={{ fontSize:16, color:"#cbd5e1" }}>&#9881;</div>
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+        {lead.stage === "No Show / Contact" && lead.contact_status && (
+          <div style={{ width:12, height:12, borderRadius:"50%", background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#fff", border:`2px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#cbd5e1"}`, flexShrink:0 }} />
+        )}
+        <div style={{ fontSize:16, color:"#cbd5e1" }}>&#9881;</div>
+      </div>
     </div>
   );
 }
@@ -801,6 +831,7 @@ function App() {
       knew_solar:form.knewSolar||"",
       closer_inside:form.closerInside||"",
       decision_makers:form.decisionMakers||"",
+      contact_status:form.contactStatus||"",
       history:newHistory,
       updated_at:new Date().toISOString()
     };
@@ -913,7 +944,8 @@ function App() {
           billRetrieved:modal.lead.bill_retrieved||"",
           knewSolar:modal.lead.knew_solar||"",
           closerInside:modal.lead.closer_inside||"",
-          decisionMakers:modal.lead.decision_makers||""
+          decisionMakers:modal.lead.decision_makers||"",
+          contactStatus:modal.lead.contact_status||""
         } : null}
       />
 
