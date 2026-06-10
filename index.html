@@ -31,15 +31,15 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STAGES = [
   "1. Lead: Need Bill/Appointment","2. AC","3. No Show / Need Rescheduled",
-  "4. No Sit / No Close","5. Sit No Close","6. Failed Credit","7. VC / SRA",
+  "4. No Close / No Numbers","5. No Close / Numbers","6. Failed Credit","7. VC / SRA",
   "8. Cap / Permitting","9. Install Scheduled","10. Install","11. PTO / REP","12. ARC / Cancels",
 ];
 const STAGE_COLORS = {
   "1. Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "2. AC":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
   "3. No Show / Need Rescheduled":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  "4. No Sit / No Close":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  "5. Sit No Close":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "4. No Close / No Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "5. No Close / Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "6. Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
   "7. VC / SRA":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
   "8. Cap / Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
@@ -55,7 +55,7 @@ const TIME_SLOTS = [
   "2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM",
   "5:00 PM","5:30 PM","6:00 PM","6:30 PM","7:00 PM","7:30 PM","8:00 PM",
 ];
-const emptyForm = { name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",stage:STAGES[0],billPhotos:[] };
+const emptyForm = { name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",stage:STAGES[0],billPhotos:[],close:"",decisionMakers:"" };
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const getDaysInMonth = (m,y) => new Date(y,m+1,0).getDate();
 const inputStyle = { width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit" };
@@ -425,6 +425,32 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, currentUser })
           </select>
         </div>
 
+        <div style={{ marginBottom:22, background:"#f8fafc", borderRadius:12, padding:"14px 14px 16px", border:"1.5px solid #e2e8f0" }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:12, textTransform:"uppercase", letterSpacing:"0.05em" }}>Close</label>
+
+          <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.05em" }}>Sit or No Sit?</div>
+          <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+            {["Sit","No Sit"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,close:f.close===opt?"":opt}))}
+                style={{ flex:1, padding:"10px 0", borderRadius:8, border:`2px solid ${form.close===opt?"#f97316":"#e2e8f0"}`, background:form.close===opt?"#fff7ed":"#fff", color:form.close===opt?"#f97316":"#64748b", fontWeight:form.close===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                <span style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${form.close===opt?"#f97316":"#cbd5e1"}`, background:form.close===opt?"#f97316":"transparent", display:"inline-block", flexShrink:0 }} />
+                {opt}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.05em" }}>Were All Decision Makers Present?</div>
+          <div style={{ display:"flex", gap:10 }}>
+            {["Yes","No"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,decisionMakers:f.decisionMakers===opt?"":opt}))}
+                style={{ flex:1, padding:"10px 0", borderRadius:8, border:`2px solid ${form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`, background:form.decisionMakers===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff", color:form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b", fontWeight:form.decisionMakers===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                <span style={{ width:14, height:14, borderRadius:"50%", border:`2px solid ${form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`, background:form.decisionMakers===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent", display:"inline-block", flexShrink:0 }} />
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
           <button onClick={()=>onSave(form)} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>
@@ -458,7 +484,7 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer 
             <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>×</button>
           </div>
 
-          {[["📍 Address",lead.address],["📞 Phone",lead.phone],["📅 Appointment",lead.appointment],["⚡ ESIID",lead.esiid],["🔢 Meter #",lead.meter]].map(([l,v])=>v?(
+          {[["📍 Address",lead.address],["📞 Phone",lead.phone],["📅 Appointment",lead.appointment],["⚡ ESIID",lead.esiid],["🔢 Meter #",lead.meter],["🤝 Close",lead.close],["👥 Decision Makers Present",lead.decision_makers]].map(([l,v])=>v?(
             <div key={l} style={{ marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>{l}</div>
               <div style={{ fontSize:14, color:"#1e293b" }}>{v}</div>
@@ -639,7 +665,6 @@ function PipelineBoard({ leads, onLeadView, onAddLead, onStageChange, repName })
               <div style={{ padding:"12px 14px 10px", borderBottom:"1.5px solid #f1f5f9" }}>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <div style={{ fontSize:12, fontWeight:700, color:"#1e293b", lineHeight:1.3 }}>{stage}</div>
-                  <span style={{ background:colors.badge, color:"#fff", borderRadius:12, padding:"1px 8px", fontSize:11, fontWeight:700 }}>{stageLeads.length}</span>
                 </div>
               </div>
               <div style={{ padding:"10px 10px 6px", minHeight:80 }}>
@@ -724,7 +749,7 @@ function App() {
       ? (changes.length>0 ? [{ ts:formatTs(), changes }, ...(existing.history||[])] : (existing.history||[]))
       : [{ ts:formatTs(), changes:["Lead created"] }];
 
-    const payload = { name:form.name, address:form.address, phone:form.phone, appointment:form.appointment, esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage, bill_photos:form.billPhotos||[], history:newHistory, updated_at:new Date().toISOString() };
+    const payload = { name:form.name, address:form.address, phone:form.phone, appointment:form.appointment, esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage, bill_photos:form.billPhotos||[], close:form.close||"", decision_makers:form.decisionMakers||"", history:newHistory, updated_at:new Date().toISOString() };
 
     if (modal.lead?.id) {
       await sb.from("leads").update(payload).eq("id", modal.lead.id);
@@ -826,7 +851,7 @@ function App() {
       </div>
 
       {/* Lead form modal */}
-      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} initial={modal.lead ? {...modal.lead, billPhotos:modal.lead.bill_photos||[]} : null} repProfiles={repProfiles} currentUser={profile} />
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} initial={modal.lead ? {...modal.lead, billPhotos:modal.lead.bill_photos||[], decisionMakers:modal.lead.decision_makers||""} : null} repProfiles={repProfiles} currentUser={profile} />
 
       {/* Detail modal */}
       <DetailModal
