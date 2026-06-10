@@ -30,38 +30,26 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const STAGES = [
   "Lead: Need Bill/Appointment","AC","No Show / Need Rescheduled",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels",
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
 ];
 
-const BASE_STAGE_COLORS = [
-  {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
-  {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
-  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  {bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
-  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
-];
+const STAGE_COLORS = {
+  "Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
+  "AC":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  "No Show / Need Rescheduled":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "No Close / No Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "No Close / Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
+  "VC / SRA":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "Cap / Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "ARC / Cancels":{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"}
+};
 
-const COLOR_CYCLE = [
-  {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
-  {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
-  {bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
-  {bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
-  {bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
-];
-
-function getStageColor(stage, stages) {
-  const idx = stages.indexOf(stage);
-  if (idx >= 0 && idx < BASE_STAGE_COLORS.length) return BASE_STAGE_COLORS[idx];
-  return COLOR_CYCLE[Math.abs(idx) % COLOR_CYCLE.length] || COLOR_CYCLE[0];
+function getStageColor(stage) {
+  return STAGE_COLORS[stage] || {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"};
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -69,7 +57,7 @@ const TIME_SLOTS = [
   "8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM",
   "11:00 AM","11:30 AM","12:00 PM","12:30 PM","1:00 PM","1:30 PM",
   "2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM",
-  "5:00 PM","5:30 PM","6:00 PM","6:30 PM","7:00 PM","7:30 PM","8:00 PM",
+  "5:00 PM","5:30 PM","6:00 PM","6:30 PM","7:00 PM","7:30 PM","8:00 PM"
 ];
 
 const emptyForm = {
@@ -89,7 +77,6 @@ const formatTs = () => {
     " at " + d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
 };
 
-// AUTH SCREEN
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -128,9 +115,7 @@ function AuthScreen({ onAuth }) {
     <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e293b)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
       <div style={{ background:"#fff", borderRadius:20, padding:32, width:"min(100%,400px)", boxShadow:"0 20px 60px rgba(0,0,0,0.4)" }}>
         <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ width:56, height:56, borderRadius:16, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, margin:"0 auto 12px" }}>
-            <span>&#9728;&#65039;</span>
-          </div>
+          <div style={{ width:56, height:56, borderRadius:16, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, margin:"0 auto 12px" }}>&#9728;</div>
           <div style={{ fontWeight:800, fontSize:22, color:"#0f172a" }}>Solar Pipeline</div>
           <div style={{ fontSize:13, color:"#94a3b8", marginTop:4 }}>Sunrun Sales CRM</div>
         </div>
@@ -161,7 +146,7 @@ function AuthScreen({ onAuth }) {
         {mode === "signup" && (
           <div style={{ marginBottom:22 }}>
             <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Invite Code</label>
-            <input value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="e.g. SUN-F38E" style={{ ...inputStyle, textTransform:"uppercase", letterSpacing:"0.1em" }} />
+            <input value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="e.g. SUN-F38E" style={{ ...inputStyle, textTransform:"uppercase" }} />
             <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>Get this from your manager</div>
           </div>
         )}
@@ -174,19 +159,14 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-// MANAGER DASHBOARD
 function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCodes }) {
   const repProfiles = profiles.filter(p => p.role === "rep");
-  const statsFor = (repId) => {
-    const repLeads = leads.filter(l => l.owner_id === repId);
-    return { total: repLeads.length, installs: repLeads.filter(l => l.stage === "10. Install").length };
-  };
   return (
     <div style={{ padding:"20px 16px" }}>
       <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Team Overview</div>
       <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>{repProfiles.length} rep{repProfiles.length!==1?"s":""} &middot; {leads.length} total leads</div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:24 }}>
-        {[["Total Leads",leads.length,"#f97316"],["Installs",leads.filter(l=>l.stage==="10. Install").length,"#10b981"],["Cancels",leads.filter(l=>l.stage==="12. ARC / Cancels").length,"#ef4444"]].map(([label,val,color]) => (
+        {[["Total",leads.length,"#f97316"],["Installs",leads.filter(l=>l.stage==="Install").length,"#10b981"],["Cancels",leads.filter(l=>l.stage==="ARC / Cancels").length,"#ef4444"]].map(([label,val,color]) => (
           <div key={label} style={{ background:"#fff", borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize:24, fontWeight:800, color }}>{val}</div>
             <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{label}</div>
@@ -196,7 +176,7 @@ function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCo
       <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Your Reps</div>
       {repProfiles.length === 0 && <div style={{ fontSize:14, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No reps yet. Generate an invite code below.</div>}
       {repProfiles.map(rep => {
-        const s = statsFor(rep.id);
+        const repLeads = leads.filter(l => l.owner_id === rep.id);
         return (
           <div key={rep.id} onClick={() => onViewRep(rep)} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             <div>
@@ -205,12 +185,8 @@ function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCo
             </div>
             <div style={{ display:"flex", gap:10, alignItems:"center" }}>
               <div style={{ textAlign:"center" }}>
-                <div style={{ fontWeight:700, fontSize:16, color:"#f97316" }}>{s.total}</div>
+                <div style={{ fontWeight:700, fontSize:16, color:"#f97316" }}>{repLeads.length}</div>
                 <div style={{ fontSize:10, color:"#94a3b8" }}>leads</div>
-              </div>
-              <div style={{ textAlign:"center" }}>
-                <div style={{ fontWeight:700, fontSize:16, color:"#10b981" }}>{s.installs}</div>
-                <div style={{ fontSize:10, color:"#94a3b8" }}>installs</div>
               </div>
               <div style={{ color:"#94a3b8", fontSize:18 }}>&rsaquo;</div>
             </div>
@@ -218,9 +194,7 @@ function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCo
         );
       })}
       <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:24 }}>Invite Codes</div>
-      <button onClick={onGenerateCode} style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"2px dashed #f97316", background:"#fff", color:"#f97316", fontWeight:700, cursor:"pointer", fontSize:14, marginBottom:12 }}>
-        + Generate New Invite Code
-      </button>
+      <button onClick={onGenerateCode} style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"2px dashed #f97316", background:"#fff", color:"#f97316", fontWeight:700, cursor:"pointer", fontSize:14, marginBottom:12 }}>+ Generate New Invite Code</button>
       {inviteCodes.filter(c=>!c.used_by).map(code => (
         <div key={code.code} style={{ background:"#fff", borderRadius:10, padding:"12px 16px", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
           <div>
@@ -234,18 +208,17 @@ function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCo
   );
 }
 
-// SUMMARY DASHBOARD
-function SummaryDashboard({ profiles, leads, currentUser, stages }) {
+function SummaryDashboard({ profiles, leads, currentUser }) {
   const repProfiles = profiles.filter(p => p.role === "rep");
-  const allStagesToShow = stages && stages.length > 0 ? stages : STAGES;
-  const stageStats = allStagesToShow.map(s => ({ stage:s, count:leads.filter(l=>l.stage===s).length }));
   return (
     <div style={{ padding:"20px 16px" }}>
       <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Performance Summary</div>
       <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>Team-wide pipeline snapshot</div>
       <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Pipeline Breakdown</div>
-      {stageStats.filter(s=>s.count>0).map(({ stage, count }) => {
-        const colors = getStageColor(stage, stages||STAGES);
+      {STAGES.map(stage => {
+        const count = leads.filter(l=>l.stage===stage).length;
+        if (!count) return null;
+        const colors = getStageColor(stage);
         const pct = leads.length ? Math.round((count/leads.length)*100) : 0;
         return (
           <div key={stage} style={{ marginBottom:10 }}>
@@ -268,7 +241,7 @@ function SummaryDashboard({ profiles, leads, currentUser, stages }) {
                 <div style={{ fontWeight:700, fontSize:14, color:"#0f172a", marginBottom:6 }}>{rep.name}</div>
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <span style={{ background:"#f1f5f9", color:"#475569", borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600 }}>Total: {repLeads.length}</span>
-                  <span style={{ background:"#d1fae5", color:"#065f46", borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600 }}>Installs: {repLeads.filter(l=>l.stage==="10. Install").length}</span>
+                  <span style={{ background:"#d1fae5", color:"#065f46", borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600 }}>Installs: {repLeads.filter(l=>l.stage==="Install").length}</span>
                 </div>
               </div>
             );
@@ -279,7 +252,6 @@ function SummaryDashboard({ profiles, leads, currentUser, stages }) {
   );
 }
 
-// APPOINTMENT PICKER
 function AppointmentPicker({ value, onChange }) {
   const now = new Date();
   const [open, setOpen] = useState(false);
@@ -350,15 +322,13 @@ function AppointmentPicker({ value, onChange }) {
   );
 }
 
-// CLOSE SECTION (reusable)
 function CloseSection({ form, setForm, readOnly, lead }) {
   const questions = [
     { key:"billRetrieved", db:"bill_retrieved", label:"Was the bill input?" },
     { key:"knewSolar", db:"knew_solar", label:"Did homeowner know solar was/could be involved?" },
     { key:"closerInside", db:"closer_inside", label:"Did homeowner let closer inside?" },
-    { key:"decisionMakers", db:"decision_makers", label:"Were all decision makers present?" },
+    { key:"decisionMakers", db:"decision_makers", label:"Were all decision makers present?" }
   ];
-
   if (readOnly) {
     const hasAny = questions.some(q => lead && lead[q.db]);
     if (!hasAny) return null;
@@ -378,7 +348,6 @@ function CloseSection({ form, setForm, readOnly, lead }) {
       </div>
     );
   }
-
   return (
     <div style={{ marginBottom:22, background:"#f8fafc", borderRadius:12, padding:"14px 14px 16px", border:"1.5px solid #e2e8f0" }}>
       <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:14, textTransform:"uppercase", letterSpacing:"0.05em" }}>Close</label>
@@ -400,21 +369,19 @@ function CloseSection({ form, setForm, readOnly, lead }) {
   );
 }
 
-// DETAIL MODAL
-function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer, stages }) {
+function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer }) {
   const [imgOpen, setImgOpen] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTo, setTransferTo] = useState("");
   if (!lead) return null;
-  const colors = getStageColor(lead.stage, stages||STAGES);
+  const colors = getStageColor(lead.stage);
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:1000 }}>
       <div style={{ position:"absolute", inset:0, background:"rgba(15,23,42,0.6)" }} onClick={() => { if(!confirmDelete&&!showTransfer) onClose(); }} />
       <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
         <div style={{ background:"#fff", borderRadius:16, padding:26, width:"min(96vw,460px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto", pointerEvents:"all" }}>
-
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18 }}>
             <div>
               <div style={{ fontSize:20, fontWeight:800, color:"#0f172a" }}>{lead.name||"Unnamed Lead"}</div>
@@ -422,22 +389,19 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
             </div>
             <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>x</button>
           </div>
-
           {[["Address",lead.address],["Phone",lead.phone],["Appointment",lead.appointment],["ESIID",lead.esiid],["Meter",lead.meter]].map(([label,value]) => value ? (
             <div key={label} style={{ marginBottom:12 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>{label}</div>
               <div style={{ fontSize:14, color:"#1e293b" }}>{value}</div>
             </div>
           ) : null)}
-
           {lead.notes && (
             <div style={{ marginBottom:14 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>Notes</div>
               <div style={{ fontSize:14, color:"#475569", background:"#f8fafc", borderRadius:8, padding:"10px 12px", lineHeight:1.5 }}>{lead.notes}</div>
             </div>
           )}
-
-          {lead.bill_photos?.length > 0 && (
+          {lead.bill_photos && lead.bill_photos.length > 0 && (
             <div style={{ marginBottom:18 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Utility Bills ({lead.bill_photos.length})</div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
@@ -448,13 +412,10 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize:11, color:"#94a3b8", marginTop:5, textAlign:"center" }}>Tap any photo to view full size</div>
             </div>
           )}
-
           <CloseSection readOnly={true} lead={lead} />
-
-          {lead.history?.length > 0 && (
+          {lead.history && lead.history.length > 0 && (
             <div style={{ marginBottom:16, borderTop:"1.5px solid #f1f5f9", paddingTop:14 }}>
               <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Change History</div>
               {lead.history.map((entry,i) => (
@@ -467,7 +428,6 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
               ))}
             </div>
           )}
-
           {showTransfer && (
             <div style={{ background:"#f0f9ff", border:"1.5px solid #3b82f6", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
               <div style={{ fontWeight:700, fontSize:14, color:"#1e3a8a", marginBottom:8 }}>Transfer Lead to Rep</div>
@@ -482,7 +442,6 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
               </div>
             </div>
           )}
-
           {confirmDelete && (
             <div style={{ background:"#fff5f5", border:"1.5px solid #fca5a5", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
               <div style={{ fontWeight:700, fontSize:14, color:"#b91c1c", marginBottom:4 }}>Are you sure?</div>
@@ -493,7 +452,6 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
               </div>
             </div>
           )}
-
           {!confirmDelete && !showTransfer && (
             <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:6 }}>
               <button onClick={() => setShowTransfer(true)} style={{ width:"100%", padding:"10px 0", borderRadius:8, border:"1.5px solid #3b82f6", background:"#fff", color:"#3b82f6", fontWeight:600, cursor:"pointer", fontSize:14 }}>Transfer to Another Rep</button>
@@ -505,16 +463,15 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
           )}
         </div>
       </div>
-
-      {imgOpen !== null && lead.bill_photos?.[imgOpen] && (
+      {imgOpen !== null && lead.bill_photos && lead.bill_photos[imgOpen] && (
         <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.95)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:10 }} onClick={() => setImgOpen(null)}>
           <img src={lead.bill_photos[imgOpen]} style={{ maxWidth:"95vw", maxHeight:"80vh", borderRadius:8, objectFit:"contain" }} />
           <div style={{ display:"flex", gap:12, marginTop:16, alignItems:"center" }}>
             <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.max(0,i-1));}} disabled={imgOpen===0}
-              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", cursor:imgOpen===0?"default":"pointer", fontSize:18 }}>&lsaquo;</button>
-            <span style={{ color:"#fff", fontSize:13, opacity:0.7 }}>{imgOpen+1} / {lead.bill_photos.length}</span>
+              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", fontSize:18 }}>&lsaquo;</button>
+            <span style={{ color:"#fff", fontSize:13 }}>{imgOpen+1} / {lead.bill_photos.length}</span>
             <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===lead.bill_photos.length-1}
-              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", cursor:imgOpen===lead.bill_photos.length-1?"default":"pointer", fontSize:18 }}>&rsaquo;</button>
+              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", fontSize:18 }}>&rsaquo;</button>
           </div>
           <div style={{ position:"absolute", top:16, right:20, color:"#fff", fontSize:28, cursor:"pointer" }} onClick={() => setImgOpen(null)}>x</div>
         </div>
@@ -522,8 +479,8 @@ function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer,
     </div>
   );
 }
-// LEAD FORM MODAL
-function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
+
+function LeadModal({ open, onClose, onSave, initial }) {
   const [form, setForm] = useState(initial || emptyForm);
   const fileInputRef = useRef(null);
   useEffect(() => { setForm(initial || emptyForm); }, [initial, open]);
@@ -544,7 +501,7 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
     <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
       <div style={{ background:"#fff", borderRadius:16, padding:28, width:"min(96vw,500px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:"#0f172a" }}>{initial?.id ? "Edit Lead" : "Add New Lead"}</h2>
+          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:"#0f172a" }}>{initial && initial.id ? "Edit Lead" : "Add New Lead"}</h2>
           <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>x</button>
         </div>
         {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p]) => (
@@ -566,9 +523,9 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
         </div>
         <div style={{ marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>
-            Utility Bill Photos {form.billPhotos?.length > 0 && <span style={{ color:"#f97316" }}>({form.billPhotos.length})</span>}
+            Utility Bill Photos {form.billPhotos && form.billPhotos.length > 0 && <span style={{ color:"#f97316" }}>({form.billPhotos.length})</span>}
           </label>
-          {form.billPhotos?.length > 0 && (
+          {form.billPhotos && form.billPhotos.length > 0 && (
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:8 }}>
               {form.billPhotos.map((p,i) => (
                 <div key={i} style={{ position:"relative" }}>
@@ -578,7 +535,7 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
               ))}
             </div>
           )}
-          <div onClick={() => fileInputRef.current?.click()} style={{ border:"2px dashed #cbd5e1", borderRadius:8, padding:"14px 16px", textAlign:"center", cursor:"pointer", background:"#f8fafc" }}>
+          <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ border:"2px dashed #cbd5e1", borderRadius:8, padding:"14px 16px", textAlign:"center", cursor:"pointer", background:"#f8fafc" }}>
             <div style={{ fontSize:13, color:"#64748b", fontWeight:500 }}>Tap to add photos</div>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{ display:"none" }} />
@@ -586,14 +543,14 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
         <div style={{ marginBottom:14 }}>
           <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Pipeline Stage</label>
           <select value={form.stage} onChange={set("stage")} style={inputStyle}>
-            {(stages||STAGES).map(s=><option key={s} value={s}>{s}</option>)}
+            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <CloseSection form={form} setForm={setForm} readOnly={false} />
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
           <button onClick={() => onSave(form)} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>
-            {initial?.id ? "Save Changes" : "Add Lead"}
+            {initial && initial.id ? "Save Changes" : "Add Lead"}
           </button>
         </div>
       </div>
@@ -601,9 +558,8 @@ function LeadModal({ open, onClose, onSave, initial, repProfiles, stages }) {
   );
 }
 
-// LEAD CARD
 function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
-  const colors = getStageColor(lead.stage, stages||STAGES);
+  const colors = getStageColor(lead.stage);
   const holdTimer = useRef(null);
   const moved = useRef(false);
   const startPos = useRef(null);
@@ -632,107 +588,21 @@ function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
   );
 }
 
-// PIPELINE BOARD
-function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, stages, isManager, onSaveStages }) {
+function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }) {
   const [dragId, setDragId] = useState(null);
   const [dragPos, setDragPos] = useState({x:0,y:0});
   const [dragOver, setDragOver] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [search, setSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  // Column drag-to-reorder
-  const [colDragIdx, setColDragIdx] = useState(null);
-  const [colDragOverIdx, setColDragOverIdx] = useState(null);
-  const [colDragPos, setColDragPos] = useState({x:0,y:0});
-  // Rename
-  const [renamingStage, setRenamingStage] = useState(null);
-  const [renameValue, setRenameValue] = useState("");
-  // Add new stage
-  const [showAddStage, setShowAddStage] = useState(false);
-  const [newStageName, setNewStageName] = useState("");
   const columnRefs = useRef({});
   const boardRef = useRef(null);
   const scrollAnim = useRef(null);
   const draggingLead = leads.find(l=>l.id===dragId);
   const dropdownResults = search.length > 0 ? leads.filter(l =>
     [l.name, l.phone, l.address, l.esiid, l.meter, l.notes]
-      .some(v => v?.toLowerCase().includes(search.toLowerCase()))
+      .some(v => v && v.toLowerCase().includes(search.toLowerCase()))
   ).slice(0, 8) : [];
-
-  // Column touch drag for reordering
-  const handleColTouchStart = (e, idx) => {
-    if (!isManager) return;
-    const startX = e.touches[0].clientX;
-    const startY = e.touches[0].clientY;
-    let moved = false;
-    let holdTimer = setTimeout(() => {
-      setColDragIdx(idx);
-      setColDragPos({x:e.touches[0].clientX, y:e.touches[0].clientY});
-      const onMove = (ev) => {
-        ev.preventDefault();
-        const x = ev.touches[0].clientX;
-        const y = ev.touches[0].clientY;
-        setColDragPos({x,y});
-        // Find which column we're over by index
-        let found = null;
-        const cols = [];
-        for(let ci=0;ci<stages.length;ci++){const el=document.getElementById(`col-${ci}`);if(el)cols.push(el);}
-        if (cols) {
-          cols.forEach(col => {
-            const r = col.getBoundingClientRect();
-            if (x >= r.left && x <= r.right) found = parseInt(col.id.replace('col-',''));
-          });
-        }
-        setColDragOverIdx(found);
-      };
-      const onEnd = () => {
-        setColDragIdx(null);
-        setColDragOverIdx(overIdx => {
-          if (overIdx !== null && overIdx !== idx) {
-            const newStages = [...stages];
-            const [removed] = newStages.splice(idx, 1);
-            newStages.splice(overIdx, 0, removed);
-            onSaveStages(newStages);
-          }
-          return null;
-        });
-        window.removeEventListener("touchmove", onMove);
-        window.removeEventListener("touchend", onEnd);
-      };
-      window.addEventListener("touchmove", onMove, {passive:false});
-      window.addEventListener("touchend", onEnd);
-    }, 400);
-
-    const cancelHold = () => { clearTimeout(holdTimer); };
-    e.target.addEventListener("touchend", cancelHold, {once:true});
-    e.target.addEventListener("touchmove", () => { clearTimeout(holdTimer); }, {once:true});
-  };
-
-  const startRename = (stage) => {
-    setRenamingStage(stage);
-    setRenameValue(stage);
-  };
-
-  const commitRename = () => {
-    if (!renameValue.trim() || renameValue.trim() === renamingStage) { setRenamingStage(null); return; }
-    const newStages = stages.map(s => s === renamingStage ? renameValue.trim() : s);
-    onSaveStages(newStages);
-    setRenamingStage(null);
-  };
-
-  const addStage = () => {
-    if (!newStageName.trim()) return;
-    const newStages = [...stages, newStageName.trim()];
-    onSaveStages(newStages);
-    setNewStageName("");
-    setShowAddStage(false);
-  };
-
-  const deleteStage = (stage) => {
-    if (leads.filter(l=>l.stage===stage).length > 0) { return; }
-    const newStages = stages.filter(s => s !== stage);
-    onSaveStages(newStages);
-  };
 
   const handleTouchDragStart = (e, id) => {
     setDragId(id);
@@ -773,7 +643,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
     window.addEventListener("touchend",onEnd);
   };
 
-  const filtered = search && !showDropdown ? leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v?.toLowerCase().includes(search.toLowerCase()))) : leads;
+  const filtered = leads;
   const detailLead = (allLeads||leads).find(l=>l.id===detailId)||null;
 
   return (
@@ -791,7 +661,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
           {showDropdown && search && dropdownResults.length > 0 && (
             <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, maxHeight:280, overflowY:"auto", zIndex:300 }}>
               {dropdownResults.map(lead => {
-                const colors = getStageColor(lead.stage, stages||STAGES);
+                const colors = getStageColor(lead.stage);
                 return (
                   <div key={lead.id}
                     onMouseDown={() => { setSearch(""); setShowDropdown(false); setDetailId(lead.id); }}
@@ -799,10 +669,10 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
                     <div>
                       <div style={{ fontWeight:700, fontSize:14, color:"#0f172a" }}>{lead.name||"Unnamed"}</div>
                       <div style={{ fontSize:12, color:"#94a3b8", marginTop:1 }}>
-                        {[lead.phone, lead.address].filter(Boolean).join(" · ")}
+                        {[lead.phone, lead.address].filter(Boolean).join(" - ")}
                       </div>
                     </div>
-                    <span style={{ background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap", marginLeft:8 }}>{lead.stage.split(". ")[0]}</span>
+                    <span style={{ background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap", marginLeft:8 }}>{lead.stage}</span>
                   </div>
                 );
               })}
@@ -818,7 +688,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
       </div>
       <div ref={boardRef} style={{ display:"flex", gap:14, padding:"14px 16px 40px", overflowX:"auto", alignItems:"flex-start", flex:1 }}>
         {STAGES.map(stage => {
-          const colors = getStageColor(stage, stages||STAGES);
+          const colors = getStageColor(stage);
           const stageLeads = filtered.filter(l=>l.stage===stage);
           const isOver = dragOver===stage;
           return (
@@ -829,7 +699,7 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
               </div>
               <div style={{ padding:"10px 10px 6px", minHeight:80 }}>
                 {stageLeads.length===0 ? (
-                  <div style={{ textAlign:"center", color:isOver?colors.border:"#cbd5e1", fontSize:12, paddingTop:20, paddingBottom:10, fontWeight:isOver?700:400 }}>{isOver?"Drop here":"Drop here"}</div>
+                  <div style={{ textAlign:"center", color:isOver?colors.border:"#cbd5e1", fontSize:12, paddingTop:20, paddingBottom:10, fontWeight:isOver?700:400 }}>Drop here</div>
                 ) : stageLeads.map(lead => (
                   <LeadCard key={lead.id} lead={lead} onView={l=>{ if(!dragId) setDetailId(l.id); }} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id} />
                 ))}
@@ -851,14 +721,12 @@ function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads, 
           onDelete={id => { onLeadView(id,"delete"); setDetailId(null); }}
           repProfiles={[]}
           onTransfer={() => {}}
-          stages={stages||STAGES}
         />
       )}
     </div>
   );
 }
 
-// MAIN APP
 function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -870,11 +738,10 @@ function App() {
   const [viewingRep, setViewingRep] = useState(null);
   const [modal, setModal] = useState({ open:false, lead:null });
   const [detailId, setDetailId] = useState(null);
-  const [stages, setStages] = useState(STAGES);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data }) => {
-      if (data.session?.user) loadUser(data.session.user);
+      if (data.session && data.session.user) loadUser(data.session.user);
       else setLoading(false);
     });
   }, []);
@@ -888,10 +755,7 @@ function App() {
 
   const loadData = async (u, prof) => {
     const p = prof || profile;
-    // Load pipeline config for everyone
-    const { data: config } = await sb.from("pipeline_config").select("*").eq("id","default").single();
-    if (config?.stages && config.stages.length > 0) setStages(config.stages);
-    if (p?.role === "manager") {
+    if (p && p.role === "manager") {
       const { data: allLeads } = await sb.from("leads").select("*").order("created_at",{ascending:false});
       const { data: allProfiles } = await sb.from("profiles").select("*");
       const { data: codes } = await sb.from("invite_codes").select("*").order("created_at",{ascending:false});
@@ -906,14 +770,9 @@ function App() {
     }
   };
 
-  const saveStages = async (newStages) => {
-    setStages(newStages);
-    await sb.from("pipeline_config").update({ stages: newStages, updated_at: new Date().toISOString() }).eq("id","default");
-  };
-
   const saveLead = async (form) => {
     const ownerId = viewingRep ? viewingRep.id : user.id;
-    const existing = modal.lead?.id ? leads.find(l=>l.id===modal.lead.id) : null;
+    const existing = modal.lead && modal.lead.id ? leads.find(l=>l.id===modal.lead.id) : null;
     const changes = [];
     if (existing) {
       const fields = { name:"Name",address:"Address",phone:"Phone",appointment:"Appointment",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage" };
@@ -929,8 +788,14 @@ function App() {
       : [{ts:formatTs(),changes:["Lead created"]}];
 
     const payload = {
-      name:form.name, address:form.address, phone:form.phone, appointment:form.appointment,
-      esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage,
+      name:form.name||"",
+      address:form.address||"",
+      phone:form.phone||"",
+      appointment:form.appointment||"",
+      esiid:form.esiid||"",
+      meter:form.meter||"",
+      notes:form.notes||"",
+      stage:form.stage||STAGES[0],
       bill_photos:form.billPhotos||[],
       bill_retrieved:form.billRetrieved||"",
       knew_solar:form.knewSolar||"",
@@ -940,7 +805,7 @@ function App() {
       updated_at:new Date().toISOString()
     };
 
-    if (modal.lead?.id) {
+    if (modal.lead && modal.lead.id) {
       await sb.from("leads").update(payload).eq("id",modal.lead.id);
     } else {
       await sb.from("leads").insert({...payload, id:generateId(), owner_id:ownerId, created_at:new Date().toISOString()});
@@ -964,8 +829,9 @@ function App() {
 
   const handleTransfer = async (leadId, toRepId) => {
     const lead = leads.find(l=>l.id===leadId);
-    const entry = {ts:formatTs(),changes:[`Transferred to ${profiles.find(p=>p.id===toRepId)?.name||"rep"}`]};
-    await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?.history||[])],updated_at:new Date().toISOString()}).eq("id",leadId);
+    const toRep = profiles.find(p=>p.id===toRepId);
+    const entry = {ts:formatTs(),changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
+    await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
     await loadData(user,profile);
   };
 
@@ -998,9 +864,7 @@ function App() {
           {viewingRep && (
             <button onClick={() => setViewingRep(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13 }}>Back</button>
           )}
-          <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>
-            <span>&#9728;</span>
-          </div>
+          <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>&#9728;</div>
           <div>
             <div style={{ color:"#fff", fontWeight:800, fontSize:15, lineHeight:1 }}>{viewingRep ? viewingRep.name : "Solar Pipeline"}</div>
             <div style={{ color:"#94a3b8", fontSize:11 }}>{profile.name} &middot; {profile.role}</div>
@@ -1024,11 +888,8 @@ function App() {
           <PipelineBoard
             leads={visibleLeads}
             allLeads={leads}
-            stages={stages}
-            isManager={profile.role==="manager"}
             onAddLead={() => setModal({open:true,lead:null})}
             onStageChange={handleStageChange}
-            onSaveStages={saveStages}
             onLeadView={(l,action) => {
               if(action==="edit") setModal({open:true,lead:l});
               else if(action==="delete") deleteLead(l);
@@ -1036,7 +897,7 @@ function App() {
             }}
           />
         )}
-        {tab==="dashboard"&&!viewingRep&&<SummaryDashboard profiles={profiles} leads={leads} currentUser={profile} stages={stages} />}
+        {tab==="dashboard"&&!viewingRep&&<SummaryDashboard profiles={profiles} leads={leads} currentUser={profile} />}
         {tab==="team"&&!viewingRep&&profile.role==="manager"&&(
           <ManagerDashboard profiles={profiles} leads={leads} onViewRep={rep=>{setViewingRep(rep);setTab("pipeline");}} onGenerateCode={generateCode} inviteCodes={inviteCodes} />
         )}
@@ -1054,8 +915,6 @@ function App() {
           closerInside:modal.lead.closer_inside||"",
           decisionMakers:modal.lead.decision_makers||""
         } : null}
-        repProfiles={repProfiles}
-        stages={stages}
       />
 
       {detailId && (
@@ -1066,7 +925,6 @@ function App() {
           onDelete={id => { deleteLead(id); setDetailId(null); }}
           repProfiles={repProfiles}
           onTransfer={handleTransfer}
-          stages={stages}
         />
       )}
     </div>
