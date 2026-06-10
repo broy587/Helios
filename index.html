@@ -53,6 +53,47 @@ function getStageColor(stage) {
   return STAGE_COLORS[stage] || {bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"};
 }
 
+// Stage progression order - used for cumulative stats
+const STAGE_ORDER = [
+  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
+];
+
+// Stage progression index for cumulative milestone counting
+const STAGE_PROGRESSION = [
+  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
+];
+
+// Milestone minimum progression indices (lead must be at or past this index)
+const MILESTONE_INDEX = {
+  "AC":      STAGE_PROGRESSION.indexOf("AC / Scheduled"),
+  "VC":      STAGE_PROGRESSION.indexOf("VC / SRA"),
+  "CAP":     STAGE_PROGRESSION.indexOf("Cap / Permitting"),
+  "Install": STAGE_PROGRESSION.indexOf("Install Scheduled"),
+  "PTO":     STAGE_PROGRESSION.indexOf("PTO / REP")
+};
+
+const CANCELLED_STAGE = "ARC / Cancels";
+
+function getEffectiveStageIndex(lead) {
+  // Use peak_stage (highest stage ever legitimately reached) for stats
+  // This handles both cancelled leads AND leads moved backward by mistake
+  const peakIdx = STAGE_PROGRESSION.indexOf(lead.peak_stage||"");
+  const currentIdx = STAGE_PROGRESSION.indexOf(lead.stage);
+  // Peak is the higher of current or stored peak
+  const effectiveIdx = Math.max(peakIdx, currentIdx);
+  return effectiveIdx >= 0 ? effectiveIdx : -1;
+}
+
+function milestoneCount(leads, milestone) {
+  const minIdx = MILESTONE_INDEX[milestone];
+  if (minIdx === undefined) return 0;
+  return leads.filter(l => getEffectiveStageIndex(l) >= minIdx).length;
+}
+
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const TIME_SLOTS = [
   "8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM",
@@ -161,40 +202,77 @@ function AuthScreen({ onAuth }) {
   );
 }
 
+function StatCard({ label, value, color, sub }) {
+  return (
+    <div style={{ background:"#fff", borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+      <div style={{ fontSize:22, fontWeight:800, color }}>{value}</div>
+      <div style={{ fontSize:11, color:"#0f172a", fontWeight:600, marginTop:2 }}>{label}</div>
+      {sub && <div style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function TeamStats({ leads, repProfiles }) {
+  const pct = (a, b) => b > 0 ? Math.round((a/b)*100) + "%" : "-";
+  const ac = milestoneCount(leads, "AC");
+  const vc = milestoneCount(leads, "VC");
+  const cap = milestoneCount(leads, "CAP");
+  const install = milestoneCount(leads, "Install");
+  const pto = milestoneCount(leads, "PTO");
+  const total = leads.length;
+
+  return (
+    <div style={{ marginBottom:24 }}>
+      <div style={{ fontSize:16, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Team Stats</div>
+      <div style={{ fontSize:12, color:"#94a3b8", marginBottom:14 }}>Cumulative — accounts count for every stage they have reached or passed</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
+        <StatCard label="Leads Created" value={total} color="#f97316" />
+        <StatCard label="ACs" value={ac} color="#3b82f6" sub={pct(ac,total) + " of leads"} />
+        <StatCard label="VCs" value={vc} color="#6366f1" sub={pct(vc,ac) + " of ACs"} />
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+        <StatCard label="CAP" value={cap} color="#8b5cf6" sub={pct(cap,vc) + " of VCs"} />
+        <StatCard label="Installs" value={install} color="#10b981" sub={pct(install,cap) + " of CAPs"} />
+        <StatCard label="PTO" value={pto} color="#f59e0b" sub={pct(pto,install) + " of Installs"} />
+      </div>
+    </div>
+  );
+}
+
 function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCodes }) {
   const repProfiles = profiles.filter(p => p.role === "rep");
   return (
     <div style={{ padding:"20px 16px" }}>
-      <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Team Overview</div>
-      <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>{repProfiles.length} rep{repProfiles.length!==1?"s":""} &middot; {leads.length} total leads</div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:24 }}>
-        {[["Total",leads.length,"#f97316"],["Installs",leads.filter(l=>l.stage==="Install").length,"#10b981"],["Cancels",leads.filter(l=>l.stage==="ARC / Cancels").length,"#ef4444"]].map(([label,val,color]) => (
-          <div key={label} style={{ background:"#fff", borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontSize:24, fontWeight:800, color }}>{val}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{label}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Your Reps</div>
+      <TeamStats leads={leads} repProfiles={repProfiles} />
+
+      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:8 }}>By Rep</div>
       {repProfiles.length === 0 && <div style={{ fontSize:14, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No reps yet. Generate an invite code below.</div>}
       {repProfiles.map(rep => {
         const repLeads = leads.filter(l => l.owner_id === rep.id);
+        const repAC = milestoneCount(repLeads, "AC");
+        const repInstall = milestoneCount(repLeads, "Install");
+        const repPTO = milestoneCount(repLeads, "PTO");
         return (
-          <div key={rep.id} onClick={() => onViewRep(rep)} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div>
-              <div style={{ fontWeight:700, fontSize:15, color:"#0f172a" }}>{rep.name}</div>
-              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{rep.email}</div>
-            </div>
-            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-              <div style={{ textAlign:"center" }}>
-                <div style={{ fontWeight:700, fontSize:16, color:"#f97316" }}>{repLeads.length}</div>
-                <div style={{ fontSize:10, color:"#94a3b8" }}>leads</div>
+          <div key={rep.id} onClick={() => onViewRep(rep)} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", cursor:"pointer" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:15, color:"#0f172a" }}>{rep.name}</div>
+                <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{rep.email}</div>
               </div>
               <div style={{ color:"#94a3b8", fontSize:18 }}>&rsaquo;</div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+              {[["Leads",repLeads.length,"#f97316"],["ACs",repAC,"#3b82f6"],["Installs",repInstall,"#10b981"],["PTOs",repPTO,"#f59e0b"]].map(([lbl,val,col]) => (
+                <div key={lbl} style={{ textAlign:"center", background:"#f8fafc", borderRadius:8, padding:"6px 4px" }}>
+                  <div style={{ fontSize:16, fontWeight:800, color:col }}>{val}</div>
+                  <div style={{ fontSize:10, color:"#94a3b8" }}>{lbl}</div>
+                </div>
+              ))}
             </div>
           </div>
         );
       })}
+
       <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:24 }}>Invite Codes</div>
       <button onClick={onGenerateCode} style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"2px dashed #f97316", background:"#fff", color:"#f97316", fontWeight:700, cursor:"pointer", fontSize:14, marginBottom:12 }}>+ Generate New Invite Code</button>
       {inviteCodes.filter(c=>!c.used_by).map(code => (
@@ -863,6 +941,11 @@ function App() {
       ? (changes.length>0 ? [{ts:formatTs(),changes},...(existing.history||[])] : (existing.history||[]))
       : [{ts:formatTs(),changes:["Lead created"]}];
 
+    // Only update peak_stage if new stage is further forward than current peak
+    const newStageIdx = STAGE_PROGRESSION.indexOf(form.stage||STAGES[0]);
+    const existingPeakIdx = STAGE_PROGRESSION.indexOf(existing?.peak_stage||existing?.stage||"");
+    const peakStage = newStageIdx > existingPeakIdx ? (form.stage||STAGES[0]) : (existing?.peak_stage||form.stage||STAGES[0]);
+
     const payload = {
       name:form.name||"",
       address:form.address||"",
@@ -872,6 +955,7 @@ function App() {
       meter:form.meter||"",
       notes:form.notes||"",
       stage:form.stage||STAGES[0],
+      peak_stage:peakStage,
       bill_photos:form.billPhotos||[],
       bill_retrieved:form.billRetrieved||"",
       knew_solar:form.knewSolar||"",
@@ -902,8 +986,17 @@ function App() {
     const lead = leads.find(l=>l.id===id);
     if (!lead) return;
     const entry = {ts:formatTs(),changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
-    await sb.from("leads").update({stage:newStage,history:[entry,...(lead.history||[])],updated_at:new Date().toISOString()}).eq("id",id);
-    setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
+    // Only update peak_stage if moving forward (higher index), never backward
+    const currentPeakIdx = STAGE_PROGRESSION.indexOf(lead.peak_stage||lead.stage);
+    const newIdx = STAGE_PROGRESSION.indexOf(newStage);
+    const newPeak = newIdx > currentPeakIdx ? newStage : (lead.peak_stage||lead.stage);
+    await sb.from("leads").update({
+      stage:newStage,
+      peak_stage:newPeak,
+      history:[entry,...(lead.history||[])],
+      updated_at:new Date().toISOString()
+    }).eq("id",id);
+    setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,peak_stage:newPeak,history:[entry,...(l.history||[])]}:l));
   };
 
   const handleTransfer = async (leadId, toRepId) => {
