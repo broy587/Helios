@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Solar Pipeline" />
+  <title>Solar Pipeline</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; overscroll-behavior: none; }
+    input, select, textarea, button { font-family: inherit; }
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+// ── Supabase ──────────────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://hnjsezlfefduyihoiqbb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const STAGES = [
+  "1. Lead: Need Bill/Appointment","2. AC","3. No Show / Need Rescheduled",
+  "4. No Sit / No Close","5. Sit No Close","6. Failed Credit","7. VC / SRA",
+  "8. Cap / Permitting","9. Install Scheduled","10. Install","11. PTO / REP","12. ARC / Cancels",
+];
+const STAGE_COLORS = {
+  "1. Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
+  "2. AC":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  "3. No Show / Need Rescheduled":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "4. No Sit / No Close":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "5. Sit No Close":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "6. Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
+  "7. VC / SRA":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "8. Cap / Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "9. Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "10. Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "11. PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "12. ARC / Cancels":{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
+};
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const TIME_SLOTS = [
+  "8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM",
+  "11:00 AM","11:30 AM","12:00 PM","12:30 PM","1:00 PM","1:30 PM",
+  "2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM",
+  "5:00 PM","5:30 PM","6:00 PM","6:30 PM","7:00 PM","7:30 PM","8:00 PM",
+];
+const emptyForm = { name:"",address:"",phone:"",appointment:"",esiid:"",meter:"",notes:"",stage:STAGES[0],billPhotos:[] };
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+const getDaysInMonth = (m,y) => new Date(y,m+1,0).getDate();
+const inputStyle = { width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit" };
+const formatTs = () => { const d=new Date(); return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})+" · "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); };
+
+// ── Auth Screen ───────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("login"); // login | signup
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const handleLogin = async () => {
+    setLoading(true); setError("");
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { setError(error.message); setLoading(false); return; }
+    const { data: profile } = await sb.from("profiles").select("*").eq("id", data.user.id).single();
+    onAuth(data.user, profile);
+    setLoading(false);
+  };
+
+  const handleSignup = async () => {
+    setLoading(true); setError("");
+    if (!name.trim()) { setError("Please enter your name."); setLoading(false); return; }
+    // Validate invite code
+    const { data: codeRow } = await sb.from("invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).single();
+    if (!codeRow) { setError("Invalid invite code. Contact your manager."); setLoading(false); return; }
+    if (codeRow.used_by) { setError("This invite code has already been used."); setLoading(false); return; }
+
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) { setError(error.message); setLoading(false); return; }
+
+    // Create profile
+    await sb.from("profiles").insert({ id: data.user.id, email, name: name.trim(), role: "rep", invite_code: inviteCode.trim().toUpperCase() });
+    // Mark code used
+    await sb.from("invite_codes").update({ used_by: data.user.id, used_at: new Date().toISOString() }).eq("code", inviteCode.trim().toUpperCase());
+
+    setMsg("Account created! You can now log in.");
+    setMode("login");
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e293b)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:"#fff", borderRadius:20, padding:32, width:"min(100%,400px)", boxShadow:"0 20px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ textAlign:"center", marginBottom:28 }}>
+          <div style={{ width:56, height:56, borderRadius:16, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, margin:"0 auto 12px" }}>☀️</div>
+          <div style={{ fontWeight:800, fontSize:22, color:"#0f172a" }}>Solar Pipeline</div>
+          <div style={{ fontSize:13, color:"#94a3b8", marginTop:4 }}>Sunrun Sales CRM</div>
+        </div>
+
+        {msg && <div style={{ background:"#d1fae5", border:"1.5px solid #10b981", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#065f46", marginBottom:16 }}>{msg}</div>}
+        {error && <div style={{ background:"#fee2e2", border:"1.5px solid #ef4444", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#7f1d1d", marginBottom:16 }}>{error}</div>}
+
+        <div style={{ display:"flex", gap:8, marginBottom:22 }}>
+          {["login","signup"].map(m => (
+            <button key={m} onClick={() => { setMode(m); setError(""); }} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:mode===m?"#f97316":"#f1f5f9", color:mode===m?"#fff":"#64748b", fontWeight:700, cursor:"pointer", fontSize:14 }}>
+              {m === "login" ? "Log In" : "Sign Up"}
+            </button>
+          ))}
+        </div>
+
+        {mode === "signup" && (
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Full Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" style={inputStyle} />
+          </div>
+        )}
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Email</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: mode==="signup" ? 14 : 22 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Password</label>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={inputStyle} />
+        </div>
+        {mode === "signup" && (
+          <div style={{ marginBottom:22 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Invite Code</label>
+            <input value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="e.g. SUNRUN-ABC1" style={{ ...inputStyle, textTransform:"uppercase", letterSpacing:"0.1em" }} />
+            <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>Get this from your manager</div>
+          </div>
+        )}
+
+        <button onClick={mode==="login" ? handleLogin : handleSignup} disabled={loading}
+          style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:loading?"default":"pointer", fontSize:15, opacity:loading?0.7:1 }}>
+          {loading ? "Please wait…" : mode==="login" ? "Log In" : "Create Account"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard (Manager) ───────────────────────────────────────────────────────
+function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCodes }) {
+  const repProfiles = profiles.filter(p => p.role === "rep");
+
+  const statsFor = (repId) => {
+    const repLeads = leads.filter(l => l.owner_id === repId);
+    const installs = repLeads.filter(l => l.stage === "10. Install").length;
+    const inProgress = repLeads.filter(l => !["12. ARC / Cancels","10. Install","11. PTO / REP"].includes(l.stage)).length;
+    return { total: repLeads.length, installs, inProgress };
+  };
+
+  return (
+    <div style={{ padding:"20px 16px" }}>
+      <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Team Overview</div>
+      <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>{repProfiles.length} rep{repProfiles.length!==1?"s":""} · {leads.length} total leads</div>
+
+      {/* Summary cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:24 }}>
+        {[
+          ["Total Leads", leads.length, "#f97316"],
+          ["Installs", leads.filter(l=>l.stage==="10. Install").length, "#10b981"],
+          ["Cancels", leads.filter(l=>l.stage==="12. ARC / Cancels").length, "#ef4444"],
+        ].map(([label,val,color]) => (
+          <div key={label} style={{ background:"#fff", borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+            <div style={{ fontSize:24, fontWeight:800, color }}>{val}</div>
+            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Rep list */}
+      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Your Reps</div>
+      {repProfiles.length === 0 && <div style={{ fontSize:14, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No reps yet. Generate an invite code below.</div>}
+      {repProfiles.map(rep => {
+        const s = statsFor(rep.id);
+        return (
+          <div key={rep.id} onClick={() => onViewRep(rep)} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:15, color:"#0f172a" }}>{rep.name}</div>
+              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{rep.email}</div>
+            </div>
+            <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+              <div style={{ textAlign:"center" }}>
+                <div style={{ fontWeight:700, fontSize:16, color:"#f97316" }}>{s.total}</div>
+                <div style={{ fontSize:10, color:"#94a3b8" }}>leads</div>
+              </div>
+              <div style={{ textAlign:"center" }}>
+                <div style={{ fontWeight:700, fontSize:16, color:"#10b981" }}>{s.installs}</div>
+                <div style={{ fontSize:10, color:"#94a3b8" }}>installs</div>
+              </div>
+              <div style={{ color:"#94a3b8", fontSize:18 }}>›</div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Invite codes */}
+      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:24 }}>Invite Codes</div>
+      <button onClick={onGenerateCode} style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"2px dashed #f97316", background:"#fff", color:"#f97316", fontWeight:700, cursor:"pointer", fontSize:14, marginBottom:12 }}>
+        + Generate New Invite Code
+      </button>
+      {inviteCodes.filter(c=>!c.used_by).map(code => (
+        <div key={code.code} style={{ background:"#fff", borderRadius:10, padding:"12px 16px", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:15, color:"#0f172a", letterSpacing:"0.08em" }}>{code.code}</div>
+            <div style={{ fontSize:11, color:"#94a3b8" }}>Unused · tap to copy</div>
+          </div>
+          <button onClick={() => { navigator.clipboard.writeText(code.code); }} style={{ background:"#f1f5f9", border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, color:"#475569", cursor:"pointer" }}>Copy</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Summary Dashboard (All Users) ─────────────────────────────────────────────
+function SummaryDashboard({ profiles, leads, currentUser }) {
+  const repProfiles = profiles.filter(p => p.role === "rep");
+  const stageStats = STAGES.map(s => ({ stage: s, count: leads.filter(l => l.stage === s).length }));
+
+  return (
+    <div style={{ padding:"20px 16px" }}>
+      <div style={{ fontSize:18, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Performance Summary</div>
+      <div style={{ fontSize:13, color:"#94a3b8", marginBottom:20 }}>Team-wide pipeline snapshot</div>
+
+      {/* Stage breakdown */}
+      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Pipeline Breakdown</div>
+      {stageStats.filter(s=>s.count>0).map(({ stage, count }) => {
+        const colors = STAGE_COLORS[stage];
+        const pct = leads.length ? Math.round((count/leads.length)*100) : 0;
+        return (
+          <div key={stage} style={{ marginBottom:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"#475569", marginBottom:4 }}>
+              <span>{stage}</span><span style={{ fontWeight:700 }}>{count}</span>
+            </div>
+            <div style={{ background:"#f1f5f9", borderRadius:99, height:8, overflow:"hidden" }}>
+              <div style={{ width:`${pct}%`, height:"100%", background:colors.border, borderRadius:99, transition:"width 0.4s" }} />
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Per-rep summary */}
+      {currentUser?.role === "manager" && repProfiles.length > 0 && (
+        <>
+          <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:24 }}>By Rep</div>
+          {repProfiles.map(rep => {
+            const repLeads = leads.filter(l => l.owner_id === rep.id);
+            return (
+              <div key={rep.id} style={{ background:"#fff", borderRadius:12, padding:"12px 16px", marginBottom:8, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontWeight:700, fontSize:14, color:"#0f172a", marginBottom:8 }}>{rep.name}</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {STAGES.slice(8,12).map(s => {
+                    const c = repLeads.filter(l=>l.stage===s).length;
+                    return c > 0 ? (
+                      <span key={s} style={{ background:STAGE_COLORS[s].bg, color:STAGE_COLORS[s].badge, borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{s.split(". ")[1]}: {c}</span>
+                    ) : null;
+                  })}
+                  <span style={{ background:"#f1f5f9", color:"#475569", borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600 }}>Total: {repLeads.length}</span>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Appointment Picker ────────────────────────────────────────────────────────
+function AppointmentPicker({ value, onChange }) {
+  const now = new Date();
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(now.getMonth());
+  const [year, setYear] = useState(now.getFullYear());
+  const [day, setDay] = useState(null);
+  const [time, setTime] = useState(null);
+  const days = getDaysInMonth(month, year);
+  const years = [now.getFullYear(), now.getFullYear()+1];
+
+  const getEndTime = (t) => {
+    const [tp, mer] = t.split(" ");
+    let [h,m] = tp.split(":").map(Number);
+    if (mer==="PM"&&h!==12) h+=12; if (mer==="AM"&&h===12) h=0;
+    let tot = h*60+m+90; let eh=Math.floor(tot/60)%24; let em=tot%60;
+    const emer = eh>=12?"PM":"AM"; const dh=eh%12===0?12:eh%12;
+    return `${dh}:${em===0?"00":String(em).padStart(2,"0")} ${emer}`;
+  };
+
+  return (
+    <div style={{ marginBottom:14 }}>
+      <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Appointment</label>
+      <div onClick={() => setOpen(true)} style={{ ...inputStyle, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", color:value?"#1e293b":"#94a3b8" }}>
+        <span>{value||"Select date & time"}</span><span>📅</span>
+      </div>
+      {open && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:3000 }} onClick={() => setOpen(false)}>
+          <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"min(100vw,500px)", maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+              <div style={{ fontWeight:800, fontSize:17, color:"#0f172a" }}>Pick Appointment</div>
+              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", fontSize:22, color:"#94a3b8", cursor:"pointer" }}>×</button>
+            </div>
+            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+              <select value={month} onChange={e=>{setMonth(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:2 }}>
+                {MONTHS.map((m,i)=><option key={m} value={i}>{m}</option>)}
+              </select>
+              <select value={year} onChange={e=>{setYear(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:1 }}>
+                {years.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div style={{ fontSize:12, fontWeight:600, color:"#94a3b8", marginBottom:8, textTransform:"uppercase" }}>Day</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, marginBottom:20 }}>
+              {Array.from({length:days},(_,i)=>i+1).map(d=>(
+                <button key={d} onClick={()=>setDay(d)} style={{ padding:"8px 0", borderRadius:8, border:"none", background:day===d?"#f97316":"#f1f5f9", color:day===d?"#fff":"#1e293b", fontWeight:day===d?700:500, cursor:"pointer", fontSize:13 }}>{d}</button>
+              ))}
+            </div>
+            <div style={{ fontSize:12, fontWeight:600, color:"#94a3b8", marginBottom:8, textTransform:"uppercase" }}>Time</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6, marginBottom:22 }}>
+              {TIME_SLOTS.map(t=>(
+                <button key={t} onClick={()=>setTime(t)} style={{ padding:"9px 4px", borderRadius:8, border:"none", background:time===t?"#f97316":"#f1f5f9", color:time===t?"#fff":"#1e293b", fontWeight:time===t?700:500, cursor:"pointer", fontSize:13 }}>{t}</button>
+              ))}
+            </div>
+            {day&&time&&(
+              <div style={{ background:"#fef3c7", border:"1.5px solid #f59e0b", borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:14, color:"#92400e", fontWeight:600, textAlign:"center" }}>
+                📅 {MONTHS[month]} {day}, {year} · {time} – {getEndTime(time)}
+              </div>
+            )}
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={()=>{setDay(null);setTime(null);onChange("");setOpen(false);}} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", color:"#64748b", fontWeight:600, cursor:"pointer", fontSize:14 }}>Clear</button>
+              <button onClick={()=>{if(!day||!time)return;onChange(`${MONTHS[month]} ${day}, ${year} · ${time} – ${getEndTime(time)}`);setOpen(false);}} disabled={!day||!time} style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none", background:day&&time?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0", color:day&&time?"#fff":"#94a3b8", fontWeight:700, cursor:day&&time?"pointer":"default", fontSize:14 }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Lead Form Modal ───────────────────────────────────────────────────────────
+function LeadModal({ open, onClose, onSave, initial, repProfiles, currentUser }) {
+  const [form, setForm] = useState(initial || emptyForm);
+  const fileInputRef = useRef(null);
+  useEffect(() => { setForm(initial || emptyForm); }, [initial, open]);
+  if (!open) return null;
+
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const handlePhoto = e => {
+    Array.from(e.target.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => setForm(f=>({...f,billPhotos:[...(f.billPhotos||[]),ev.target.result]}));
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) fileInputRef.current.value="";
+  };
+  const removePhoto = idx => setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
+      <div style={{ background:"#fff", borderRadius:16, padding:28, width:"min(96vw,500px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:"#0f172a" }}>{initial?.id?"Edit Lead":"Add New Lead"}</h2>
+          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>×</button>
+        </div>
+
+        {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
+          <div key={k} style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>{l}</label>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle} />
+          </div>
+        ))}
+
+        <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))} />
+
+        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
+          <div key={k} style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>{l}</label>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle} />
+          </div>
+        ))}
+
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Notes</label>
+          <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{ ...inputStyle, resize:"vertical" }} />
+        </div>
+
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>
+            Utility Bill Photos {form.billPhotos?.length>0&&<span style={{ color:"#f97316" }}>({form.billPhotos.length})</span>}
+          </label>
+          {form.billPhotos?.length>0&&(
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:8 }}>
+              {form.billPhotos.map((p,i)=>(
+                <div key={i} style={{ position:"relative" }}>
+                  <img src={p} style={{ width:"100%", height:80, borderRadius:8, border:"1.5px solid #e2e8f0", objectFit:"cover" }} />
+                  <button onClick={()=>removePhoto(i)} style={{ position:"absolute", top:3, right:3, background:"rgba(15,23,42,0.75)", color:"#fff", border:"none", borderRadius:"50%", width:20, height:20, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onClick={()=>fileInputRef.current?.click()} style={{ border:"2px dashed #cbd5e1", borderRadius:8, padding:"14px 16px", textAlign:"center", cursor:"pointer", background:"#f8fafc" }}>
+            <div style={{ fontSize:20, marginBottom:2 }}>📄</div>
+            <div style={{ fontSize:13, color:"#64748b", fontWeight:500 }}>Tap to add photos</div>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{ display:"none" }} />
+        </div>
+
+        <div style={{ marginBottom:14 }}>
+          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Pipeline Stage</label>
+          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
+            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
+          <button onClick={()=>onSave(form)} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>
+            {initial?.id?"Save Changes":"Add Lead"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Detail Modal ──────────────────────────────────────────────────────────────
+function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer }) {
+  const [imgOpen, setImgOpen] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferTo, setTransferTo] = useState("");
+  if (!lead) return null;
+  const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+
+  return (
+    <>
+      <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}>
+        <div style={{ background:"#fff", borderRadius:16, padding:26, width:"min(96vw,460px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18 }}>
+            <div>
+              <div style={{ fontSize:20, fontWeight:800, color:"#0f172a" }}>{lead.name||"Unnamed Lead"}</div>
+              <span style={{ display:"inline-block", marginTop:4, background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700 }}>{lead.stage}</span>
+            </div>
+            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>×</button>
+          </div>
+
+          {[["📍 Address",lead.address],["📞 Phone",lead.phone],["📅 Appointment",lead.appointment],["⚡ ESIID",lead.esiid],["🔢 Meter #",lead.meter]].map(([l,v])=>v?(
+            <div key={l} style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>{l}</div>
+              <div style={{ fontSize:14, color:"#1e293b" }}>{v}</div>
+            </div>
+          ):null)}
+
+          {lead.notes&&(
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>📝 Notes</div>
+              <div style={{ fontSize:14, color:"#475569", background:"#f8fafc", borderRadius:8, padding:"10px 12px", lineHeight:1.5 }}>{lead.notes}</div>
+            </div>
+          )}
+
+          {lead.bill_photos?.length>0&&(
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>📄 Utility Bills ({lead.bill_photos.length})</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                {lead.bill_photos.map((p,i)=>(
+                  <div key={i} style={{ position:"relative" }}>
+                    <img src={p} onClick={()=>setImgOpen(i)} style={{ width:"100%", height:90, borderRadius:8, border:"1.5px solid #e2e8f0", cursor:"zoom-in", objectFit:"cover" }} />
+                    <div style={{ position:"absolute", bottom:4, right:5, fontSize:10, color:"#fff", background:"rgba(0,0,0,0.5)", borderRadius:4, padding:"1px 4px" }}>{i+1}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {lead.history?.length>0&&(
+            <div style={{ marginBottom:16, borderTop:"1.5px solid #f1f5f9", paddingTop:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>📋 Change History</div>
+              {lead.history.map((entry,i)=>(
+                <div key={i} style={{ marginBottom:10, paddingBottom:10, borderBottom:i<lead.history.length-1?"1px solid #f1f5f9":"none" }}>
+                  <div style={{ fontSize:11, color:"#94a3b8", marginBottom:4 }}>{entry.ts}</div>
+                  {entry.changes.map((ch,j)=>(
+                    <div key={j} style={{ fontSize:12, color:"#475569", lineHeight:1.5, paddingLeft:8, borderLeft:"2px solid #f97316" }}>{ch}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Transfer lead */}
+          {showTransfer&&(
+            <div style={{ background:"#f0f9ff", border:"1.5px solid #3b82f6", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:"#1e3a8a", marginBottom:8 }}>Transfer Lead to Rep</div>
+              <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} style={{ ...inputStyle, marginBottom:10 }}>
+                <option value="">Select a rep…</option>
+                {repProfiles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>setShowTransfer(false)} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
+                <button onClick={()=>{ if(transferTo){ onTransfer(lead.id, transferTo); setShowTransfer(false); onClose(); }}} disabled={!transferTo} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:transferTo?"#3b82f6":"#e2e8f0", color:"#fff", fontWeight:700, cursor:transferTo?"pointer":"default", fontSize:14 }}>Transfer</button>
+              </div>
+            </div>
+          )}
+
+          {confirmDelete&&(
+            <div style={{ background:"#fff5f5", border:"1.5px solid #fca5a5", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:"#b91c1c", marginBottom:4 }}>⚠️ Are you sure?</div>
+              <div style={{ fontSize:13, color:"#7f1d1d", marginBottom:12, lineHeight:1.5 }}>You will lose this lead completely. This cannot be undone.</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={e=>{e.stopPropagation();setConfirmDelete(false);}} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
+                <button onClick={e=>{e.stopPropagation();onDelete(lead.id);}} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:"#ef4444", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>Delete</button>
+              </div>
+            </div>
+          )}
+
+          {!confirmDelete&&!showTransfer&&(
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:6 }}>
+              <button onClick={()=>setShowTransfer(true)} style={{ width:"100%", padding:"10px 0", borderRadius:8, border:"1.5px solid #3b82f6", background:"#fff", color:"#3b82f6", fontWeight:600, cursor:"pointer", fontSize:14 }}>↗ Transfer to Another Rep</button>
+              <div style={{ display:"flex", gap:10 }}>
+                <button onClick={e=>{e.stopPropagation();setConfirmDelete(true);}} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #fee2e2", background:"#fff", color:"#ef4444", fontWeight:600, cursor:"pointer", fontSize:14 }}>Delete</button>
+                <button onClick={e=>{e.stopPropagation();onEdit(lead);}} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>Edit Lead</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {imgOpen!==null&&lead.bill_photos?.[imgOpen]&&(
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:2000 }} onClick={()=>setImgOpen(null)}>
+          <img src={lead.bill_photos[imgOpen]} style={{ maxWidth:"95vw", maxHeight:"80vh", borderRadius:8, objectFit:"contain" }} />
+          <div style={{ display:"flex", gap:12, marginTop:16, alignItems:"center" }}>
+            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.max(0,i-1));}} disabled={imgOpen===0} style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", cursor:imgOpen===0?"default":"pointer", fontSize:18 }}>‹</button>
+            <span style={{ color:"#fff", fontSize:13, opacity:0.7 }}>{imgOpen+1} / {lead.bill_photos.length}</span>
+            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===lead.bill_photos.length-1} style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", cursor:imgOpen===lead.bill_photos.length-1?"default":"pointer", fontSize:18 }}>›</button>
+          </div>
+          <div style={{ position:"absolute", top:16, right:20, color:"#fff", fontSize:28, cursor:"pointer" }} onClick={()=>setImgOpen(null)}>×</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Lead Card ─────────────────────────────────────────────────────────────────
+function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
+  const colors = STAGE_COLORS[lead.stage] || STAGE_COLORS[STAGES[0]];
+  const holdTimer = useRef(null);
+  const moved = useRef(false);
+  const startPos = useRef(null);
+
+  const handleTouchStart = e => {
+    moved.current = false;
+    startPos.current = { x:e.touches[0].clientX, y:e.touches[0].clientY };
+    holdTimer.current = setTimeout(()=>{ if(!moved.current) onTouchDragStart(e,lead.id); }, 350);
+  };
+  const handleTouchMove = e => {
+    if (startPos.current) {
+      const dx = Math.abs(e.touches[0].clientX-startPos.current.x);
+      const dy = Math.abs(e.touches[0].clientY-startPos.current.y);
+      if (dx>8||dy>8) { moved.current=true; if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;} }
+    }
+  };
+  const handleTouchEnd = () => { if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;} };
+
+  return (
+    <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onClick={()=>{ if(!moved.current) onView(lead); }}
+      style={{ background:"#fff", border:`1.5px solid ${colors.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, cursor:"grab", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", userSelect:"none", WebkitUserSelect:"none", display:"flex", alignItems:"center", justifyContent:"space-between", opacity:isDragging?0.3:1, touchAction:"none" }}>
+      <div style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>{lead.name||"Unnamed Lead"}</div>
+      <div style={{ fontSize:16, color:"#cbd5e1" }}>⠿</div>
+    </div>
+  );
+}
+
+// ── Pipeline Board ────────────────────────────────────────────────────────────
+function PipelineBoard({ leads, onLeadView, onAddLead, onStageChange, repName }) {
+  const [dragId, setDragId] = useState(null);
+  const [dragPos, setDragPos] = useState({x:0,y:0});
+  const [dragOver, setDragOver] = useState(null);
+  const [detailId, setDetailId] = useState(null);
+  const [search, setSearch] = useState("");
+  const columnRefs = useRef({});
+  const boardRef = useRef(null);
+  const scrollAnim = useRef(null);
+  const draggingLead = leads.find(l=>l.id===dragId);
+
+  const handleTouchDragStart = (e, id) => {
+    setDragId(id); setDragPos({x:e.touches[0].clientX,y:e.touches[0].clientY});
+    const EDGE=60, MAX_SPEED=12;
+    const startScroll = dir => { if(scrollAnim.current)return; const step=()=>{ if(!boardRef.current)return; boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED; scrollAnim.current=requestAnimationFrame(step); }; scrollAnim.current=requestAnimationFrame(step); };
+    const stopScroll = () => { if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;} };
+    const onMove = ev => {
+      ev.preventDefault();
+      const x=ev.touches[0].clientX, y=ev.touches[0].clientY;
+      setDragPos({x,y});
+      if(x<EDGE){stopScroll();startScroll("left");} else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");} else stopScroll();
+      let found=null;
+      for(const [stage,el] of Object.entries(columnRefs.current)){ if(!el)continue; const r=el.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;} }
+      setDragOver(found);
+    };
+    const onEnd = () => {
+      setDragId(null);
+      setDragOver(over=>{ if(over) onStageChange(id, over); return null; });
+      stopScroll();
+      window.removeEventListener("touchmove",onMove);
+      window.removeEventListener("touchend",onEnd);
+    };
+    window.addEventListener("touchmove",onMove,{passive:false});
+    window.addEventListener("touchend",onEnd);
+  };
+
+  const filtered = search ? leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v?.toLowerCase().includes(search.toLowerCase()))) : leads;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
+      <div style={{ display:"flex", gap:8, padding:"12px 16px 0", alignItems:"center" }}>
+        <input placeholder="Search leads…" value={search} onChange={e=>setSearch(e.target.value)} style={{ flex:1, padding:"8px 12px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", background:"#fff" }} />
+        <button onClick={onAddLead} style={{ background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", fontWeight:700, cursor:"pointer", fontSize:14, whiteSpace:"nowrap" }}>+ Add</button>
+      </div>
+      <div ref={boardRef} style={{ display:"flex", gap:14, padding:"14px 16px 40px", overflowX:"auto", alignItems:"flex-start", flex:1 }}>
+        {STAGES.map(stage=>{
+          const colors=STAGE_COLORS[stage];
+          const stageLeads=filtered.filter(l=>l.stage===stage);
+          const isOver=dragOver===stage;
+          return (
+            <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
+              style={{ minWidth:220, maxWidth:240, flex:"0 0 220px", background:isOver?colors.bg:"#fff", borderRadius:12, border:`2px solid ${isOver?colors.border:"#e2e8f0"}`, transition:"border-color 0.15s,background 0.15s", boxShadow:isOver?`0 0 0 3px ${colors.border}33`:"0 1px 4px rgba(0,0,0,0.06)" }}>
+              <div style={{ padding:"12px 14px 10px", borderBottom:"1.5px solid #f1f5f9" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#1e293b", lineHeight:1.3 }}>{stage}</div>
+                  <span style={{ background:colors.badge, color:"#fff", borderRadius:12, padding:"1px 8px", fontSize:11, fontWeight:700 }}>{stageLeads.length}</span>
+                </div>
+              </div>
+              <div style={{ padding:"10px 10px 6px", minHeight:80 }}>
+                {stageLeads.length===0?(
+                  <div style={{ textAlign:"center", color:isOver?colors.border:"#cbd5e1", fontSize:12, paddingTop:20, paddingBottom:10, fontWeight:isOver?700:400 }}>{isOver?"Drop here ↓":"Drop here"}</div>
+                ):stageLeads.map(lead=>(
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{ if(!dragId) setDetailId(l.id); }} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {dragId&&draggingLead&&(
+        <div style={{ position:"fixed", left:dragPos.x-100, top:dragPos.y-22, width:200, background:"#fff", border:"2px solid #f97316", borderRadius:10, padding:"10px 14px", boxShadow:"0 8px 30px rgba(0,0,0,0.25)", pointerEvents:"none", zIndex:9999, fontWeight:700, fontSize:14, color:"#1e293b", display:"flex", alignItems:"center", gap:8, transform:"rotate(2deg)" }}>
+          <span>☀️</span> {draggingLead.name||"Lead"}
+        </div>
+      )}
+      {onLeadView && <DetailModal lead={leads.find(l=>l.id===detailId)||null} onClose={()=>setDetailId(null)} onEdit={l=>{ setDetailId(null); onLeadView(l,"edit"); }} onDelete={id=>{ onLeadView(id,"delete"); setDetailId(null); }} repProfiles={[]} onTransfer={()=>{}} />}
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+function App() {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [inviteCodes, setInviteCodes] = useState([]);
+  const [tab, setTab] = useState("pipeline"); // pipeline | dashboard | team (manager only)
+  const [viewingRep, setViewingRep] = useState(null);
+  const [modal, setModal] = useState({ open:false, lead:null });
+  const [detailId, setDetailId] = useState(null);
+
+  useEffect(() => {
+    sb.auth.getSession().then(({ data }) => {
+      if (data.session?.user) loadUser(data.session.user);
+      else setLoading(false);
+    });
+  }, []);
+
+  const loadUser = async (u) => {
+    const { data: prof } = await sb.from("profiles").select("*").eq("id", u.id).single();
+    setUser(u); setProfile(prof);
+    await loadData(u, prof);
+    setLoading(false);
+  };
+
+  const loadData = async (u, prof) => {
+    const p = prof || profile;
+    if (p?.role === "manager") {
+      const { data: allLeads } = await sb.from("leads").select("*").order("created_at", { ascending:false });
+      const { data: allProfiles } = await sb.from("profiles").select("*");
+      const { data: codes } = await sb.from("invite_codes").select("*").order("created_at", { ascending:false });
+      setLeads(allLeads || []);
+      setProfiles(allProfiles || []);
+      setInviteCodes(codes || []);
+    } else {
+      const { data: myLeads } = await sb.from("leads").select("*").eq("owner_id", u.id).order("created_at", { ascending:false });
+      const { data: allProfiles } = await sb.from("profiles").select("*");
+      setLeads(myLeads || []);
+      setProfiles(allProfiles || []);
+    }
+  };
+
+  const saveLead = async (form) => {
+    const ownerId = viewingRep ? viewingRep.id : user.id;
+    const existing = modal.lead?.id ? leads.find(l=>l.id===modal.lead.id) : null;
+    const changes = [];
+    if (existing) {
+      const fields = { name:"Name", address:"Address", phone:"Phone", appointment:"Appointment", esiid:"ESIID", meter:"Meter", notes:"Notes", stage:"Stage" };
+      for (const [key,label] of Object.entries(fields)) {
+        if ((existing[key]||"") !== (form[key]||"")) changes.push(`${label}: "${existing[key]||"—"}" → "${form[key]||"—"}"`);
+      }
+      const pc=(existing.bill_photos||[]).length, nc=(form.billPhotos||[]).length;
+      if (nc>pc) changes.push(`Photos: Added ${nc-pc} (${nc} total)`);
+      else if (nc<pc) changes.push(`Photos: Removed ${pc-nc} (${nc} total)`);
+    }
+    const newHistory = existing
+      ? (changes.length>0 ? [{ ts:formatTs(), changes }, ...(existing.history||[])] : (existing.history||[]))
+      : [{ ts:formatTs(), changes:["Lead created"] }];
+
+    const payload = { name:form.name, address:form.address, phone:form.phone, appointment:form.appointment, esiid:form.esiid, meter:form.meter, notes:form.notes, stage:form.stage, bill_photos:form.billPhotos||[], history:newHistory, updated_at:new Date().toISOString() };
+
+    if (modal.lead?.id) {
+      await sb.from("leads").update(payload).eq("id", modal.lead.id);
+    } else {
+      await sb.from("leads").insert({ ...payload, id:generateId(), owner_id:ownerId, created_at:new Date().toISOString() });
+    }
+    setModal({ open:false, lead:null });
+    await loadData(user, profile);
+  };
+
+  const deleteLead = async (id) => {
+    await sb.from("leads").delete().eq("id", id);
+    await loadData(user, profile);
+  };
+
+  const handleStageChange = async (id, newStage) => {
+    const lead = leads.find(l=>l.id===id);
+    if (!lead) return;
+    const entry = { ts:formatTs(), changes:[`Stage: "${lead.stage}" → "${newStage}"`] };
+    await sb.from("leads").update({ stage:newStage, history:[entry,...(lead.history||[])], updated_at:new Date().toISOString() }).eq("id", id);
+    setLeads(ls => ls.map(l => l.id===id ? { ...l, stage:newStage, history:[entry,...(l.history||[])] } : l));
+  };
+
+  const handleTransfer = async (leadId, toRepId) => {
+    const entry = { ts:formatTs(), changes:[`Transferred to ${profiles.find(p=>p.id===toRepId)?.name||"rep"}`] };
+    const lead = leads.find(l=>l.id===leadId);
+    await sb.from("leads").update({ owner_id:toRepId, history:[entry,...(lead?.history||[])], updated_at:new Date().toISOString() }).eq("id", leadId);
+    await loadData(user, profile);
+  };
+
+  const generateCode = async () => {
+    const code = "SUN-" + Math.random().toString(36).slice(2,6).toUpperCase();
+    await sb.from("invite_codes").insert({ code, created_by:user.id, created_at:new Date().toISOString() });
+    await loadData(user, profile);
+  };
+
+  const handleSignOut = async () => { await sb.auth.signOut(); setUser(null); setProfile(null); setLeads([]); };
+
+  if (loading) return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e293b)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ color:"#fff", fontSize:16, fontWeight:600 }}>Loading…</div>
+    </div>
+  );
+
+  if (!user || !profile) return <AuthScreen onAuth={(u,p)=>{ setUser(u); setProfile(p); loadData(u,p); }} />;
+
+  const visibleLeads = viewingRep ? leads.filter(l=>l.owner_id===viewingRep.id) : (profile.role==="manager" ? leads : leads.filter(l=>l.owner_id===user.id));
+  const repProfiles = profiles.filter(p=>p.role==="rep" && p.id !== user.id);
+  const detailLead = leads.find(l=>l.id===detailId) || null;
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#f1f5f9", display:"flex", flexDirection:"column" }}>
+      {/* Header */}
+      <div style={{ background:"linear-gradient(135deg,#1e293b,#0f172a)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 12px rgba(0,0,0,0.2)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {viewingRep && (
+            <button onClick={()=>setViewingRep(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13 }}>← Back</button>
+          )}
+          <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>☀️</div>
+          <div>
+            <div style={{ color:"#fff", fontWeight:800, fontSize:15, lineHeight:1 }}>
+              {viewingRep ? viewingRep.name : "Solar Pipeline"}
+            </div>
+            <div style={{ color:"#94a3b8", fontSize:11 }}>{profile.name} · {profile.role}</div>
+          </div>
+        </div>
+        <button onClick={handleSignOut} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#94a3b8", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:12 }}>Sign Out</button>
+      </div>
+
+      {/* Tab bar */}
+      {!viewingRep && (
+        <div style={{ background:"#fff", borderBottom:"1.5px solid #e2e8f0", display:"flex", padding:"0 16px" }}>
+          {[["pipeline","Pipeline"],["dashboard","Summary"],...(profile.role==="manager"?[["team","Team"]]:[])]
+            .map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)} style={{ padding:"12px 16px", border:"none", borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`, background:"none", color:tab===key?"#f97316":"#94a3b8", fontWeight:tab===key?700:500, cursor:"pointer", fontSize:14 }}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{ flex:1, overflowY:"auto" }}>
+        {(tab==="pipeline"||viewingRep) && (
+          <PipelineBoard
+            leads={visibleLeads}
+            onAddLead={()=>setModal({open:true,lead:null})}
+            onStageChange={handleStageChange}
+            onLeadView={(l,action)=>{
+              if(action==="edit") setModal({open:true,lead:l});
+              else if(action==="delete") deleteLead(l);
+              else setDetailId(l.id);
+            }}
+            repName={viewingRep?.name}
+          />
+        )}
+        {tab==="dashboard"&&!viewingRep&&<SummaryDashboard profiles={profiles} leads={leads} currentUser={profile} />}
+        {tab==="team"&&!viewingRep&&profile.role==="manager"&&(
+          <ManagerDashboard profiles={profiles} leads={leads} onViewRep={rep=>{setViewingRep(rep);setTab("pipeline");}} onGenerateCode={generateCode} inviteCodes={inviteCodes} />
+        )}
+      </div>
+
+      {/* Lead form modal */}
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} initial={modal.lead ? {...modal.lead, billPhotos:modal.lead.bill_photos||[]} : null} repProfiles={repProfiles} currentUser={profile} />
+
+      {/* Detail modal */}
+      <DetailModal
+        lead={detailLead}
+        onClose={()=>setDetailId(null)}
+        onEdit={l=>{ setDetailId(null); setModal({open:true,lead:l}); }}
+        onDelete={id=>{ deleteLead(id); setDetailId(null); }}
+        repProfiles={repProfiles}
+        onTransfer={handleTransfer}
+      />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
