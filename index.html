@@ -1680,9 +1680,55 @@ function App() {
   const isOwner = user.id===OWNER_ID;
   const isPrivileged = profile.role==="manager" || isOwner;
 
-  const visibleLeads=viewingRep
-    ?leads.filter(l=>l.owner_id===viewingRep.id)
-    :(isPrivileged?leads:leads.filter(l=>l.owner_id===user.id));
+  // ── Pipeline filter ──────────────────────────────────────────────
+  // "mine" | "team:{id}" | "rep:{id}"
+  const [pipelineFilter, setPipelineFilter] = useState("mine");
+
+  // Build filter options based on role
+  const getPipelineOptions = () => {
+    const opts = [{value:"mine", label:"My Pipeline"}];
+    if (isPrivileged) {
+      // Teams the user manages (owner sees all, manager sees their teams)
+      const myTeamIds = isOwner
+        ? teams.map(t=>t.id)
+        : teams.filter(t=>Object.values(teamMembers).some(ms=>ms.some(m=>m.user_id===user.id)) || t.created_by===user.id).map(t=>t.id);
+      const visibleTeams = isOwner ? teams : teams.filter(t=>{
+        const ms = teamMembers[t.id]||[];
+        return ms.some(m=>m.user_id===user.id) || t.created_by===user.id;
+      });
+      visibleTeams.forEach(t=>{
+        opts.push({value:`team:${t.id}`, label:`Team: ${t.name}`});
+        // Reps in this team
+        (teamMembers[t.id]||[]).forEach(m=>{
+          const rep=profiles.find(p=>p.id===m.user_id);
+          if(rep && rep.id!==user.id) opts.push({value:`rep:${rep.id}`, label:rep.name, indent:true});
+        });
+      });
+      // Owner also gets "Everyone" option
+      if(isOwner) opts.splice(1,0,{value:"all", label:"Everyone"});
+    }
+    return opts;
+  };
+  const pipelineOptions = getPipelineOptions();
+
+  // Compute visible leads from filter
+  const getVisibleLeads = () => {
+    if (pipelineFilter==="mine") return leads.filter(l=>l.owner_id===user.id);
+    if (pipelineFilter==="all") return leads;
+    if (pipelineFilter.startsWith("team:")) {
+      const teamId=pipelineFilter.replace("team:","");
+      const memberIds=(teamMembers[teamId]||[]).map(m=>m.user_id);
+      return leads.filter(l=>memberIds.includes(l.owner_id));
+    }
+    if (pipelineFilter.startsWith("rep:")) {
+      const repId=pipelineFilter.replace("rep:","");
+      return leads.filter(l=>l.owner_id===repId);
+    }
+    return leads.filter(l=>l.owner_id===user.id);
+  };
+  const visibleLeads = getVisibleLeads();
+
+  const filterLabel = pipelineOptions.find(o=>o.value===pipelineFilter)?.label || "My Pipeline";
 
   const repProfiles=profiles.filter(p=>p.role==="rep"&&p.id!==user.id);
   const detailLead=leads.find(l=>l.id===detailId)||null;
@@ -1698,35 +1744,47 @@ function App() {
     <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column"}}>
       <div style={{background:"linear-gradient(135deg,#1e293b,#0f172a)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,0.2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {viewingRep && <button onClick={()=>setViewingRep(null)} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:13}}>Back</button>}
           <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>☀</div>
           <div>
-            <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1}}>{viewingRep?viewingRep.name:"Solar Pipeline"}</div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1}}>Solar Pipeline</div>
             <div style={{color:"#94a3b8",fontSize:11}}>{profile.name} · {isOwner?"owner":profile.role}</div>
           </div>
         </div>
         <button onClick={handleSignOut} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>Sign Out</button>
       </div>
 
-      {!viewingRep && (
-        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",display:"flex",padding:"0 16px",overflowX:"auto"}}>
-          {tabs.map(([key,label])=>(
-            <button key={key} onClick={()=>setTab(key)}
-              style={{padding:"12px 16px",border:"none",borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`,background:"none",color:tab===key?"#f97316":"#94a3b8",fontWeight:tab===key?700:500,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>{label}</button>
-          ))}
-        </div>
-      )}
+      <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",display:"flex",padding:"0 16px",overflowX:"auto"}}>
+        {tabs.map(([key,label])=>(
+          <button key={key} onClick={()=>setTab(key)}
+            style={{padding:"12px 16px",border:"none",borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`,background:"none",color:tab===key?"#f97316":"#94a3b8",fontWeight:tab===key?700:500,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>{label}</button>
+        ))}
+      </div>
 
       <div style={{flex:1,overflowY:"auto"}}>
-        {(tab==="pipeline"||viewingRep) && (
-          <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
-            onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else setDetailId(typeof l==="string"?l:l.id);}}/>
+        {tab==="pipeline" && (
+          <>
+            {isPrivileged && (
+              <div style={{padding:"10px 16px 0",display:"flex",alignItems:"center",gap:8}}>
+                <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap"}}>Viewing:</div>
+                <select value={pipelineFilter} onChange={e=>setPipelineFilter(e.target.value)}
+                  style={{...inputStyle,fontSize:13,padding:"6px 10px",fontWeight:600,color:"#0f172a",flex:1}}>
+                  {pipelineOptions.map(o=>(
+                    <option key={o.value} value={o.value} style={{paddingLeft:o.indent?"24px":"0"}}>
+                      {o.indent?"  → "+o.label:o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+              onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else setDetailId(typeof l==="string"?l:l.id);}}/>
+          </>
         )}
-        {tab==="recruits"&&!viewingRep&&isOwner&&<RecruitsDashboard currentUser={{...profile,id:user.id}}/>}
-        {tab==="stats"&&!viewingRep&&(
+        {tab==="recruits"&&isOwner&&<RecruitsDashboard currentUser={{...profile,id:user.id}}/>}
+        {tab==="stats"&&(
           <StatsView leads={visibleLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}/>
         )}
-        {tab==="team"&&!viewingRep&&isPrivileged&&(
+        {tab==="team"&&isPrivileged&&(
           <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} onDataRefresh={()=>loadData(user,profile)}/>
         )}
       </div>
