@@ -16,6 +16,7 @@
     body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; overscroll-behavior: none; }
     input, select, textarea, button { font-family: inherit; }
     ::-webkit-scrollbar { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -321,6 +322,8 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
   const [customRange,setCustomRange]=useState(null);
   const [showDatePicker,setShowDatePicker]=useState(false);
   const [selectedTeamId,setSelectedTeamId]=useState("all");
+  const [repSearch,setRepSearch]=useState("");
+  const [selectedRepId,setSelectedRepId]=useState("");
 
   const handleFilterSelect = (key) => {
     if (key==="custom"){setShowDatePicker(true);return;}
@@ -331,11 +334,9 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
   const myLeads = filteredLeads.filter(l=>l.owner_id===currentUser.id);
   const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
 
-  // Team filter for manager/owner
   const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner";
   const teamOptions = [{id:"all",name:"All Teams"},...teams];
 
-  // Get leads for selected team
   const getTeamLeads = () => {
     if (selectedTeamId==="all") return filteredLeads;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
@@ -349,14 +350,21 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
     return getFilterLabel(timeFilter,customRange);
   })();
 
-  const repProfiles = profiles.filter(p=>p.role==="rep");
-
-  // Reps in selected team
+  // All reps visible to this user
+  const allReps = profiles.filter(p=>p.role==="rep"||p.role==="manager");
   const getTeamReps = () => {
-    if (selectedTeamId==="all") return repProfiles;
+    if (selectedTeamId==="all") return allReps;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
-    return repProfiles.filter(r=>memberIds.includes(r.id));
+    return allReps.filter(r=>memberIds.includes(r.id));
   };
+  const teamReps = getTeamReps();
+
+  // Filtered reps by search
+  const filteredReps = teamReps.filter(r=>r.name.toLowerCase().includes(repSearch.toLowerCase()));
+
+  // Selected rep details
+  const selectedRep = selectedRepId ? profiles.find(p=>p.id===selectedRepId) : null;
+  const selectedRepLeads = selectedRep ? filteredLeads.filter(l=>l.owner_id===selectedRep.id) : [];
 
   return (
     <div style={{padding:"20px 16px"}}>
@@ -380,28 +388,6 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
         </div>
       </div>
 
-      {/* Pipeline breakdown */}
-      <div style={{marginBottom:28}}>
-        <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:12}}>My Pipeline Breakdown</div>
-        {STAGES.map(stage=>{
-          const count=myLeads.filter(l=>l.stage===stage).length;
-          if (!count) return null;
-          const colors=getStageColor(stage);
-          const p=myLeads.length?Math.round((count/myLeads.length)*100):0;
-          return (
-            <div key={stage} style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#475569",marginBottom:4}}>
-                <span>{stage}</span><span style={{fontWeight:700}}>{count}</span>
-              </div>
-              <div style={{background:"#f1f5f9",borderRadius:99,height:7,overflow:"hidden"}}>
-                <div style={{width:`${p}%`,height:"100%",background:colors.border,borderRadius:99}}/>
-              </div>
-            </div>
-          );
-        })}
-        {myLeads.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No leads in this period.</div>}
-      </div>
-
       {/* Manager/Owner: Team Stats */}
       {isPrivileged && (
         <div>
@@ -415,38 +401,66 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
             )}
           </div>
           {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
-
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
             <StatCard label="Leads" value={teamLeads.length} color="#f97316"/>
             <StatCard label="ACs" value={milestoneCount(teamLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(teamLeads,"AC"),teamLeads.length)+" of leads"}/>
             <StatCard label="VCs" value={milestoneCount(teamLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(teamLeads,"VC"),milestoneCount(teamLeads,"AC"))+" of ACs"}/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
             <StatCard label="CAP" value={milestoneCount(teamLeads,"CAP")} color="#8b5cf6"/>
             <StatCard label="Installs" value={milestoneCount(teamLeads,"Install")} color="#10b981"/>
             <StatCard label="PTO" value={milestoneCount(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
-
-          <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>By Rep</div>
-          {getTeamReps().map(rep=>{
-            const rLeads=teamLeads.filter(l=>l.owner_id===rep.id);
-            return (
-              <div key={rep.id} style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                <div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:8}}>{rep.name}</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-                  {[["Leads",rLeads.length,"#f97316"],["ACs",milestoneCount(rLeads,"AC"),"#3b82f6"],["Installs",milestoneCount(rLeads,"Install"),"#10b981"],["PTOs",milestoneCount(rLeads,"PTO"),"#f59e0b"]].map(([lbl,val,col])=>(
-                    <div key={lbl} style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 4px"}}>
-                      <div style={{fontSize:16,fontWeight:800,color:col}}>{val}</div>
-                      <div style={{fontSize:10,color:"#94a3b8"}}>{lbl}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {getTeamReps().length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps in this team yet.</div>}
         </div>
       )}
+
+      {/* By Rep — visible to everyone */}
+      <div>
+        <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:12}}>By Rep</div>
+        {/* Search bar */}
+        <input
+          placeholder="Search reps..."
+          value={repSearch}
+          onChange={e=>{setRepSearch(e.target.value);setSelectedRepId("");}}
+          style={{...inputStyle,marginBottom:10,fontSize:13}}/>
+        {/* Rep list */}
+        {filteredReps.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps found.</div>}
+        {filteredReps.map(rep=>{
+          const rLeads=filteredLeads.filter(l=>l.owner_id===rep.id);
+          const isSelected=selectedRepId===rep.id;
+          return (
+            <div key={rep.id}>
+              <div onClick={()=>setSelectedRepId(isSelected?"":rep.id)}
+                style={{background:"#fff",borderRadius:isSelected?"12px 12px 0 0":12,padding:"12px 16px",marginBottom:isSelected?0:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",border:isSelected?"1.5px solid #f97316":"1.5px solid transparent",borderBottom:isSelected?"none":"1.5px solid transparent"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:34,height:34,borderRadius:9,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"#4338ca",flexShrink:0}}>
+                    {rep.name[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{rLeads.length} lead{rLeads.length!==1?"s":""}</div>
+                  </div>
+                </div>
+                <span style={{color:"#94a3b8",fontSize:14,fontWeight:700}}>{isSelected?"▲":"▼"}</span>
+              </div>
+              {isSelected && (
+                <div style={{background:"#fff",borderRadius:"0 0 12px 12px",padding:"14px 16px",marginBottom:8,border:"1.5px solid #f97316",borderTop:"1.5px solid #f1f5f9",boxShadow:"0 2px 8px rgba(249,115,22,0.08)"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
+                    <StatCard label="Leads" value={rLeads.length} color="#f97316"/>
+                    <StatCard label="ACs" value={milestoneCount(rLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(rLeads,"AC"),rLeads.length)+" of leads"}/>
+                    <StatCard label="VCs" value={milestoneCount(rLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(rLeads,"VC"),milestoneCount(rLeads,"AC"))+" of ACs"}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                    <StatCard label="CAP" value={milestoneCount(rLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(rLeads,"CAP"),milestoneCount(rLeads,"VC"))+" of VCs"}/>
+                    <StatCard label="Installs" value={milestoneCount(rLeads,"Install")} color="#10b981" sub={pct(milestoneCount(rLeads,"Install"),milestoneCount(rLeads,"CAP"))+" of CAPs"}/>
+                    <StatCard label="PTO" value={milestoneCount(rLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(rLeads,"PTO"),milestoneCount(rLeads,"Install"))+" of Installs"}/>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {showDatePicker && <DateRangePicker onConfirm={r=>{setCustomRange(r);setTimeFilter("custom");setShowDatePicker(false);}} onCancel={()=>setShowDatePicker(false)}/>}
     </div>
@@ -1319,10 +1333,12 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
 
 function LeadModal({open,onClose,onSave,initial}) {
   const [form,setForm]=useState(initial||emptyForm);
+  const [saving,setSaving]=useState(false);
   const fileInputRef=useRef(null);
-  useEffect(()=>{setForm(initial||emptyForm);},[initial,open]);
+  useEffect(()=>{setForm(initial||emptyForm);setSaving(false);},[initial,open]);
   if (!open) return null;
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const handleSave=async()=>{setSaving(true);await onSave(form);setSaving(false);};
   const handlePhoto=e=>{
     Array.from(e.target.files).forEach(file=>{
       const reader=new FileReader();
@@ -1422,8 +1438,8 @@ function LeadModal({open,onClose,onSave,initial}) {
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
-          <button onClick={()=>onSave(form)} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
-            {initial&&initial.id?"Save Changes":"Add Lead"}
+          <button onClick={handleSave} disabled={saving} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:saving?0.85:1,transition:"all 0.15s"}}>
+            {saving?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save Changes":"Add Lead")}
           </button>
         </div>
       </div>
