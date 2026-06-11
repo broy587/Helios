@@ -27,6 +27,10 @@ const SUPABASE_URL = "https://hnjsezlfefduyihoiqbb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── YOUR owner user ID – set this to your actual Supabase auth user id ──
+// To find it: Supabase → Authentication → Users → copy your UUID
+const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
+
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
@@ -67,61 +71,40 @@ const MILESTONE_INDEX = {
   "PTO":     STAGE_PROGRESSION.indexOf("PTO / REP")
 };
 
-function getEffectiveStageIndex(lead) {
-  return STAGE_PROGRESSION.indexOf(lead.stage);
-}
-
+function getEffectiveStageIndex(lead) { return STAGE_PROGRESSION.indexOf(lead.stage); }
 function milestoneCount(leads, milestone) {
   const minIdx = MILESTONE_INDEX[milestone];
   if (minIdx === undefined) return 0;
   return leads.filter(l => getEffectiveStageIndex(l) >= minIdx).length;
 }
 
-// ─── Date range helpers ───────────────────────────────────────────────
-function startOfDay(d) {
-  const x = new Date(d); x.setHours(0,0,0,0); return x;
-}
-function endOfDay(d) {
-  const x = new Date(d); x.setHours(23,59,59,999); return x;
-}
+// ── Date helpers ──────────────────────────────────────────────────────
+function startOfDay(d) { const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function endOfDay(d)   { const x=new Date(d); x.setHours(23,59,59,999); return x; }
 function getThisWeekRange() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun
-  const diff = day === 0 ? 6 : day - 1; // days since Monday
-  const mon = new Date(now); mon.setDate(now.getDate() - diff); mon.setHours(0,0,0,0);
-  return { start: mon, end: endOfDay(now) };
+  const now=new Date(), day=now.getDay(), diff=day===0?6:day-1;
+  const mon=new Date(now); mon.setDate(now.getDate()-diff); mon.setHours(0,0,0,0);
+  return { start:mon, end:endOfDay(now) };
 }
 function getLastWeekRange() {
-  const { start } = getThisWeekRange();
-  const end = new Date(start); end.setMilliseconds(-1);
-  const s = new Date(end); s.setDate(s.getDate() - 6); s.setHours(0,0,0,0);
-  return { start: s, end };
+  const {start}=getThisWeekRange();
+  const end=new Date(start); end.setMilliseconds(-1);
+  const s=new Date(end); s.setDate(s.getDate()-6); s.setHours(0,0,0,0);
+  return { start:s, end };
 }
-function getQuarter(d) { return Math.floor(d.getMonth() / 3); }
+function getQuarter(d) { return Math.floor(d.getMonth()/3); }
 function getThisQuarterRange() {
-  const now = new Date();
-  const q = getQuarter(now);
-  const start = new Date(now.getFullYear(), q * 3, 1, 0, 0, 0, 0);
-  return { start, end: endOfDay(now) };
+  const now=new Date(), q=getQuarter(now);
+  return { start:new Date(now.getFullYear(),q*3,1,0,0,0,0), end:endOfDay(now) };
 }
 function getLastQuarterRange() {
-  const now = new Date();
-  const q = getQuarter(now);
-  const prevQ = q === 0 ? 3 : q - 1;
-  const year = q === 0 ? now.getFullYear() - 1 : now.getFullYear();
-  const start = new Date(year, prevQ * 3, 1, 0, 0, 0, 0);
-  const end = new Date(year, prevQ * 3 + 3, 0, 23, 59, 59, 999);
-  return { start, end };
+  const now=new Date(), q=getQuarter(now), pq=q===0?3:q-1, yr=q===0?now.getFullYear()-1:now.getFullYear();
+  return { start:new Date(yr,pq*3,1,0,0,0,0), end:new Date(yr,pq*3+3,0,23,59,59,999) };
 }
-function getQuarterLabel(d) {
-  return `Q${getQuarter(d)+1} ${d.getFullYear()}`;
-}
+function getQuarterLabel(d) { return `Q${getQuarter(d)+1} ${d.getFullYear()}`; }
 function filterLeadsByRange(leads, range) {
   if (!range) return leads;
-  return leads.filter(l => {
-    const ts = new Date(l.created_at);
-    return ts >= range.start && ts <= range.end;
-  });
+  return leads.filter(l => { const ts=new Date(l.created_at); return ts>=range.start && ts<=range.end; });
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -145,164 +128,152 @@ const inputStyle = {
   fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit"
 };
 const formatTs = () => {
-  const d = new Date();
-  return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) +
-    " at " + d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+  const d=new Date();
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})+" at "+d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
 };
 
-// ─── Auth ─────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [msg, setMsg] = useState("");
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [inviteCode,setInviteCode]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [msg,setMsg]=useState("");
 
   const handleLogin = async () => {
     setLoading(true); setError("");
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) { setError(error.message); setLoading(false); return; }
-    const { data: profile } = await sb.from("profiles").select("*").eq("id", data.user.id).single();
-    onAuth(data.user, profile);
+    const {data,error}=await sb.auth.signInWithPassword({email,password});
+    if (error){setError(error.message);setLoading(false);return;}
+    const {data:profile}=await sb.from("profiles").select("*").eq("id",data.user.id).single();
+    onAuth(data.user,profile);
     setLoading(false);
   };
 
   const handleSignup = async () => {
     setLoading(true); setError("");
-    if (!name.trim()) { setError("Please enter your name."); setLoading(false); return; }
-    const { data: codeRow } = await sb.from("invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).single();
-    if (!codeRow) { setError("Invalid invite code. Contact your manager."); setLoading(false); return; }
-    if (codeRow.used_by) { setError("This invite code has already been used."); setLoading(false); return; }
-    const { data, error } = await sb.auth.signUp({ email, password });
-    if (error) { setError(error.message); setLoading(false); return; }
-    await sb.from("profiles").insert({ id: data.user.id, email, name: name.trim(), role: "rep", invite_code: inviteCode.trim().toUpperCase() });
-    await sb.from("invite_codes").update({ used_by: data.user.id, used_at: new Date().toISOString() }).eq("code", inviteCode.trim().toUpperCase());
+    if (!name.trim()){setError("Please enter your name.");setLoading(false);return;}
+    const {data:codeRow}=await sb.from("invite_codes").select("*").eq("code",inviteCode.trim().toUpperCase()).single();
+    if (!codeRow){setError("Invalid invite code. Contact your manager.");setLoading(false);return;}
+    if (codeRow.used_by){setError("This invite code has already been used.");setLoading(false);return;}
+    const {data,error}=await sb.auth.signUp({email,password});
+    if (error){setError(error.message);setLoading(false);return;}
+    await sb.from("profiles").insert({id:data.user.id,email,name:name.trim(),role:"rep",invite_code:inviteCode.trim().toUpperCase()});
+    await sb.from("invite_codes").update({used_by:data.user.id,used_at:new Date().toISOString()}).eq("code",inviteCode.trim().toUpperCase());
     setMsg("Account created! You can now log in.");
-    setMode("login");
-    setLoading(false);
+    setMode("login"); setLoading(false);
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e293b)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ background:"#fff", borderRadius:20, padding:32, width:"min(100%,400px)", boxShadow:"0 20px 60px rgba(0,0,0,0.4)" }}>
-        <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ width:56, height:56, borderRadius:16, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, margin:"0 auto 12px" }}>☀</div>
-          <div style={{ fontWeight:800, fontSize:22, color:"#0f172a" }}>Solar Pipeline</div>
-          <div style={{ fontSize:13, color:"#94a3b8", marginTop:4 }}>Sunrun Sales CRM</div>
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0f172a,#1e293b)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:20,padding:32,width:"min(100%,400px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 12px"}}>☀</div>
+          <div style={{fontWeight:800,fontSize:22,color:"#0f172a"}}>Solar Pipeline</div>
+          <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Sunrun Sales CRM</div>
         </div>
-        {msg && <div style={{ background:"#d1fae5", border:"1.5px solid #10b981", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#065f46", marginBottom:16 }}>{msg}</div>}
-        {error && <div style={{ background:"#fee2e2", border:"1.5px solid #ef4444", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#7f1d1d", marginBottom:16 }}>{error}</div>}
-        <div style={{ display:"flex", gap:8, marginBottom:22 }}>
-          {["login","signup"].map(m => (
-            <button key={m} onClick={() => { setMode(m); setError(""); }}
-              style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:mode===m?"#f97316":"#f1f5f9", color:mode===m?"#fff":"#64748b", fontWeight:700, cursor:"pointer", fontSize:14 }}>
-              {m === "login" ? "Log In" : "Sign Up"}
+        {msg && <div style={{background:"#d1fae5",border:"1.5px solid #10b981",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#065f46",marginBottom:16}}>{msg}</div>}
+        {error && <div style={{background:"#fee2e2",border:"1.5px solid #ef4444",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#7f1d1d",marginBottom:16}}>{error}</div>}
+        <div style={{display:"flex",gap:8,marginBottom:22}}>
+          {["login","signup"].map(m=>(
+            <button key={m} onClick={()=>{setMode(m);setError("");}}
+              style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:mode===m?"#f97316":"#f1f5f9",color:mode===m?"#fff":"#64748b",fontWeight:700,cursor:"pointer",fontSize:14}}>
+              {m==="login"?"Log In":"Sign Up"}
             </button>
           ))}
         </div>
-        {mode === "signup" && (
-          <div style={{ marginBottom:14 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Full Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" style={inputStyle} />
+        {mode==="signup" && (
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Full Name</label>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" style={inputStyle}/>
           </div>
         )}
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" style={inputStyle} />
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" style={inputStyle}/>
         </div>
-        <div style={{ marginBottom: mode==="signup" ? 14 : 22 }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Password</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="password" style={inputStyle} />
+        <div style={{marginBottom:mode==="signup"?14:22}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Password</label>
+          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password" style={inputStyle}/>
         </div>
-        {mode === "signup" && (
-          <div style={{ marginBottom:22 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Invite Code</label>
-            <input value={inviteCode} onChange={e => setInviteCode(e.target.value)} placeholder="e.g. SUN-F38E" style={{ ...inputStyle, textTransform:"uppercase" }} />
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>Get this from your manager</div>
+        {mode==="signup" && (
+          <div style={{marginBottom:22}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Invite Code</label>
+            <input value={inviteCode} onChange={e=>setInviteCode(e.target.value)} placeholder="e.g. SUN-F38E" style={{...inputStyle,textTransform:"uppercase"}}/>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Get this from your manager</div>
           </div>
         )}
-        <button onClick={mode==="login" ? handleLogin : handleSignup} disabled={loading}
-          style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:loading?"default":"pointer", fontSize:15, opacity:loading?0.7:1 }}>
-          {loading ? "Please wait..." : mode==="login" ? "Log In" : "Create Account"}
+        <button onClick={mode==="login"?handleLogin:handleSignup} disabled={loading}
+          style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:loading?"default":"pointer",fontSize:15,opacity:loading?0.7:1}}>
+          {loading?"Please wait...":mode==="login"?"Log In":"Create Account"}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────
-function StatCard({ label, value, color, sub }) {
+// ── Stat card ─────────────────────────────────────────────────────────
+function StatCard({label,value,color,sub}) {
   return (
-    <div style={{ background:"#fff", borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
-      <div style={{ fontSize:22, fontWeight:800, color }}>{value}</div>
-      <div style={{ fontSize:11, color:"#0f172a", fontWeight:600, marginTop:2 }}>{label}</div>
-      {sub && <div style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>{sub}</div>}
+    <div style={{background:"#fff",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+      <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
+      <div style={{fontSize:11,color:"#0f172a",fontWeight:600,marginTop:2}}>{label}</div>
+      {sub && <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{sub}</div>}
     </div>
   );
 }
 
-// ─── Date range picker modal ──────────────────────────────────────────
-function DateRangePicker({ onConfirm, onCancel }) {
-  const now = new Date();
-  const [startMonth, setStartMonth] = useState(now.getMonth());
-  const [startYear, setStartYear] = useState(now.getFullYear());
-  const [startDay, setStartDay] = useState(null);
-  const [endMonth, setEndMonth] = useState(now.getMonth());
-  const [endYear, setEndYear] = useState(now.getFullYear());
-  const [endDay, setEndDay] = useState(null);
-  const years = Array.from({length:3},(_,i)=>now.getFullYear()-2+i);
+// ── Date range picker ─────────────────────────────────────────────────
+function DateRangePicker({onConfirm,onCancel}) {
+  const now=new Date();
+  const [sM,setSM]=useState(now.getMonth()); const [sY,setSY]=useState(now.getFullYear()); const [sD,setSD]=useState(null);
+  const [eM,setEM]=useState(now.getMonth()); const [eY,setEY]=useState(now.getFullYear()); const [eD,setED]=useState(null);
+  const years=Array.from({length:3},(_,i)=>now.getFullYear()-2+i);
 
-  const startDays = getDaysInMonth(startMonth, startYear);
-  const endDays = getDaysInMonth(endMonth, endYear);
-
-  const canConfirm = startDay && endDay;
-
-  const handleConfirm = () => {
-    const start = new Date(startYear, startMonth, startDay, 0,0,0,0);
-    const end = new Date(endYear, endMonth, endDay, 23,59,59,999);
-    if (start > end) { alert("Start date must be before end date."); return; }
-    onConfirm({ start, end });
+  const handle = () => {
+    const start=new Date(sY,sM,sD,0,0,0,0), end=new Date(eY,eM,eD,23,59,59,999);
+    if (start>end){alert("Start date must be before end date.");return;}
+    onConfirm({start,end});
   };
 
-  const CalPicker = ({ label, month, setMonth, year, setYear, day, setDay }) => (
-    <div style={{ flex:1 }}>
-      <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>{label}</div>
-      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-        <select value={month} onChange={e=>{setMonth(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:2, fontSize:12 }}>
+  const Cal = ({label,month,setMonth,year,setYear,day,setDay,days}) => (
+    <div style={{flex:1}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>{label}</div>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        <select value={month} onChange={e=>{setMonth(+e.target.value);setDay(null);}} style={{...inputStyle,flex:2,fontSize:12}}>
           {MONTHS.map((m,i)=><option key={m} value={i}>{m}</option>)}
         </select>
-        <select value={year} onChange={e=>{setYear(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:1, fontSize:12 }}>
+        <select value={year} onChange={e=>{setYear(+e.target.value);setDay(null);}} style={{...inputStyle,flex:1,fontSize:12}}>
           {years.map(y=><option key={y} value={y}>{y}</option>)}
         </select>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
-        {Array.from({length: label==="Start" ? startDays : endDays},(_,i)=>i+1).map(d => (
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+        {Array.from({length:days},(_,i)=>i+1).map(d=>(
           <button key={d} onClick={()=>setDay(d)}
-            style={{ padding:"6px 0", borderRadius:6, border:"none", background:day===d?"#f97316":"#f1f5f9", color:day===d?"#fff":"#1e293b", fontWeight:day===d?700:400, cursor:"pointer", fontSize:12 }}>{d}</button>
+            style={{padding:"6px 0",borderRadius:6,border:"none",background:day===d?"#f97316":"#f1f5f9",color:day===d?"#fff":"#1e293b",fontWeight:day===d?700:400,cursor:"pointer",fontSize:12}}>{d}</button>
         ))}
       </div>
-      {day && <div style={{ marginTop:8, fontSize:12, fontWeight:600, color:"#f97316", textAlign:"center" }}>{MONTHS[month]} {day}, {year}</div>}
+      {day && <div style={{marginTop:8,fontSize:12,fontWeight:600,color:"#f97316",textAlign:"center"}}>{MONTHS[month]} {day}, {year}</div>}
     </div>
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:3000 }} onClick={onCancel}>
-      <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"min(100vw,520px)", maxHeight:"88vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <div style={{ fontWeight:800, fontSize:17, color:"#0f172a" }}>Custom Date Range</div>
-          <button onClick={onCancel} style={{ background:"none", border:"none", fontSize:22, color:"#94a3b8", cursor:"pointer" }}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:3000}} onClick={onCancel}>
+      <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,520px)",maxHeight:"88vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Custom Date Range</div>
+          <button onClick={onCancel} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{ display:"flex", gap:16, marginBottom:24 }}>
-          <CalPicker label="Start" month={startMonth} setMonth={setStartMonth} year={startYear} setYear={setStartYear} day={startDay} setDay={setStartDay} />
-          <CalPicker label="End" month={endMonth} setMonth={setEndMonth} year={endYear} setYear={setEndYear} day={endDay} setDay={setEndDay} />
+        <div style={{display:"flex",gap:16,marginBottom:24}}>
+          <Cal label="Start" month={sM} setMonth={setSM} year={sY} setYear={setSY} day={sD} setDay={setSD} days={getDaysInMonth(sM,sY)}/>
+          <Cal label="End"   month={eM} setMonth={setEM} year={eY} setYear={setEY} day={eD} setDay={setED} days={getDaysInMonth(eM,eY)}/>
         </div>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onCancel} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", color:"#64748b", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
-          <button onClick={handleConfirm} disabled={!canConfirm}
-            style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none", background:canConfirm?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0", color:canConfirm?"#fff":"#94a3b8", fontWeight:700, cursor:canConfirm?"pointer":"default", fontSize:14 }}>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onCancel} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+          <button onClick={handle} disabled={!sD||!eD}
+            style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:sD&&eD?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:sD&&eD?"#fff":"#94a3b8",fontWeight:700,cursor:sD&&eD?"pointer":"default",fontSize:14}}>
             Apply Range
           </button>
         </div>
@@ -311,48 +282,32 @@ function DateRangePicker({ onConfirm, onCancel }) {
   );
 }
 
-// ─── Time filter bar ──────────────────────────────────────────────────
+// ── Time filter bar ───────────────────────────────────────────────────
 const TIME_FILTERS = [
-  { key:"today", label:"Today" },
-  { key:"week", label:"This Week" },
-  { key:"lastweek", label:"Last Week" },
-  { key:"quarter", label:"This Quarter" },
-  { key:"lastquarter", label:"Last Quarter" },
-  { key:"alltime", label:"All Time" },
-  { key:"custom", label:"Custom" },
+  {key:"today",label:"Today"},{key:"week",label:"This Week"},{key:"lastweek",label:"Last Week"},
+  {key:"quarter",label:"This Quarter"},{key:"lastquarter",label:"Last Quarter"},
+  {key:"alltime",label:"All Time"},{key:"custom",label:"Custom"},
 ];
-
 function getFilterRange(key) {
-  const now = new Date();
-  if (key==="today") return { start:startOfDay(now), end:endOfDay(now) };
+  if (key==="today") return {start:startOfDay(new Date()),end:endOfDay(new Date())};
   if (key==="week") return getThisWeekRange();
   if (key==="lastweek") return getLastWeekRange();
   if (key==="quarter") return getThisQuarterRange();
   if (key==="lastquarter") return getLastQuarterRange();
-  if (key==="alltime") return null;
   return null;
 }
-
-function getFilterLabel(key, customRange) {
-  if (key === "custom" && customRange) {
-    const fmt = d => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-    return `${fmt(customRange.start)} – ${fmt(customRange.end)}`;
-  }
-  if (key === "quarter") return getQuarterLabel(new Date());
-  if (key === "lastquarter") {
-    const now = new Date(); const q = getQuarter(now);
-    const prevQ = q===0?3:q-1; const year = q===0?now.getFullYear()-1:now.getFullYear();
-    return `Q${prevQ+1} ${year}`;
-  }
-  return TIME_FILTERS.find(f=>f.key===key)?.label || key;
+function getFilterLabel(key,customRange) {
+  if (key==="custom"&&customRange){const fmt=d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`;return `${fmt(customRange.start)} – ${fmt(customRange.end)}`;}
+  if (key==="quarter") return getQuarterLabel(new Date());
+  if (key==="lastquarter"){const now=new Date(),q=getQuarter(now),pq=q===0?3:q-1,yr=q===0?now.getFullYear()-1:now.getFullYear();return `Q${pq+1} ${yr}`;}
+  return TIME_FILTERS.find(f=>f.key===key)?.label||key;
 }
-
-function TimeFilterBar({ active, onSelect }) {
+function TimeFilterBar({active,onSelect}) {
   return (
-    <div style={{ display:"flex", gap:6, overflowX:"auto", padding:"0 0 2px" }}>
-      {TIME_FILTERS.map(f => (
-        <button key={f.key} onClick={() => onSelect(f.key)}
-          style={{ flexShrink:0, padding:"7px 14px", borderRadius:20, border:`1.5px solid ${active===f.key?"#f97316":"#e2e8f0"}`, background:active===f.key?"#f97316":"#fff", color:active===f.key?"#fff":"#64748b", fontWeight:active===f.key?700:500, cursor:"pointer", fontSize:13, whiteSpace:"nowrap", transition:"all 0.15s" }}>
+    <div style={{display:"flex",gap:6,overflowX:"auto",padding:"0 0 2px"}}>
+      {TIME_FILTERS.map(f=>(
+        <button key={f.key} onClick={()=>onSelect(f.key)}
+          style={{flexShrink:0,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${active===f.key?"#f97316":"#e2e8f0"}`,background:active===f.key?"#f97316":"#fff",color:active===f.key?"#fff":"#64748b",fontWeight:active===f.key?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
           {f.label}
         </button>
       ))}
@@ -360,279 +315,468 @@ function TimeFilterBar({ active, onSelect }) {
   );
 }
 
-// ─── Stats view ───────────────────────────────────────────────────────
-function StatsView({ leads, profiles, currentUser }) {
-  const [timeFilter, setTimeFilter] = useState("alltime");
-  const [customRange, setCustomRange] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+// ── Stats View ────────────────────────────────────────────────────────
+function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
+  const [timeFilter,setTimeFilter]=useState("alltime");
+  const [customRange,setCustomRange]=useState(null);
+  const [showDatePicker,setShowDatePicker]=useState(false);
+  const [selectedTeamId,setSelectedTeamId]=useState("all");
 
   const handleFilterSelect = (key) => {
-    if (key === "custom") { setShowDatePicker(true); return; }
-    setTimeFilter(key);
-    setCustomRange(null);
+    if (key==="custom"){setShowDatePicker(true);return;}
+    setTimeFilter(key); setCustomRange(null);
   };
-
-  const handleCustomConfirm = (range) => {
-    setCustomRange(range);
-    setTimeFilter("custom");
-    setShowDatePicker(false);
-  };
-
-  const range = timeFilter === "custom" ? customRange : getFilterRange(timeFilter);
+  const range = timeFilter==="custom" ? customRange : getFilterRange(timeFilter);
   const filteredLeads = filterLeadsByRange(leads, range);
+  const myLeads = filteredLeads.filter(l=>l.owner_id===currentUser.id);
+  const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
 
-  // personal leads only (filter to current user)
-  const myLeads = filteredLeads.filter(l => l.owner_id === currentUser.id);
+  // Team filter for manager/owner
+  const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner";
+  const teamOptions = [{id:"all",name:"All Teams"},...teams];
 
-  const pct = (a,b) => b>0 ? Math.round((a/b)*100)+"%" : "-";
-  const total = myLeads.length;
-  const ac = milestoneCount(myLeads,"AC");
-  const vc = milestoneCount(myLeads,"VC");
-  const cap = milestoneCount(myLeads,"CAP");
-  const inst = milestoneCount(myLeads,"Install");
-  const pto = milestoneCount(myLeads,"PTO");
-
-  const isManager = currentUser.role === "manager";
-  const repProfiles = profiles.filter(p=>p.role==="rep");
+  // Get leads for selected team
+  const getTeamLeads = () => {
+    if (selectedTeamId==="all") return filteredLeads;
+    const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
+    return filteredLeads.filter(l=>memberIds.includes(l.owner_id));
+  };
+  const teamLeads = getTeamLeads();
 
   const rangeLabel = (() => {
-    if (timeFilter === "alltime") return "All Time";
-    if (timeFilter === "custom" && customRange) {
-      const fmt = d => `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-      return `${fmt(customRange.start)} – ${fmt(customRange.end)}`;
-    }
-    return getFilterLabel(timeFilter, customRange);
+    if (timeFilter==="alltime") return "All Time";
+    if (timeFilter==="custom"&&customRange){const fmt=d=>`${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;return `${fmt(customRange.start)} – ${fmt(customRange.end)}`;}
+    return getFilterLabel(timeFilter,customRange);
   })();
 
+  const repProfiles = profiles.filter(p=>p.role==="rep");
+
+  // Reps in selected team
+  const getTeamReps = () => {
+    if (selectedTeamId==="all") return repProfiles;
+    const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
+    return repProfiles.filter(r=>memberIds.includes(r.id));
+  };
+
   return (
-    <div style={{ padding:"20px 16px" }}>
-      {/* Time filter */}
-      <div style={{ marginBottom:20 }}>
-        <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect} />
+    <div style={{padding:"20px 16px"}}>
+      <div style={{marginBottom:16}}>
+        <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect}/>
       </div>
+      <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{rangeLabel}</div>
 
-      {/* Range label */}
-      <div style={{ fontSize:13, fontWeight:700, color:"#94a3b8", marginBottom:16, textTransform:"uppercase", letterSpacing:"0.05em" }}>{rangeLabel}</div>
-
-      {/* Personal stats */}
-      <div style={{ marginBottom:28 }}>
-        <div style={{ fontSize:16, fontWeight:800, color:"#0f172a", marginBottom:14 }}>My Stats</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
-          <StatCard label="Leads" value={total} color="#f97316" />
-          <StatCard label="ACs" value={ac} color="#3b82f6" sub={pct(ac,total)+" of leads"} />
-          <StatCard label="VCs" value={vc} color="#6366f1" sub={pct(vc,ac)+" of ACs"} />
+      {/* My Stats */}
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:14}}>My Stats</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+          <StatCard label="Leads" value={myLeads.length} color="#f97316"/>
+          <StatCard label="ACs" value={milestoneCount(myLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(myLeads,"AC"),myLeads.length)+" of leads"}/>
+          <StatCard label="VCs" value={milestoneCount(myLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(myLeads,"VC"),milestoneCount(myLeads,"AC"))+" of ACs"}/>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
-          <StatCard label="CAP" value={cap} color="#8b5cf6" sub={pct(cap,vc)+" of VCs"} />
-          <StatCard label="Installs" value={inst} color="#10b981" sub={pct(inst,cap)+" of CAPs"} />
-          <StatCard label="PTO" value={pto} color="#f59e0b" sub={pct(pto,inst)+" of Installs"} />
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          <StatCard label="CAP" value={milestoneCount(myLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(myLeads,"CAP"),milestoneCount(myLeads,"VC"))+" of VCs"}/>
+          <StatCard label="Installs" value={milestoneCount(myLeads,"Install")} color="#10b981" sub={pct(milestoneCount(myLeads,"Install"),milestoneCount(myLeads,"CAP"))+" of CAPs"}/>
+          <StatCard label="PTO" value={milestoneCount(myLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(myLeads,"PTO"),milestoneCount(myLeads,"Install"))+" of Installs"}/>
         </div>
       </div>
 
-      {/* Pipeline breakdown (personal) */}
-      <div style={{ marginBottom:28 }}>
-        <div style={{ fontSize:14, fontWeight:700, color:"#0f172a", marginBottom:12 }}>Pipeline Breakdown</div>
-        {STAGES.map(stage => {
-          const count = myLeads.filter(l=>l.stage===stage).length;
+      {/* Pipeline breakdown */}
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:12}}>My Pipeline Breakdown</div>
+        {STAGES.map(stage=>{
+          const count=myLeads.filter(l=>l.stage===stage).length;
           if (!count) return null;
-          const colors = getStageColor(stage);
-          const p = myLeads.length ? Math.round((count/myLeads.length)*100) : 0;
+          const colors=getStageColor(stage);
+          const p=myLeads.length?Math.round((count/myLeads.length)*100):0;
           return (
-            <div key={stage} style={{ marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:"#475569", marginBottom:4 }}>
-                <span>{stage}</span><span style={{ fontWeight:700 }}>{count}</span>
+            <div key={stage} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#475569",marginBottom:4}}>
+                <span>{stage}</span><span style={{fontWeight:700}}>{count}</span>
               </div>
-              <div style={{ background:"#f1f5f9", borderRadius:99, height:7, overflow:"hidden" }}>
-                <div style={{ width:`${p}%`, height:"100%", background:colors.border, borderRadius:99 }} />
+              <div style={{background:"#f1f5f9",borderRadius:99,height:7,overflow:"hidden"}}>
+                <div style={{width:`${p}%`,height:"100%",background:colors.border,borderRadius:99}}/>
               </div>
             </div>
           );
         })}
-        {myLeads.length === 0 && <div style={{ fontSize:13, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No leads in this period.</div>}
+        {myLeads.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No leads in this period.</div>}
       </div>
 
-      {/* Manager: team section */}
-      {isManager && (
+      {/* Manager/Owner: Team Stats */}
+      {isPrivileged && (
         <div>
-          <div style={{ fontSize:16, fontWeight:800, color:"#0f172a", marginBottom:4 }}>Team Stats</div>
-          <div style={{ fontSize:12, color:"#94a3b8", marginBottom:14 }}>All reps · {rangeLabel}</div>
-          {(() => {
-            const tTotal = filteredLeads.length;
-            const tAC = milestoneCount(filteredLeads,"AC");
-            const tVC = milestoneCount(filteredLeads,"VC");
-            const tCAP = milestoneCount(filteredLeads,"CAP");
-            const tInst = milestoneCount(filteredLeads,"Install");
-            const tPTO = milestoneCount(filteredLeads,"PTO");
-            return (
-              <>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:10 }}>
-                  <StatCard label="Leads" value={tTotal} color="#f97316" />
-                  <StatCard label="ACs" value={tAC} color="#3b82f6" sub={pct(tAC,tTotal)+" of leads"} />
-                  <StatCard label="VCs" value={tVC} color="#6366f1" sub={pct(tVC,tAC)+" of ACs"} />
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
-                  <StatCard label="CAP" value={tCAP} color="#8b5cf6" sub={pct(tCAP,tVC)+" of VCs"} />
-                  <StatCard label="Installs" value={tInst} color="#10b981" sub={pct(tInst,tCAP)+" of CAPs"} />
-                  <StatCard label="PTO" value={tPTO} color="#f59e0b" sub={pct(tPTO,tInst)+" of Installs"} />
-                </div>
-              </>
-            );
-          })()}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+            <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Team Stats</div>
+            {teams.length>0 && (
+              <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+                style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px"}}>
+                {teamOptions.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+          </div>
+          {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
 
-          <div style={{ fontSize:13, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>By Rep</div>
-          {repProfiles.map(rep => {
-            const rLeads = filteredLeads.filter(l=>l.owner_id===rep.id);
-            const rAC = milestoneCount(rLeads,"AC");
-            const rInst = milestoneCount(rLeads,"Install");
-            const rPTO = milestoneCount(rLeads,"PTO");
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+            <StatCard label="Leads" value={teamLeads.length} color="#f97316"/>
+            <StatCard label="ACs" value={milestoneCount(teamLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(teamLeads,"AC"),teamLeads.length)+" of leads"}/>
+            <StatCard label="VCs" value={milestoneCount(teamLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(teamLeads,"VC"),milestoneCount(teamLeads,"AC"))+" of ACs"}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+            <StatCard label="CAP" value={milestoneCount(teamLeads,"CAP")} color="#8b5cf6"/>
+            <StatCard label="Installs" value={milestoneCount(teamLeads,"Install")} color="#10b981"/>
+            <StatCard label="PTO" value={milestoneCount(teamLeads,"PTO")} color="#f59e0b"/>
+          </div>
+
+          <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>By Rep</div>
+          {getTeamReps().map(rep=>{
+            const rLeads=teamLeads.filter(l=>l.owner_id===rep.id);
             return (
-              <div key={rep.id} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontWeight:700, fontSize:15, color:"#0f172a", marginBottom:8 }}>{rep.name}</div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
-                  {[["Leads",rLeads.length,"#f97316"],["ACs",rAC,"#3b82f6"],["Installs",rInst,"#10b981"],["PTOs",rPTO,"#f59e0b"]].map(([lbl,val,col]) => (
-                    <div key={lbl} style={{ textAlign:"center", background:"#f8fafc", borderRadius:8, padding:"6px 4px" }}>
-                      <div style={{ fontSize:16, fontWeight:800, color:col }}>{val}</div>
-                      <div style={{ fontSize:10, color:"#94a3b8" }}>{lbl}</div>
+              <div key={rep.id} style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:10,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                <div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:8}}>{rep.name}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                  {[["Leads",rLeads.length,"#f97316"],["ACs",milestoneCount(rLeads,"AC"),"#3b82f6"],["Installs",milestoneCount(rLeads,"Install"),"#10b981"],["PTOs",milestoneCount(rLeads,"PTO"),"#f59e0b"]].map(([lbl,val,col])=>(
+                    <div key={lbl} style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 4px"}}>
+                      <div style={{fontSize:16,fontWeight:800,color:col}}>{val}</div>
+                      <div style={{fontSize:10,color:"#94a3b8"}}>{lbl}</div>
                     </div>
                   ))}
                 </div>
               </div>
             );
           })}
-          {repProfiles.length === 0 && <div style={{ fontSize:13, color:"#94a3b8", textAlign:"center", padding:"10px 0" }}>No reps yet.</div>}
+          {getTeamReps().length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps in this team yet.</div>}
         </div>
       )}
 
-      {showDatePicker && (
-        <DateRangePicker
-          onConfirm={handleCustomConfirm}
-          onCancel={() => setShowDatePicker(false)}
-        />
+      {showDatePicker && <DateRangePicker onConfirm={r=>{setCustomRange(r);setTimeFilter("custom");setShowDatePicker(false);}} onCancel={()=>setShowDatePicker(false)}/>}
+    </div>
+  );
+}
+
+// ── Team Management (owner + manager) ─────────────────────────────────
+function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDataRefresh}) {
+  const isOwner = currentUser.id === OWNER_ID;
+  const [selectedTeamId, setSelectedTeamId] = useState(teams.length>0?teams[0].id:"");
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [teamName, setTeamName] = useState("");
+  const [teamLogo, setTeamLogo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const logoRef = useRef(null);
+
+  // keep selectedTeamId valid when teams load/change
+  useEffect(()=>{
+    if (teams.length>0 && !teams.find(t=>t.id===selectedTeamId)) setSelectedTeamId(teams[0].id);
+  },[teams]);
+
+  const selectedTeam = teams.find(t=>t.id===selectedTeamId);
+  const members = selectedTeamId ? (teamMembers[selectedTeamId]||[]) : [];
+  const memberIds = members.map(m=>m.user_id);
+  const repProfiles = profiles.filter(p=>p.role==="rep");
+  const nonMembers = repProfiles.filter(r=>!memberIds.includes(r.id));
+
+  const handleLogoUpload = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>setTeamLogo(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateTeam = async () => {
+    if (!teamName.trim()) return;
+    setSaving(true);
+    await sb.from("teams").insert({name:teamName.trim(),logo_url:teamLogo||null,created_by:currentUser.id});
+    setTeamName(""); setTeamLogo(""); setShowAddTeam(false);
+    await onDataRefresh();
+    setSaving(false);
+  };
+
+  const handleAddMember = async (userId) => {
+    await sb.from("team_members").insert({team_id:selectedTeamId,user_id:userId});
+    await onDataRefresh();
+  };
+
+  const handleRemoveMember = async (userId) => {
+    await sb.from("team_members").delete().eq("team_id",selectedTeamId).eq("user_id",userId);
+    await onDataRefresh();
+  };
+
+  const handleDeleteTeam = async () => {
+    if (!window.confirm(`Delete team "${selectedTeam?.name}"? This cannot be undone.`)) return;
+    await sb.from("teams").delete().eq("id",selectedTeamId);
+    await onDataRefresh();
+  };
+
+  return (
+    <div style={{padding:"20px 16px"}}>
+
+      {/* Team selector dropdown + add button */}
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
+        <div style={{flex:1,position:"relative"}}>
+          <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+            style={{...inputStyle,fontWeight:600,fontSize:15}}>
+            {teams.length===0 && <option value="">No teams yet</option>}
+            {teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        {isOwner && (
+          <button onClick={()=>setShowAddTeam(true)}
+            style={{flexShrink:0,padding:"9px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+            + New Team
+          </button>
+        )}
+      </div>
+
+      {/* Selected team detail */}
+      {selectedTeam ? (
+        <>
+          {/* Team header */}
+          <div style={{background:"#fff",borderRadius:14,padding:"18px 16px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:14}}>
+            {selectedTeam.logo_url ? (
+              <img src={selectedTeam.logo_url} style={{width:52,height:52,borderRadius:12,objectFit:"cover",border:"1.5px solid #e2e8f0"}}/>
+            ) : (
+              <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>☀</div>
+            )}
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800,fontSize:18,color:"#0f172a"}}>{selectedTeam.name}</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{members.length} member{members.length!==1?"s":""}</div>
+            </div>
+            {isOwner && (
+              <button onClick={handleDeleteTeam} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>Delete</button>
+            )}
+          </div>
+
+          {/* Quick stats */}
+          {(() => {
+            const tLeads=leads.filter(l=>memberIds.includes(l.owner_id));
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:20}}>
+                {[["Leads",tLeads.length,"#f97316"],["ACs",milestoneCount(tLeads,"AC"),"#3b82f6"],["Installs",milestoneCount(tLeads,"Install"),"#10b981"],["PTOs",milestoneCount(tLeads,"PTO"),"#f59e0b"]].map(([lbl,val,col])=>(
+                  <div key={lbl} style={{background:"#fff",borderRadius:10,padding:"10px 6px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                    <div style={{fontSize:18,fontWeight:800,color:col}}>{val}</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>{lbl}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Members list */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Members</div>
+            <button onClick={()=>setShowAddMember(true)}
+              style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid #f97316",background:"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:13}}>
+              + Add Member
+            </button>
+          </div>
+
+          {members.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No members yet. Add some reps!</div>}
+          {members.map(m=>{
+            const rep=profiles.find(p=>p.id===m.user_id);
+            if (!rep) return null;
+            const repLeads=leads.filter(l=>l.owner_id===rep.id);
+            return (
+              <div key={m.user_id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:15,color:"#4338ca",flexShrink:0}}>
+                  {rep.name[0].toUpperCase()}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>{rep.email}</div>
+                </div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <div style={{textAlign:"center",background:"#f1f5f9",borderRadius:8,padding:"4px 8px"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#f97316"}}>{repLeads.length}</div>
+                    <div style={{fontSize:9,color:"#94a3b8"}}>leads</div>
+                  </div>
+                  <button onClick={()=>handleRemoveMember(m.user_id)}
+                    style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"5px 8px",color:"#ef4444",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      ) : (
+        <div style={{textAlign:"center",padding:"40px 20px",color:"#94a3b8",fontSize:14}}>
+          {isOwner ? "Create your first team to get started." : "No teams available."}
+        </div>
+      )}
+
+      {/* Invite codes section */}
+      <div style={{marginTop:28}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Invite Codes</div>
+        <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}/>
+      </div>
+
+      {/* Add Team modal */}
+      {showAddTeam && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setShowAddTeam(false)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>New Team</div>
+              <button onClick={()=>setShowAddTeam(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Name</label>
+              <input value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Alpha Team" style={inputStyle}/>
+            </div>
+            <div style={{marginBottom:22}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Logo (optional)</label>
+              {teamLogo && <img src={teamLogo} style={{width:64,height:64,borderRadius:12,objectFit:"cover",border:"1.5px solid #e2e8f0",marginBottom:8,display:"block"}}/>}
+              <div onClick={()=>logoRef.current&&logoRef.current.click()}
+                style={{border:"2px dashed #cbd5e1",borderRadius:8,padding:"12px 16px",textAlign:"center",cursor:"pointer",background:"#f8fafc",fontSize:13,color:"#64748b"}}>
+                {teamLogo?"Change photo":"Tap to upload logo"}
+              </div>
+              <input ref={logoRef} type="file" accept="image/*" onChange={handleLogoUpload} style={{display:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowAddTeam(false)} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick={handleCreateTeam} disabled={!teamName.trim()||saving}
+                style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:teamName.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:teamName.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:teamName.trim()?"pointer":"default",fontSize:14}}>
+                {saving?"Creating...":"Create Team"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Member modal */}
+      {showAddMember && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setShowAddMember(false)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"70vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Add Member</div>
+              <button onClick={()=>setShowAddMember(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            {nonMembers.length===0 ? (
+              <div style={{textAlign:"center",color:"#94a3b8",fontSize:14,padding:"20px 0"}}>All reps are already on this team.</div>
+            ) : nonMembers.map(rep=>(
+              <div key={rep.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #f1f5f9"}}>
+                <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:"#4338ca",flexShrink:0}}>
+                  {rep.name[0].toUpperCase()}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>{rep.email}</div>
+                </div>
+                <button onClick={()=>{handleAddMember(rep.id);}}
+                  style={{padding:"6px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>Add</button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Manager team management tab ──────────────────────────────────────
-function ManagerDashboard({ profiles, leads, onViewRep, onGenerateCode, inviteCodes }) {
-  const repProfiles = profiles.filter(p => p.role === "rep");
-  return (
-    <div style={{ padding:"20px 16px" }}>
-      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Reps</div>
-      {repProfiles.length === 0 && <div style={{ fontSize:14, color:"#94a3b8", textAlign:"center", padding:"20px 0" }}>No reps yet. Generate an invite code below.</div>}
-      {repProfiles.map(rep => {
-        const repLeads = leads.filter(l => l.owner_id === rep.id);
-        const repAC = milestoneCount(repLeads, "AC");
-        const repInstall = milestoneCount(repLeads, "Install");
-        const repPTO = milestoneCount(repLeads, "PTO");
-        return (
-          <div key={rep.id} onClick={() => onViewRep(rep)} style={{ background:"#fff", borderRadius:12, padding:"14px 16px", marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", cursor:"pointer" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-              <div>
-                <div style={{ fontWeight:700, fontSize:15, color:"#0f172a" }}>{rep.name}</div>
-                <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{rep.email}</div>
-              </div>
-              <div style={{ color:"#94a3b8", fontSize:18 }}>›</div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
-              {[["Leads",repLeads.length,"#f97316"],["ACs",repAC,"#3b82f6"],["Installs",repInstall,"#10b981"],["PTOs",repPTO,"#f59e0b"]].map(([lbl,val,col]) => (
-                <div key={lbl} style={{ textAlign:"center", background:"#f8fafc", borderRadius:8, padding:"6px 4px" }}>
-                  <div style={{ fontSize:16, fontWeight:800, color:col }}>{val}</div>
-                  <div style={{ fontSize:10, color:"#94a3b8" }}>{lbl}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+// ── Invite codes section (used inside team management) ─────────────────
+function InviteCodesSection({currentUser, onRefresh}) {
+  const [codes,setCodes]=useState([]);
+  const [loading,setLoading]=useState(true);
 
-      <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10, marginTop:24 }}>Invite Codes</div>
-      <button onClick={onGenerateCode} style={{ width:"100%", padding:"12px 0", borderRadius:10, border:"2px dashed #f97316", background:"#fff", color:"#f97316", fontWeight:700, cursor:"pointer", fontSize:14, marginBottom:12 }}>+ Generate New Invite Code</button>
-      {inviteCodes.filter(c=>!c.used_by).map(code => (
-        <div key={code.code} style={{ background:"#fff", borderRadius:10, padding:"12px 16px", marginBottom:8, display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+  useEffect(()=>{ loadCodes(); },[]);
+
+  const loadCodes = async () => {
+    setLoading(true);
+    const {data}=await sb.from("invite_codes").select("*").order("created_at",{ascending:false});
+    setCodes(data||[]); setLoading(false);
+  };
+
+  const generate = async () => {
+    const code="SUN-"+Math.random().toString(36).slice(2,6).toUpperCase();
+    await sb.from("invite_codes").insert({code,created_by:currentUser.id,created_at:new Date().toISOString()});
+    await loadCodes();
+  };
+
+  if (loading) return <div style={{fontSize:13,color:"#94a3b8",padding:"10px 0"}}>Loading...</div>;
+
+  return (
+    <>
+      <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #f97316",background:"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
+      {codes.filter(c=>!c.used_by).map(code=>(
+        <div key={code.code} style={{background:"#fff",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
           <div>
-            <div style={{ fontWeight:700, fontSize:15, color:"#0f172a", letterSpacing:"0.08em" }}>{code.code}</div>
-            <div style={{ fontSize:11, color:"#94a3b8" }}>Unused</div>
+            <div style={{fontWeight:700,fontSize:15,color:"#0f172a",letterSpacing:"0.08em"}}>{code.code}</div>
+            <div style={{fontSize:11,color:"#94a3b8"}}>Unused</div>
           </div>
-          <button onClick={() => navigator.clipboard.writeText(code.code)} style={{ background:"#f1f5f9", border:"none", borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:600, color:"#475569", cursor:"pointer" }}>Copy</button>
+          <button onClick={()=>navigator.clipboard.writeText(code.code)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:"#475569",cursor:"pointer"}}>Copy</button>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 
 function RecruitsDashboard() {
   return (
-    <div style={{ minHeight:400, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:40 }}>
-      <div style={{ width:64, height:64, borderRadius:20, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, marginBottom:20 }}>💡</div>
-      <div style={{ fontSize:22, fontWeight:800, color:"#0f172a", marginBottom:8 }}>Recruits</div>
-      <div style={{ fontSize:15, color:"#94a3b8", fontWeight:500 }}>Coming Soon</div>
+    <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
+      <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20}}>💡</div>
+      <div style={{fontSize:22,fontWeight:800,color:"#0f172a",marginBottom:8}}>Recruits</div>
+      <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
     </div>
   );
 }
 
-function AppointmentPicker({ value, onChange }) {
-  const now = new Date();
-  const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(now.getMonth());
-  const [year, setYear] = useState(now.getFullYear());
-  const [day, setDay] = useState(null);
-  const [time, setTime] = useState(null);
-  const days = getDaysInMonth(month, year);
-  const years = [now.getFullYear(), now.getFullYear()+1];
+function AppointmentPicker({value,onChange}) {
+  const now=new Date();
+  const [open,setOpen]=useState(false);
+  const [month,setMonth]=useState(now.getMonth());
+  const [year,setYear]=useState(now.getFullYear());
+  const [day,setDay]=useState(null);
+  const [time,setTime]=useState(null);
+  const days=getDaysInMonth(month,year);
+  const years=[now.getFullYear(),now.getFullYear()+1];
 
-  const getEndTime = (t) => {
-    const [tp, mer] = t.split(" ");
-    let [h,m] = tp.split(":").map(Number);
-    if (mer==="PM"&&h!==12) h+=12;
-    if (mer==="AM"&&h===12) h=0;
-    let tot=h*60+m+90; let eh=Math.floor(tot/60)%24; let em=tot%60;
-    const emer=eh>=12?"PM":"AM"; const dh=eh%12===0?12:eh%12;
+  const getEndTime = t => {
+    const [tp,mer]=t.split(" "); let [h,m]=tp.split(":").map(Number);
+    if (mer==="PM"&&h!==12) h+=12; if (mer==="AM"&&h===12) h=0;
+    let tot=h*60+m+90,eh=Math.floor(tot/60)%24,em=tot%60;
+    const emer=eh>=12?"PM":"AM",dh=eh%12===0?12:eh%12;
     return `${dh}:${em===0?"00":String(em).padStart(2,"0")} ${emer}`;
   };
 
   return (
-    <div style={{ marginBottom:14 }}>
-      <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Appointment</label>
-      <div onClick={() => setOpen(true)} style={{ ...inputStyle, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", color:value?"#1e293b":"#94a3b8" }}>
+    <div style={{marginBottom:14}}>
+      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
+      <div onClick={()=>setOpen(true)} style={{...inputStyle,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",color:value?"#1e293b":"#94a3b8"}}>
         <span>{value||"Select date & time"}</span><span>📅</span>
       </div>
       {open && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.6)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:3000 }} onClick={() => setOpen(false)}>
-          <div style={{ background:"#fff", borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"min(100vw,500px)", maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-              <div style={{ fontWeight:800, fontSize:17, color:"#0f172a" }}>Pick Appointment</div>
-              <button onClick={() => setOpen(false)} style={{ background:"none", border:"none", fontSize:22, color:"#94a3b8", cursor:"pointer" }}>✕</button>
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:3000}} onClick={()=>setOpen(false)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,500px)",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Pick Appointment</div>
+              <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-              <select value={month} onChange={e=>{setMonth(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:2 }}>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <select value={month} onChange={e=>{setMonth(+e.target.value);setDay(null);}} style={{...inputStyle,flex:2}}>
                 {MONTHS.map((m,i)=><option key={m} value={i}>{m}</option>)}
               </select>
-              <select value={year} onChange={e=>{setYear(+e.target.value);setDay(null);}} style={{ ...inputStyle, flex:1 }}>
+              <select value={year} onChange={e=>{setYear(+e.target.value);setDay(null);}} style={{...inputStyle,flex:1}}>
                 {years.map(y=><option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div style={{ fontSize:12, fontWeight:600, color:"#94a3b8", marginBottom:8, textTransform:"uppercase" }}>Day</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, marginBottom:20 }}>
-              {Array.from({length:days},(_,i)=>i+1).map(d => (
-                <button key={d} onClick={()=>setDay(d)} style={{ padding:"8px 0", borderRadius:8, border:"none", background:day===d?"#f97316":"#f1f5f9", color:day===d?"#fff":"#1e293b", fontWeight:day===d?700:500, cursor:"pointer", fontSize:13 }}>{d}</button>
+            <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase"}}>Day</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6,marginBottom:20}}>
+              {Array.from({length:days},(_,i)=>i+1).map(d=>(
+                <button key={d} onClick={()=>setDay(d)} style={{padding:"8px 0",borderRadius:8,border:"none",background:day===d?"#f97316":"#f1f5f9",color:day===d?"#fff":"#1e293b",fontWeight:day===d?700:500,cursor:"pointer",fontSize:13}}>{d}</button>
               ))}
             </div>
-            <div style={{ fontSize:12, fontWeight:600, color:"#94a3b8", marginBottom:8, textTransform:"uppercase" }}>Time</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6, marginBottom:22 }}>
-              {TIME_SLOTS.map(t => (
-                <button key={t} onClick={()=>setTime(t)} style={{ padding:"9px 4px", borderRadius:8, border:"none", background:time===t?"#f97316":"#f1f5f9", color:time===t?"#fff":"#1e293b", fontWeight:time===t?700:500, cursor:"pointer", fontSize:13 }}>{t}</button>
+            <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase"}}>Time</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:22}}>
+              {TIME_SLOTS.map(t=>(
+                <button key={t} onClick={()=>setTime(t)} style={{padding:"9px 4px",borderRadius:8,border:"none",background:time===t?"#f97316":"#f1f5f9",color:time===t?"#fff":"#1e293b",fontWeight:time===t?700:500,cursor:"pointer",fontSize:13}}>{t}</button>
               ))}
             </div>
-            {day && time && (
-              <div style={{ background:"#fef3c7", border:"1.5px solid #f59e0b", borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:14, color:"#92400e", fontWeight:600, textAlign:"center" }}>
+            {day&&time && (
+              <div style={{background:"#fef3c7",border:"1.5px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:14,color:"#92400e",fontWeight:600,textAlign:"center"}}>
                 {MONTHS[month]} {day}, {year} - {time} to {getEndTime(time)}
               </div>
             )}
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={()=>{setDay(null);setTime(null);onChange("");setOpen(false);}} style={{ flex:1, padding:"11px 0", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", color:"#64748b", fontWeight:600, cursor:"pointer", fontSize:14 }}>Clear</button>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setDay(null);setTime(null);onChange("");setOpen(false);}} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Clear</button>
               <button onClick={()=>{if(!day||!time)return;onChange(`${MONTHS[month]} ${day}, ${year} - ${time} to ${getEndTime(time)}`);setOpen(false);}} disabled={!day||!time}
-                style={{ flex:2, padding:"11px 0", borderRadius:10, border:"none", background:day&&time?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0", color:day&&time?"#fff":"#94a3b8", fontWeight:700, cursor:day&&time?"pointer":"default", fontSize:14 }}>Confirm</button>
+                style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:day&&time?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:day&&time?"#fff":"#94a3b8",fontWeight:700,cursor:day&&time?"pointer":"default",fontSize:14}}>Confirm</button>
             </div>
           </div>
         </div>
@@ -641,43 +785,39 @@ function AppointmentPicker({ value, onChange }) {
   );
 }
 
-function CloseSection({ form, setForm, readOnly, lead }) {
-  const questions = [
-    { key:"billRetrieved", db:"bill_retrieved", label:"Was the bill input?" },
-    { key:"knewSolar", db:"knew_solar", label:"Did homeowner know solar was/could be involved?" },
-    { key:"closerInside", db:"closer_inside", label:"Did homeowner let closer inside?" },
-    { key:"decisionMakers", db:"decision_makers", label:"Were all decision makers present?" }
+function CloseSection({form,setForm,readOnly,lead}) {
+  const questions=[
+    {key:"billRetrieved",db:"bill_retrieved",label:"Was the bill input?"},
+    {key:"knewSolar",db:"knew_solar",label:"Did homeowner know solar was/could be involved?"},
+    {key:"closerInside",db:"closer_inside",label:"Did homeowner let closer inside?"},
+    {key:"decisionMakers",db:"decision_makers",label:"Were all decision makers present?"}
   ];
   if (readOnly) {
-    const hasAny = questions.some(q => lead && lead[q.db]);
+    const hasAny=questions.some(q=>lead&&lead[q.db]);
     if (!hasAny) return null;
     return (
-      <div style={{ marginBottom:16, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
-        <div style={{ fontSize:12, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>Close</div>
-        {questions.map(q => {
-          const v = lead[q.db];
-          if (!v) return null;
-          return (
-            <div key={q.key} style={{ marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
-              <div style={{ fontSize:12, color:"#64748b", flex:1, lineHeight:1.4 }}>{q.label}</div>
-              <span style={{ padding:"2px 10px", borderRadius:20, fontSize:12, fontWeight:700, background:v==="Yes"?"#d1fae5":"#fee2e2", color:v==="Yes"?"#065f46":"#7f1d1d", whiteSpace:"nowrap" }}>{v}</span>
-            </div>
-          );
-        })}
+      <div style={{marginBottom:16,background:"#f8fafc",borderRadius:12,padding:"14px",border:"1.5px solid #e2e8f0"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Close</div>
+        {questions.map(q=>{const v=lead[q.db];if(!v)return null;return(
+          <div key={q.key} style={{marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+            <div style={{fontSize:12,color:"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
+            <span style={{padding:"2px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:v==="Yes"?"#d1fae5":"#fee2e2",color:v==="Yes"?"#065f46":"#7f1d1d",whiteSpace:"nowrap"}}>{v}</span>
+          </div>
+        );})}
       </div>
     );
   }
   return (
-    <div style={{ marginBottom:22, background:"#f8fafc", borderRadius:12, padding:"14px 14px 16px", border:"1.5px solid #e2e8f0" }}>
-      <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:14, textTransform:"uppercase", letterSpacing:"0.05em" }}>Close</label>
-      {questions.map((q, idx) => (
-        <div key={q.key} style={{ marginBottom: idx < questions.length-1 ? 14 : 0 }}>
-          <div style={{ fontSize:12, color:"#475569", fontWeight:600, marginBottom:6, lineHeight:1.4 }}>{q.label}</div>
-          <div style={{ display:"flex", gap:10 }}>
-            {["Yes","No"].map(opt => (
-              <button key={opt} type="button" onClick={() => setForm(f => ({...f,[q.key]:f[q.key]===opt?"":opt}))}
-                style={{ flex:1, padding:"9px 0", borderRadius:8, border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`, background:form[q.key]===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff", color:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b", fontWeight:form[q.key]===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                <span style={{ width:13, height:13, borderRadius:"50%", border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`, background:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent", display:"inline-block" }} />
+    <div style={{marginBottom:22,background:"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:"1.5px solid #e2e8f0"}}>
+      <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Close</label>
+      {questions.map((q,idx)=>(
+        <div key={q.key} style={{marginBottom:idx<questions.length-1?14:0}}>
+          <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>{q.label}</div>
+          <div style={{display:"flex",gap:10}}>
+            {["Yes","No"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,[q.key]:f[q.key]===opt?"":opt}))}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:form[q.key]===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:form[q.key]===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <span style={{width:13,height:13,borderRadius:"50%",border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
                 {opt}
               </button>
             ))}
@@ -688,244 +828,233 @@ function CloseSection({ form, setForm, readOnly, lead }) {
   );
 }
 
-function DetailModal({ lead, onClose, onEdit, onDelete, repProfiles, onTransfer }) {
-  const [imgOpen, setImgOpen] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
-  const [transferTo, setTransferTo] = useState("");
+function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
+  const [imgOpen,setImgOpen]=useState(null);
+  const [confirmDelete,setConfirmDelete]=useState(false);
+  const [showTransfer,setShowTransfer]=useState(false);
+  const [transferTo,setTransferTo]=useState("");
   if (!lead) return null;
-  const colors = getStageColor(lead.stage);
-
+  const colors=getStageColor(lead.stage);
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:1000 }}>
-      <div style={{ position:"absolute", inset:0, background:"rgba(15,23,42,0.6)" }} onClick={() => { if(!confirmDelete&&!showTransfer) onClose(); }} />
-      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-        <div style={{ background:"#fff", borderRadius:16, padding:26, width:"min(96vw,460px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto", pointerEvents:"all" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18 }}>
+    <div style={{position:"fixed",inset:0,zIndex:1000}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}/>
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+        <div style={{background:"#fff",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
-              <div style={{ fontSize:20, fontWeight:800, color:"#0f172a" }}>{lead.name||"Unnamed Lead"}</div>
-              <span style={{ display:"inline-block", marginTop:4, background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700 }}>{lead.stage}</span>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:6 }}>
+              <div style={{fontSize:20,fontWeight:800,color:"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
+              <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                 {lead.contact_status && (
-                  <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:"#f8fafc", borderRadius:20, padding:"3px 10px", border:"1.5px solid #e2e8f0" }}>
-                    <span style={{ width:10, height:10, borderRadius:"50%", background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0", border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`, display:"inline-block", flexShrink:0 }} />
-                    <span style={{ fontSize:11, fontWeight:600, color:"#475569" }}>{lead.contact_status==="good"?"Good":lead.contact_status==="bad"?"Bad":"Neutral"}</span>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",borderRadius:20,padding:"3px 10px",border:"1.5px solid #e2e8f0"}}>
+                    <span style={{width:10,height:10,borderRadius:"50%",background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`,display:"inline-block",flexShrink:0}}/>
+                    <span style={{fontSize:11,fontWeight:600,color:"#475569"}}>{lead.contact_status==="good"?"Good":lead.contact_status==="bad"?"Bad":"Neutral"}</span>
                   </span>
                 )}
-                {lead.soft_solid && <span style={{ fontSize:11, fontWeight:600, color:"#4338ca", background:"#e0e7ff", borderRadius:20, padding:"3px 10px" }}>{lead.soft_solid}</span>}
-                {lead.confirmed && (
-                  <span style={{ fontSize:11, fontWeight:600, color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d", background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2", borderRadius:20, padding:"3px 10px" }}>
-                    {lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}
-                  </span>
-                )}
+                {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
+                {lead.confirmed && <span style={{fontSize:11,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
               </div>
             </div>
-            <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>✕</button>
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
           </div>
-          {[["Address",lead.address],["Phone",lead.phone],["Appointment",lead.appointment],["ESIID",lead.esiid],["Meter",lead.meter]].map(([label,value]) => value ? (
-            <div key={label} style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>{label}</div>
-              <div style={{ fontSize:14, color:"#1e293b" }}>{value}</div>
+          {[["Address",lead.address],["Phone",lead.phone],["Appointment",lead.appointment],["ESIID",lead.esiid],["Meter",lead.meter]].map(([label,value])=>value?(
+            <div key={label} style={{marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
+              <div style={{fontSize:14,color:"#1e293b"}}>{value}</div>
             </div>
-          ) : null)}
+          ):null)}
           {lead.notes && (
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:2 }}>Notes</div>
-              <div style={{ fontSize:14, color:"#475569", background:"#f8fafc", borderRadius:8, padding:"10px 12px", lineHeight:1.5 }}>{lead.notes}</div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
+              <div style={{fontSize:14,color:"#475569",background:"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{lead.notes}</div>
             </div>
           )}
-          {lead.bill_photos && lead.bill_photos.length > 0 && (
-            <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Utility Bills ({lead.bill_photos.length})</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-                {lead.bill_photos.map((p,i) => (
-                  <div key={i} style={{ position:"relative" }}>
-                    <img src={p} onClick={() => setImgOpen(i)} style={{ width:"100%", height:90, borderRadius:8, border:"1.5px solid #e2e8f0", cursor:"zoom-in", objectFit:"cover" }} />
-                    <div style={{ position:"absolute", bottom:4, right:5, fontSize:10, color:"#fff", background:"rgba(0,0,0,0.5)", borderRadius:4, padding:"1px 4px" }}>{i+1}</div>
+          {lead.bill_photos&&lead.bill_photos.length>0 && (
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Utility Bills ({lead.bill_photos.length})</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {lead.bill_photos.map((p,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={p} onClick={()=>setImgOpen(i)} style={{width:"100%",height:90,borderRadius:8,border:"1.5px solid #e2e8f0",cursor:"zoom-in",objectFit:"cover"}}/>
+                    <div style={{position:"absolute",bottom:4,right:5,fontSize:10,color:"#fff",background:"rgba(0,0,0,0.5)",borderRadius:4,padding:"1px 4px"}}>{i+1}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
-          <CloseSection readOnly={true} lead={lead} />
-          {lead.history && lead.history.length > 0 && (
-            <div style={{ marginBottom:16, borderTop:"1.5px solid #f1f5f9", paddingTop:14 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Change History</div>
-              {lead.history.map((entry,i) => (
-                <div key={i} style={{ marginBottom:10, paddingBottom:10, borderBottom:i<lead.history.length-1?"1px solid #f1f5f9":"none" }}>
-                  <div style={{ fontSize:11, color:"#94a3b8", marginBottom:4 }}>{entry.ts}</div>
-                  {entry.changes.map((ch,j) => (
-                    <div key={j} style={{ fontSize:12, color:"#475569", lineHeight:1.5, paddingLeft:8, borderLeft:"2px solid #f97316" }}>{ch}</div>
+          <CloseSection readOnly={true} lead={lead}/>
+          {lead.history&&lead.history.length>0 && (
+            <div style={{marginBottom:16,borderTop:"1.5px solid #f1f5f9",paddingTop:14}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Change History</div>
+              {lead.history.map((entry,i)=>(
+                <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<lead.history.length-1?"1px solid #f1f5f9":"none"}}>
+                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>{entry.ts}</div>
+                  {entry.changes.map((ch,j)=>(
+                    <div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #f97316"}}>{ch}</div>
                   ))}
                 </div>
               ))}
             </div>
           )}
           {showTransfer && (
-            <div style={{ background:"#f0f9ff", border:"1.5px solid #3b82f6", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
-              <div style={{ fontWeight:700, fontSize:14, color:"#1e3a8a", marginBottom:8 }}>Transfer Lead to Rep</div>
-              <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} style={{ ...inputStyle, marginBottom:10 }}>
+            <div style={{background:"#f0f9ff",border:"1.5px solid #3b82f6",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#1e3a8a",marginBottom:8}}>Transfer Lead to Rep</div>
+              <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} style={{...inputStyle,marginBottom:10}}>
                 <option value="">Select a rep...</option>
                 {repProfiles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={() => setShowTransfer(false)} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
-                <button onClick={() => { if(transferTo){ onTransfer(lead.id,transferTo); setShowTransfer(false); onClose(); }}} disabled={!transferTo}
-                  style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:transferTo?"#3b82f6":"#e2e8f0", color:"#fff", fontWeight:700, cursor:transferTo?"pointer":"default", fontSize:14 }}>Transfer</button>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setShowTransfer(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+                <button onClick={()=>{if(transferTo){onTransfer(lead.id,transferTo);setShowTransfer(false);onClose();}}} disabled={!transferTo}
+                  style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:transferTo?"#3b82f6":"#e2e8f0",color:"#fff",fontWeight:700,cursor:transferTo?"pointer":"default",fontSize:14}}>Transfer</button>
               </div>
             </div>
           )}
           {confirmDelete && (
-            <div style={{ background:"#fff5f5", border:"1.5px solid #fca5a5", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
-              <div style={{ fontWeight:700, fontSize:14, color:"#b91c1c", marginBottom:4 }}>Are you sure?</div>
-              <div style={{ fontSize:13, color:"#7f1d1d", marginBottom:12, lineHeight:1.5 }}>You will lose this lead completely. This cannot be undone.</div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={() => setConfirmDelete(false)} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
-                <button onClick={() => onDelete(lead.id)} style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", background:"#ef4444", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>Delete</button>
+            <div style={{background:"#fff5f5",border:"1.5px solid #fca5a5",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#b91c1c",marginBottom:4}}>Are you sure?</div>
+              <div style={{fontSize:13,color:"#7f1d1d",marginBottom:12,lineHeight:1.5}}>This cannot be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setConfirmDelete(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+                <button onClick={()=>onDelete(lead.id)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Delete</button>
               </div>
             </div>
           )}
-          {!confirmDelete && !showTransfer && (
-            <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:6 }}>
-              <button onClick={() => setShowTransfer(true)} style={{ width:"100%", padding:"10px 0", borderRadius:8, border:"1.5px solid #3b82f6", background:"#fff", color:"#3b82f6", fontWeight:600, cursor:"pointer", fontSize:14 }}>Transfer to Another Rep</button>
-              <div style={{ display:"flex", gap:10 }}>
-                <button onClick={() => setConfirmDelete(true)} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #fee2e2", background:"#fff", color:"#ef4444", fontWeight:600, cursor:"pointer", fontSize:14 }}>Delete</button>
-                <button onClick={() => onEdit(lead)} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>Edit Lead</button>
+          {!confirmDelete&&!showTransfer && (
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
+              <button onClick={()=>setShowTransfer(true)} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:14}}>Transfer to Another Rep</button>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:14}}>Delete</button>
+                <button onClick={()=>onEdit(lead)} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Edit Lead</button>
               </div>
             </div>
           )}
         </div>
       </div>
-      {imgOpen !== null && lead.bill_photos && lead.bill_photos[imgOpen] && (
-        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.95)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", zIndex:10 }} onClick={() => setImgOpen(null)}>
-          <img src={lead.bill_photos[imgOpen]} style={{ maxWidth:"95vw", maxHeight:"80vh", borderRadius:8, objectFit:"contain" }} />
-          <div style={{ display:"flex", gap:12, marginTop:16, alignItems:"center" }}>
+      {imgOpen!==null&&lead.bill_photos&&lead.bill_photos[imgOpen] && (
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
+          <img src={lead.bill_photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain"}}/>
+          <div style={{display:"flex",gap:12,marginTop:16,alignItems:"center"}}>
             <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.max(0,i-1));}} disabled={imgOpen===0}
-              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", fontSize:18 }}>‹</button>
-            <span style={{ color:"#fff", fontSize:13 }}>{imgOpen+1} / {lead.bill_photos.length}</span>
+              style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>‹</button>
+            <span style={{color:"#fff",fontSize:13}}>{imgOpen+1} / {lead.bill_photos.length}</span>
             <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===lead.bill_photos.length-1}
-              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, padding:"8px 18px", fontSize:18 }}>›</button>
+              style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>›</button>
           </div>
-          <div style={{ position:"absolute", top:16, right:20, color:"#fff", fontSize:28, cursor:"pointer" }} onClick={() => setImgOpen(null)}>✕</div>
+          <div style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}} onClick={()=>setImgOpen(null)}>✕</div>
         </div>
       )}
     </div>
   );
 }
 
-function LeadModal({ open, onClose, onSave, initial }) {
-  const [form, setForm] = useState(initial || emptyForm);
-  const fileInputRef = useRef(null);
-  useEffect(() => { setForm(initial || emptyForm); }, [initial, open]);
+function LeadModal({open,onClose,onSave,initial}) {
+  const [form,setForm]=useState(initial||emptyForm);
+  const fileInputRef=useRef(null);
+  useEffect(()=>{setForm(initial||emptyForm);},[initial,open]);
   if (!open) return null;
-
-  const set = k => e => setForm(f => ({...f,[k]:e.target.value}));
-  const handlePhoto = e => {
-    Array.from(e.target.files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => setForm(f => ({...f,billPhotos:[...(f.billPhotos||[]),ev.target.result]}));
+  const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const handlePhoto=e=>{
+    Array.from(e.target.files).forEach(file=>{
+      const reader=new FileReader();
+      reader.onload=ev=>setForm(f=>({...f,billPhotos:[...(f.billPhotos||[]),ev.target.result]}));
       reader.readAsDataURL(file);
     });
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if(fileInputRef.current)fileInputRef.current.value="";
   };
-  const removePhoto = idx => setForm(f => ({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
-
+  const removePhoto=idx=>setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
-      <div style={{ background:"#fff", borderRadius:16, padding:28, width:"min(96vw,500px)", boxShadow:"0 20px 60px rgba(0,0,0,0.25)", maxHeight:"90vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:"#0f172a" }}>{initial && initial.id ? "Edit Lead" : "Add New Lead"}</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#94a3b8" }}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div style={{background:"#fff",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
         </div>
-        {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p]) => (
-          <div key={k} style={{ marginBottom:14 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>{l}</label>
-            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle} />
+        {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
+          <div key={k} style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
-        <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))} />
-        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p]) => (
-          <div key={k} style={{ marginBottom:14 }}>
-            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>{l}</label>
-            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle} />
+        <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
+        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
+          <div key={k} style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Notes</label>
-          <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{ ...inputStyle, resize:"vertical" }} />
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
+          <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>
-            Utility Bill Photos {form.billPhotos && form.billPhotos.length > 0 && <span style={{ color:"#f97316" }}>({form.billPhotos.length})</span>}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+            Utility Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
           </label>
-          {form.billPhotos && form.billPhotos.length > 0 && (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:8 }}>
-              {form.billPhotos.map((p,i) => (
-                <div key={i} style={{ position:"relative" }}>
-                  <img src={p} style={{ width:"100%", height:80, borderRadius:8, border:"1.5px solid #e2e8f0", objectFit:"cover" }} />
-                  <button onClick={() => removePhoto(i)} style={{ position:"absolute", top:3, right:3, background:"rgba(15,23,42,0.75)", color:"#fff", border:"none", borderRadius:"50%", width:20, height:20, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>✕</button>
+          {form.billPhotos&&form.billPhotos.length>0 && (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
+              {form.billPhotos.map((p,i)=>(
+                <div key={i} style={{position:"relative"}}>
+                  <img src={p} style={{width:"100%",height:80,borderRadius:8,border:"1.5px solid #e2e8f0",objectFit:"cover"}}/>
+                  <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:3,right:3,background:"rgba(15,23,42,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
                 </div>
               ))}
             </div>
           )}
-          <div onClick={() => fileInputRef.current && fileInputRef.current.click()} style={{ border:"2px dashed #cbd5e1", borderRadius:8, padding:"14px 16px", textAlign:"center", cursor:"pointer", background:"#f8fafc" }}>
-            <div style={{ fontSize:13, color:"#64748b", fontWeight:500 }}>Tap to add photos</div>
+          <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:"2px dashed #cbd5e1",borderRadius:8,padding:"14px 16px",textAlign:"center",cursor:"pointer",background:"#f8fafc"}}>
+            <div style={{fontSize:13,color:"#64748b",fontWeight:500}}>Tap to add photos</div>
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{ display:"none" }} />
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
         </div>
-        <div style={{ marginBottom:14 }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>Pipeline Stage</label>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
           <select value={form.stage} onChange={set("stage")} style={inputStyle}>
             {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <div style={{ marginBottom:14, background:"#f8fafc", borderRadius:12, padding:"14px", border:"1.5px solid #e2e8f0" }}>
-          <label style={{ display:"block", fontSize:12, fontWeight:700, color:"#475569", marginBottom:14, textTransform:"uppercase", letterSpacing:"0.05em" }}>Lead Status</label>
-          <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:12, fontWeight:600, color:"#475569", marginBottom:8 }}>Current Customer Response</div>
-            <div style={{ display:"flex", gap:16, alignItems:"center" }}>
-              {[
-                { val:"good", color:"#22c55e", border:"#16a34a", label:"Good" },
-                { val:"neutral", color:"#fff", border:"#cbd5e1", label:"Neutral" },
-                { val:"bad", color:"#ef4444", border:"#dc2626", label:"Bad" }
-              ].map(opt => (
-                <button key={opt.val} type="button" onClick={() => setForm(f => ({...f, contactStatus: f.contactStatus===opt.val?"":opt.val}))}
-                  style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5, background:"none", border:"none", cursor:"pointer", padding:"4px 6px" }}>
-                  <div style={{ width:30, height:30, borderRadius:"50%", background:opt.color, border:`3px solid ${form.contactStatus===opt.val?"#f97316":opt.border}`, boxShadow:form.contactStatus===opt.val?"0 0 0 3px rgba(249,115,22,0.3)":"none", transition:"all 0.15s" }} />
-                  <span style={{ fontSize:11, fontWeight:form.contactStatus===opt.val?700:500, color:form.contactStatus===opt.val?"#f97316":"#64748b" }}>{opt.label}</span>
+        <div style={{marginBottom:14,background:"#f8fafc",borderRadius:12,padding:"14px",border:"1.5px solid #e2e8f0"}}>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Lead Status</label>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Current Customer Response</div>
+            <div style={{display:"flex",gap:16,alignItems:"center"}}>
+              {[{val:"good",color:"#22c55e",border:"#16a34a",label:"Good"},{val:"neutral",color:"#fff",border:"#cbd5e1",label:"Neutral"},{val:"bad",color:"#ef4444",border:"#dc2626",label:"Bad"}].map(opt=>(
+                <button key={opt.val} type="button" onClick={()=>setForm(f=>({...f,contactStatus:f.contactStatus===opt.val?"":opt.val}))}
+                  style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",padding:"4px 6px"}}>
+                  <div style={{width:30,height:30,borderRadius:"50%",background:opt.color,border:`3px solid ${form.contactStatus===opt.val?"#f97316":opt.border}`,boxShadow:form.contactStatus===opt.val?"0 0 0 3px rgba(249,115,22,0.3)":"none",transition:"all 0.15s"}}/>
+                  <span style={{fontSize:11,fontWeight:form.contactStatus===opt.val?700:500,color:form.contactStatus===opt.val?"#f97316":"#64748b"}}>{opt.label}</span>
                 </button>
               ))}
             </div>
           </div>
-          <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:12, fontWeight:600, color:"#475569", marginBottom:8 }}>Commitment</div>
-            <div style={{ display:"flex", gap:8 }}>
-              {["Soft","Solid"].map(opt => (
-                <button key={opt} type="button" onClick={() => setForm(f => ({...f, softSolid: f.softSolid===opt?"":opt}))}
-                  style={{ flex:1, padding:"9px 0", borderRadius:8, border:`2px solid ${form.softSolid===opt?"#6366f1":"#e2e8f0"}`, background:form.softSolid===opt?"#e0e7ff":"#fff", color:form.softSolid===opt?"#4338ca":"#64748b", fontWeight:form.softSolid===opt?700:500, cursor:"pointer", fontSize:14 }}>
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Commitment</div>
+            <div style={{display:"flex",gap:8}}>
+              {["Soft","Solid"].map(opt=>(
+                <button key={opt} type="button" onClick={()=>setForm(f=>({...f,softSolid:f.softSolid===opt?"":opt}))}
+                  style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.softSolid===opt?"#6366f1":"#e2e8f0"}`,background:form.softSolid===opt?"#e0e7ff":"#fff",color:form.softSolid===opt?"#4338ca":"#64748b",fontWeight:form.softSolid===opt?700:500,cursor:"pointer",fontSize:14}}>
                   {opt}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <div style={{ fontSize:12, fontWeight:600, color:"#475569", marginBottom:8 }}>Confirmed</div>
-            <div style={{ display:"flex", gap:8 }}>
-              {["Yes","No"].map(opt => (
-                <button key={opt} type="button" onClick={() => setForm(f => ({...f, confirmed: f.confirmed===opt?"":opt}))}
-                  style={{ flex:1, padding:"9px 0", borderRadius:8, border:`2px solid ${form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`, background:form.confirmed===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff", color:form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b", fontWeight:form.confirmed===opt?700:500, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                  <span style={{ width:12, height:12, borderRadius:"50%", border:`2px solid ${form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`, background:form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent", display:"inline-block" }} />
+            <div style={{fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Confirmed</div>
+            <div style={{display:"flex",gap:8}}>
+              {["Yes","No"].map(opt=>(
+                <button key={opt} type="button" onClick={()=>setForm(f=>({...f,confirmed:f.confirmed===opt?"":opt}))}
+                  style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:form.confirmed===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:form.confirmed===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <span style={{width:12,height:12,borderRadius:"50%",border:`2px solid ${form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:form.confirmed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
                   {opt}
                 </button>
               ))}
             </div>
           </div>
         </div>
-        <CloseSection form={form} setForm={setForm} readOnly={false} />
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#f8fafc", color:"#475569", fontWeight:600, cursor:"pointer", fontSize:14 }}>Cancel</button>
-          <button onClick={() => onSave(form)} style={{ flex:2, padding:"10px 0", borderRadius:8, border:"none", background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>
-            {initial && initial.id ? "Save Changes" : "Add Lead"}
+        <CloseSection form={form} setForm={setForm} readOnly={false}/>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+          <button onClick={()=>onSave(form)} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+            {initial&&initial.id?"Save Changes":"Add Lead"}
           </button>
         </div>
       </div>
@@ -933,401 +1062,301 @@ function LeadModal({ open, onClose, onSave, initial }) {
   );
 }
 
-function LeadCard({ lead, onView, onTouchDragStart, isDragging }) {
-  const colors = getStageColor(lead.stage);
-  const holdTimer = useRef(null);
-  const moved = useRef(false);
-  const startPos = useRef(null);
-
-  const handleTouchStart = e => {
-    moved.current = false;
-    startPos.current = { x:e.touches[0].clientX, y:e.touches[0].clientY };
-    holdTimer.current = setTimeout(() => { if(!moved.current) onTouchDragStart(e,lead.id); }, 350);
+function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
+  const colors=getStageColor(lead.stage);
+  const holdTimer=useRef(null);
+  const moved=useRef(false);
+  const startPos=useRef(null);
+  const handleTouchStart=e=>{
+    moved.current=false; startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    holdTimer.current=setTimeout(()=>{if(!moved.current)onTouchDragStart(e,lead.id);},350);
   };
-  const handleTouchMove = e => {
-    if (startPos.current) {
-      const dx = Math.abs(e.touches[0].clientX-startPos.current.x);
-      const dy = Math.abs(e.touches[0].clientY-startPos.current.y);
-      if (dx>8||dy>8) { moved.current=true; if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;} }
-    }
+  const handleTouchMove=e=>{
+    if(startPos.current){const dx=Math.abs(e.touches[0].clientX-startPos.current.x),dy=Math.abs(e.touches[0].clientY-startPos.current.y);
+      if(dx>8||dy>8){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
   };
-  const handleTouchEnd = () => { if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;} };
-
+  const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-      onClick={() => { if(!moved.current) onView(lead); }}
-      style={{ background:"#fff", border:`1.5px solid ${colors.border}`, borderRadius:10, padding:"10px 14px", marginBottom:8, cursor:"grab", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", userSelect:"none", WebkitUserSelect:"none", display:"flex", alignItems:"center", justifyContent:"space-between", opacity:isDragging?0.3:1, touchAction:"none" }}>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-          {lead.contact_status && (
-            <div style={{ width:10, height:10, borderRadius:"50%", flexShrink:0, background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0", border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}` }} />
-          )}
-          <div style={{ fontWeight:700, fontSize:14, color:"#1e293b", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{lead.name||"Unnamed Lead"}</div>
+      onClick={()=>{if(!moved.current)onView(lead);}}
+      style={{background:"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:1,touchAction:"none"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+          {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
+          <div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
         </div>
         {(lead.soft_solid||lead.confirmed) && (
-          <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            {lead.soft_solid && <span style={{ fontSize:10, fontWeight:600, color:"#4338ca", background:"#e0e7ff", borderRadius:20, padding:"1px 7px" }}>{lead.soft_solid}</span>}
-            {lead.confirmed && <span style={{ fontSize:10, fontWeight:600, color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d", background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2", borderRadius:20, padding:"1px 7px" }}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {lead.soft_solid && <span style={{fontSize:10,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"1px 7px"}}>{lead.soft_solid}</span>}
+            {lead.confirmed && <span style={{fontSize:10,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"1px 7px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
           </div>
         )}
       </div>
-      <div style={{ fontSize:16, color:"#cbd5e1", flexShrink:0, marginLeft:8 }}>⚙</div>
+      <div style={{fontSize:16,color:"#cbd5e1",flexShrink:0,marginLeft:8}}>⚙</div>
     </div>
   );
 }
 
-function PipelineBoard({ leads, onAddLead, onStageChange, onLeadView, allLeads }) {
-  const [dragId, setDragId] = useState(null);
-  const [dragPos, setDragPos] = useState({x:0,y:0});
-  const [dragOver, setDragOver] = useState(null);
-  const [detailId, setDetailId] = useState(null);
-  const [search, setSearch] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const columnRefs = useRef({});
-  const boardRef = useRef(null);
-  const scrollAnim = useRef(null);
-  const draggingLead = leads.find(l=>l.id===dragId);
-  const dropdownResults = search.length > 0 ? leads.filter(l =>
-    [l.name, l.phone, l.address, l.esiid, l.meter, l.notes]
-      .some(v => v && v.toLowerCase().includes(search.toLowerCase()))
-  ).slice(0, 8) : [];
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
+  const [dragId,setDragId]=useState(null);
+  const [dragPos,setDragPos]=useState({x:0,y:0});
+  const [dragOver,setDragOver]=useState(null);
+  const [detailId,setDetailId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [showDropdown,setShowDropdown]=useState(false);
+  const columnRefs=useRef({});
+  const boardRef=useRef(null);
+  const scrollAnim=useRef(null);
+  const draggingLead=leads.find(l=>l.id===dragId);
+  const dropdownResults=search.length>0?leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v&&v.toLowerCase().includes(search.toLowerCase()))).slice(0,8):[];
 
-  const handleTouchDragStart = (e, id) => {
-    setDragId(id);
-    setDragPos({x:e.touches[0].clientX,y:e.touches[0].clientY});
-    const EDGE=60, MAX_SPEED=12;
-    const startScroll = dir => {
-      if(scrollAnim.current) return;
-      const step = () => { if(!boardRef.current) return; boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED; scrollAnim.current=requestAnimationFrame(step); };
-      scrollAnim.current = requestAnimationFrame(step);
-    };
-    const stopScroll = () => { if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;} };
-    const onMove = ev => {
-      ev.preventDefault();
-      const x=ev.touches[0].clientX, y=ev.touches[0].clientY;
-      setDragPos({x,y});
-      if(x<EDGE){stopScroll();startScroll("left");}
-      else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}
-      else stopScroll();
-      let found=null;
-      for(const [stage,el] of Object.entries(columnRefs.current)){
-        if(!el) continue;
-        const r=el.getBoundingClientRect();
-        if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}
-      }
-      setDragOver(found);
-    };
-    const onEnd = () => {
-      setDragId(null);
-      setDragOver(over => { if(over) onStageChange(id, over); return null; });
-      stopScroll();
-      window.removeEventListener("touchmove",onMove);
-      window.removeEventListener("touchend",onEnd);
-    };
-    window.addEventListener("touchmove",onMove,{passive:false});
-    window.addEventListener("touchend",onEnd);
+  const handleTouchDragStart=(e,id)=>{
+    setDragId(id); setDragPos({x:e.touches[0].clientX,y:e.touches[0].clientY});
+    const EDGE=60,MAX_SPEED=12;
+    const startScroll=dir=>{if(scrollAnim.current)return;const step=()=>{if(!boardRef.current)return;boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED;scrollAnim.current=requestAnimationFrame(step);};scrollAnim.current=requestAnimationFrame(step);};
+    const stopScroll=()=>{if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;}};
+    const onMove=ev=>{ev.preventDefault();const x=ev.touches[0].clientX,y=ev.touches[0].clientY;setDragPos({x,y});
+      if(x<EDGE){stopScroll();startScroll("left");}else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}else stopScroll();
+      let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);};
+    const onEnd=()=>{setDragId(null);setDragOver(over=>{if(over)onStageChange(id,over);return null;});stopScroll();window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onEnd);};
+    window.addEventListener("touchmove",onMove,{passive:false}); window.addEventListener("touchend",onEnd);
   };
 
-  const detailLead = (allLeads||leads).find(l=>l.id===detailId)||null;
-
+  const detailLead=(allLeads||leads).find(l=>l.id===detailId)||null;
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
-      <div style={{ display:"flex", gap:8, padding:"12px 16px 0", alignItems:"center", position:"relative", zIndex:200 }}>
-        <div style={{ flex:1, position:"relative" }}>
-          <input
-            placeholder="Search by name, phone, address..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setShowDropdown(true); }}
-            onFocus={() => { if(search) setShowDropdown(true); }}
-            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-            style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1.5px solid #e2e8f0", fontSize:13, outline:"none", background:"#fff", boxSizing:"border-box" }}
-          />
-          {showDropdown && search && dropdownResults.length > 0 && (
-            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, maxHeight:280, overflowY:"auto", zIndex:300 }}>
-              {dropdownResults.map(lead => {
-                const colors = getStageColor(lead.stage);
-                return (
-                  <div key={lead.id} onMouseDown={() => { setSearch(""); setShowDropdown(false); setDetailId(lead.id); }}
-                    style={{ padding:"10px 14px", borderBottom:"1px solid #f1f5f9", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <div>
-                      <div style={{ fontWeight:700, fontSize:14, color:"#0f172a" }}>{lead.name||"Unnamed"}</div>
-                      <div style={{ fontSize:12, color:"#94a3b8", marginTop:1 }}>{[lead.phone, lead.address].filter(Boolean).join(" - ")}</div>
-                    </div>
-                    <span style={{ background:colors.badge, color:"#fff", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap", marginLeft:8 }}>{lead.stage}</span>
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{display:"flex",gap:8,padding:"12px 16px 0",alignItems:"center",position:"relative",zIndex:200}}>
+        <div style={{flex:1,position:"relative"}}>
+          <input placeholder="Search by name, phone, address..." value={search}
+            onChange={e=>{setSearch(e.target.value);setShowDropdown(true);}}
+            onFocus={()=>{if(search)setShowDropdown(true);}}
+            onBlur={()=>setTimeout(()=>setShowDropdown(false),200)}
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}/>
+          {showDropdown&&search&&dropdownResults.length>0 && (
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",marginTop:4,maxHeight:280,overflowY:"auto",zIndex:300}}>
+              {dropdownResults.map(lead=>{const colors=getStageColor(lead.stage);return(
+                <div key={lead.id} onMouseDown={()=>{setSearch("");setShowDropdown(false);setDetailId(lead.id);}}
+                  style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{lead.name||"Unnamed"}</div>
+                    <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{[lead.phone,lead.address].filter(Boolean).join(" - ")}</div>
                   </div>
-                );
-              })}
+                  <span style={{background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",marginLeft:8}}>{lead.stage}</span>
+                </div>
+              );})}
             </div>
           )}
-          {showDropdown && search && dropdownResults.length === 0 && (
-            <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", borderRadius:10, boxShadow:"0 8px 30px rgba(0,0,0,0.15)", border:"1.5px solid #e2e8f0", marginTop:4, padding:"14px", textAlign:"center", color:"#94a3b8", fontSize:13, zIndex:300 }}>
-              No leads found
-            </div>
+          {showDropdown&&search&&dropdownResults.length===0 && (
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",marginTop:4,padding:"14px",textAlign:"center",color:"#94a3b8",fontSize:13,zIndex:300}}>No leads found</div>
           )}
         </div>
-        <button onClick={onAddLead} style={{ background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", fontWeight:700, cursor:"pointer", fontSize:14, whiteSpace:"nowrap" }}>+ Add</button>
+        <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
-      <div ref={boardRef} style={{ display:"flex", gap:14, padding:"14px 16px 40px", overflowX:"auto", alignItems:"flex-start", flex:1 }}>
-        {STAGES.map(stage => {
-          const colors = getStageColor(stage);
-          const stageLeads = leads.filter(l=>l.stage===stage);
-          const isOver = dragOver===stage;
+      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1}}>
+        {STAGES.map(stage=>{
+          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
-              style={{ minWidth:220, maxWidth:240, flex:"0 0 220px", background:isOver?colors.bg:"#fff", borderRadius:12, border:`2px solid ${isOver?colors.border:"#e2e8f0"}`, transition:"border-color 0.15s,background 0.15s", boxShadow:isOver?`0 0 0 3px ${colors.border}33`:"0 1px 4px rgba(0,0,0,0.06)" }}>
-              <div style={{ padding:"12px 14px 10px", borderBottom:"1.5px solid #f1f5f9" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:"#1e293b", lineHeight:1.3 }}>{stage}</div>
+              style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:"0 1px 4px rgba(0,0,0,0.06)"}}>
+              <div style={{padding:"12px 14px 10px",borderBottom:"1.5px solid #f1f5f9"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#1e293b",lineHeight:1.3}}>{stage}</div>
               </div>
-              <div style={{ padding:"10px 10px 6px", minHeight:80 }}>
-                {stageLeads.length===0 ? (
-                  <div style={{ textAlign:"center", color:isOver?colors.border:"#cbd5e1", fontSize:12, paddingTop:20, paddingBottom:10, fontWeight:isOver?700:400 }}>Drop here</div>
-                ) : stageLeads.map(lead => (
-                  <LeadCard key={lead.id} lead={lead} onView={l=>{ if(!dragId) setDetailId(l.id); }} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id} />
+              <div style={{padding:"10px 10px 6px",minHeight:80}}>
+                {stageLeads.length===0?(
+                  <div style={{textAlign:"center",color:isOver?colors.border:"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10,fontWeight:isOver?700:400}}>Drop here</div>
+                ):stageLeads.map(lead=>(
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id}/>
                 ))}
               </div>
             </div>
           );
         })}
       </div>
-      {dragId && draggingLead && (
-        <div style={{ position:"fixed", left:dragPos.x-100, top:dragPos.y-22, width:200, background:"#fff", border:"2px solid #f97316", borderRadius:10, padding:"10px 14px", boxShadow:"0 8px 30px rgba(0,0,0,0.25)", pointerEvents:"none", zIndex:9999, fontWeight:700, fontSize:14, color:"#1e293b", transform:"rotate(2deg)" }}>
+      {dragId&&draggingLead && (
+        <div style={{position:"fixed",left:dragPos.x-100,top:dragPos.y-22,width:200,background:"#fff",border:"2px solid #f97316",borderRadius:10,padding:"10px 14px",boxShadow:"0 8px 30px rgba(0,0,0,0.25)",pointerEvents:"none",zIndex:9999,fontWeight:700,fontSize:14,color:"#1e293b",transform:"rotate(2deg)"}}>
           {draggingLead.name||"Lead"}
         </div>
       )}
       {detailId && (
-        <DetailModal
-          lead={detailLead}
-          onClose={() => setDetailId(null)}
-          onEdit={l => { setDetailId(null); onLeadView(l,"edit"); }}
-          onDelete={id => { onLeadView(id,"delete"); setDetailId(null); }}
-          repProfiles={[]}
-          onTransfer={() => {}}
-        />
+        <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
+          onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
+          onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
+          repProfiles={[]} onTransfer={()=>{}}/>
       )}
     </div>
   );
 }
 
-// ─── App ──────────────────────────────────────────────────────────────
+// ── App ───────────────────────────────────────────────────────────────
 function App() {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [leads, setLeads] = useState([]);
-  const [profiles, setProfiles] = useState([]);
-  const [inviteCodes, setInviteCodes] = useState([]);
-  const [tab, setTab] = useState("pipeline");
-  const [viewingRep, setViewingRep] = useState(null);
-  const [modal, setModal] = useState({ open:false, lead:null });
-  const [detailId, setDetailId] = useState(null);
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [leads,setLeads]=useState([]);
+  const [profiles,setProfiles]=useState([]);
+  const [teams,setTeams]=useState([]);
+  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
+  const [tab,setTab]=useState("pipeline");
+  const [viewingRep,setViewingRep]=useState(null);
+  const [modal,setModal]=useState({open:false,lead:null});
+  const [detailId,setDetailId]=useState(null);
 
-  useEffect(() => {
-    sb.auth.getSession().then(({ data }) => {
-      if (data.session && data.session.user) loadUser(data.session.user);
+  useEffect(()=>{
+    sb.auth.getSession().then(({data})=>{
+      if(data.session&&data.session.user)loadUser(data.session.user);
       else setLoading(false);
     });
-  }, []);
+  },[]);
 
   const loadUser = async (u) => {
-    const { data: prof } = await sb.from("profiles").select("*").eq("id", u.id).single();
+    const {data:prof}=await sb.from("profiles").select("*").eq("id",u.id).single();
     setUser(u); setProfile(prof);
-    await loadData(u, prof);
+    await loadData(u,prof);
     setLoading(false);
   };
 
   const loadData = async (u, prof) => {
-    const p = prof || profile;
-    if (p && p.role === "manager") {
-      const { data: allLeads } = await sb.from("leads").select("*").order("created_at",{ascending:false});
-      const { data: allProfiles } = await sb.from("profiles").select("*");
-      const { data: codes } = await sb.from("invite_codes").select("*").order("created_at",{ascending:false});
+    const p=prof||profile;
+    const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
+    if (isPrivileged) {
+      const [{data:allLeads},{data:allProfiles},{data:teamsData},{data:membersData}] = await Promise.all([
+        sb.from("leads").select("*").order("created_at",{ascending:false}),
+        sb.from("profiles").select("*"),
+        sb.from("teams").select("*").order("created_at",{ascending:false}),
+        sb.from("team_members").select("*"),
+      ]);
       setLeads(allLeads||[]);
       setProfiles(allProfiles||[]);
-      setInviteCodes(codes||[]);
+      setTeams(teamsData||[]);
+      // Group members by team
+      const grouped={};
+      (membersData||[]).forEach(m=>{
+        if(!grouped[m.team_id])grouped[m.team_id]=[];
+        grouped[m.team_id].push(m);
+      });
+      setTeamMembers(grouped);
     } else {
-      const { data: myLeads } = await sb.from("leads").select("*").eq("owner_id",u.id).order("created_at",{ascending:false});
-      const { data: allProfiles } = await sb.from("profiles").select("*");
+      const [{data:myLeads},{data:allProfiles}] = await Promise.all([
+        sb.from("leads").select("*").eq("owner_id",u.id).order("created_at",{ascending:false}),
+        sb.from("profiles").select("*"),
+      ]);
       setLeads(myLeads||[]);
       setProfiles(allProfiles||[]);
     }
   };
 
   const saveLead = async (form) => {
-    const ownerId = viewingRep ? viewingRep.id : user.id;
-    const existing = modal.lead && modal.lead.id ? leads.find(l=>l.id===modal.lead.id) : null;
-    const changes = [];
-    if (existing) {
-      const fields = { name:"Name",address:"Address",phone:"Phone",appointment:"Appointment",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage" };
-      for (const [key,label] of Object.entries(fields)) {
-        if ((existing[key]||"") !== (form[key]||"")) changes.push(`${label}: "${existing[key]||"-"}" to "${form[key]||"-"}"`);
-      }
-      const pc=(existing.bill_photos||[]).length, nc=(form.billPhotos||[]).length;
-      if (nc>pc) changes.push(`Photos: Added ${nc-pc}`);
-      else if (nc<pc) changes.push(`Photos: Removed ${pc-nc}`);
+    const ownerId=viewingRep?viewingRep.id:user.id;
+    const existing=modal.lead&&modal.lead.id?leads.find(l=>l.id===modal.lead.id):null;
+    const changes=[];
+    if(existing){
+      const fields={name:"Name",address:"Address",phone:"Phone",appointment:"Appointment",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage"};
+      for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(form[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${form[key]||"-"}"`);}
+      const pc=(existing.bill_photos||[]).length,nc=(form.billPhotos||[]).length;
+      if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
-    const newHistory = existing
-      ? (changes.length>0 ? [{ts:formatTs(),changes},...(existing.history||[])] : (existing.history||[]))
-      : [{ts:formatTs(),changes:["Lead created"]}];
-
-    const payload = {
-      name:form.name||"", address:form.address||"", phone:form.phone||"",
-      appointment:form.appointment||"", esiid:form.esiid||"", meter:form.meter||"",
-      notes:form.notes||"", stage:form.stage||STAGES[0],
-      bill_photos:form.billPhotos||[], bill_retrieved:form.billRetrieved||"",
-      knew_solar:form.knewSolar||"", closer_inside:form.closerInside||"",
-      decision_makers:form.decisionMakers||"", contact_status:form.contactStatus||"",
-      soft_solid:form.softSolid||"", confirmed:form.confirmed||"",
-      history:newHistory, updated_at:new Date().toISOString()
-    };
-
-    if (modal.lead && modal.lead.id) {
-      await sb.from("leads").update(payload).eq("id",modal.lead.id);
-    } else {
-      await sb.from("leads").insert({...payload, id:generateId(), owner_id:ownerId, created_at:new Date().toISOString()});
-    }
+    const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",appointment:form.appointment||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",history:newHistory,updated_at:new Date().toISOString()};
+    if(modal.lead&&modal.lead.id){await sb.from("leads").update(payload).eq("id",modal.lead.id);}
+    else{await sb.from("leads").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,lead:null});
     await loadData(user,profile);
   };
 
-  const deleteLead = async (id) => {
-    await sb.from("leads").delete().eq("id",id);
-    await loadData(user,profile);
-  };
+  const deleteLead=async(id)=>{await sb.from("leads").delete().eq("id",id);await loadData(user,profile);};
 
-  const handleStageChange = async (id, newStage) => {
-    const lead = leads.find(l=>l.id===id);
-    if (!lead) return;
-    const entry = {ts:formatTs(),changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
-    await sb.from("leads").update({
-      stage:newStage, history:[entry,...(lead.history||[])], updated_at:new Date().toISOString()
-    }).eq("id",id);
+  const handleStageChange=async(id,newStage)=>{
+    const lead=leads.find(l=>l.id===id);if(!lead)return;
+    const entry={ts:formatTs(),changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
+    await sb.from("leads").update({stage:newStage,history:[entry,...(lead.history||[])],updated_at:new Date().toISOString()}).eq("id",id);
     setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
   };
 
-  const handleTransfer = async (leadId, toRepId) => {
-    const lead = leads.find(l=>l.id===leadId);
-    const toRep = profiles.find(p=>p.id===toRepId);
-    const entry = {ts:formatTs(),changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
+  const handleTransfer=async(leadId,toRepId)=>{
+    const lead=leads.find(l=>l.id===leadId),toRep=profiles.find(p=>p.id===toRepId);
+    const entry={ts:formatTs(),changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
     await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
     await loadData(user,profile);
   };
 
-  const generateCode = async () => {
-    const code = "SUN-" + Math.random().toString(36).slice(2,6).toUpperCase();
-    await sb.from("invite_codes").insert({code,created_by:user.id,created_at:new Date().toISOString()});
-    await loadData(user,profile);
-  };
+  const handleSignOut=async()=>{await sb.auth.signOut();setUser(null);setProfile(null);setLeads([]);};
 
-  const handleSignOut = async () => { await sb.auth.signOut(); setUser(null); setProfile(null); setLeads([]); };
-
-  if (loading) return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0f172a,#1e293b)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ color:"#fff", fontSize:16, fontWeight:600 }}>Loading...</div>
+  if(loading)return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0f172a,#1e293b)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{color:"#fff",fontSize:16,fontWeight:600}}>Loading...</div>
     </div>
   );
 
-  if (!user || !profile) return <AuthScreen onAuth={(u,p)=>{ setUser(u); setProfile(p); loadData(u,p); }} />;
+  if(!user||!profile)return<AuthScreen onAuth={(u,p)=>{setUser(u);setProfile(p);loadData(u,p);}}/>;
 
-  const visibleLeads = viewingRep
-    ? leads.filter(l=>l.owner_id===viewingRep.id)
-    : (profile.role==="manager" ? leads : leads.filter(l=>l.owner_id===user.id));
+  const isOwner = user.id===OWNER_ID;
+  const isPrivileged = profile.role==="manager" || isOwner;
 
-  const repProfiles = profiles.filter(p=>p.role==="rep" && p.id!==user.id);
-  const detailLead = leads.find(l=>l.id===detailId)||null;
+  const visibleLeads=viewingRep
+    ?leads.filter(l=>l.owner_id===viewingRep.id)
+    :(isPrivileged?leads:leads.filter(l=>l.owner_id===user.id));
 
-  // Tabs: Pipeline, Recruits, Stats (no Summary)
-  const tabs = [
+  const repProfiles=profiles.filter(p=>p.role==="rep"&&p.id!==user.id);
+  const detailLead=leads.find(l=>l.id===detailId)||null;
+
+  const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
     ["stats","Stats"],
-    ...(profile.role==="manager"?[["team","Team"]]:[])
-  ];
+    ...(isPrivileged?[["team","Team"]]:[])]
+  ;
 
   return (
-    <div style={{ minHeight:"100vh", background:"#f1f5f9", display:"flex", flexDirection:"column" }}>
-      <div style={{ background:"linear-gradient(135deg,#1e293b,#0f172a)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 12px rgba(0,0,0,0.2)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {viewingRep && (
-            <button onClick={() => setViewingRep(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:13 }}>Back</button>
-          )}
-          <div style={{ width:32, height:32, borderRadius:8, background:"linear-gradient(135deg,#f97316,#ea580c)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>☀</div>
+    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"linear-gradient(135deg,#1e293b,#0f172a)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,0.2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {viewingRep && <button onClick={()=>setViewingRep(null)} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:13}}>Back</button>}
+          <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>☀</div>
           <div>
-            <div style={{ color:"#fff", fontWeight:800, fontSize:15, lineHeight:1 }}>{viewingRep ? viewingRep.name : "Solar Pipeline"}</div>
-            <div style={{ color:"#94a3b8", fontSize:11 }}>{profile.name} · {profile.role}</div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1}}>{viewingRep?viewingRep.name:"Solar Pipeline"}</div>
+            <div style={{color:"#94a3b8",fontSize:11}}>{profile.name} · {isOwner?"owner":profile.role}</div>
           </div>
         </div>
-        <button onClick={handleSignOut} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#94a3b8", borderRadius:8, padding:"6px 10px", cursor:"pointer", fontSize:12 }}>Sign Out</button>
+        <button onClick={handleSignOut} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>Sign Out</button>
       </div>
 
       {!viewingRep && (
-        <div style={{ background:"#fff", borderBottom:"1.5px solid #e2e8f0", display:"flex", padding:"0 16px", overflowX:"auto" }}>
-          {tabs.map(([key,label]) => (
-            <button key={key} onClick={() => setTab(key)}
-              style={{ padding:"12px 16px", border:"none", borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`, background:"none", color:tab===key?"#f97316":"#94a3b8", fontWeight:tab===key?700:500, cursor:"pointer", fontSize:14, whiteSpace:"nowrap" }}>{label}</button>
+        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",display:"flex",padding:"0 16px",overflowX:"auto"}}>
+          {tabs.map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)}
+              style={{padding:"12px 16px",border:"none",borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`,background:"none",color:tab===key?"#f97316":"#94a3b8",fontWeight:tab===key?700:500,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>{label}</button>
           ))}
         </div>
       )}
 
-      <div style={{ flex:1, overflowY:"auto" }}>
+      <div style={{flex:1,overflowY:"auto"}}>
         {(tab==="pipeline"||viewingRep) && (
-          <PipelineBoard
-            leads={visibleLeads}
-            allLeads={leads}
-            onAddLead={() => setModal({open:true,lead:null})}
-            onStageChange={handleStageChange}
-            onLeadView={(l,action) => {
-              if(action==="edit") setModal({open:true,lead:l});
-              else if(action==="delete") deleteLead(l);
-              else setDetailId(typeof l === "string" ? l : l.id);
-            }}
-          />
+          <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else setDetailId(typeof l==="string"?l:l.id);}}/>
         )}
-        {tab==="recruits" && !viewingRep && <RecruitsDashboard />}
-        {tab==="stats" && !viewingRep && (
-          <StatsView leads={leads} profiles={profiles} currentUser={profile} />
+        {tab==="recruits"&&!viewingRep&&<RecruitsDashboard/>}
+        {tab==="stats"&&!viewingRep&&(
+          <StatsView leads={visibleLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}/>
         )}
-        {tab==="team" && !viewingRep && profile.role==="manager" && (
-          <ManagerDashboard
-            profiles={profiles} leads={leads}
-            onViewRep={rep=>{setViewingRep(rep);setTab("pipeline");}}
-            onGenerateCode={generateCode}
-            inviteCodes={inviteCodes}
-          />
+        {tab==="team"&&!viewingRep&&isPrivileged&&(
+          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} onDataRefresh={()=>loadData(user,profile)}/>
         )}
       </div>
 
-      <LeadModal
-        open={modal.open}
-        onClose={() => setModal({open:false,lead:null})}
-        onSave={saveLead}
-        initial={modal.lead ? {
-          ...modal.lead,
-          billPhotos:modal.lead.bill_photos||[],
-          billRetrieved:modal.lead.bill_retrieved||"",
-          knewSolar:modal.lead.knew_solar||"",
-          closerInside:modal.lead.closer_inside||"",
-          decisionMakers:modal.lead.decision_makers||"",
-          contactStatus:modal.lead.contact_status||"",
-          softSolid:modal.lead.soft_solid||"",
-          confirmed:modal.lead.confirmed||""
-        } : null}
-      />
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead}
+        initial={modal.lead?{...modal.lead,billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||""}:null}/>
 
-      {detailId && (
-        <DetailModal
-          lead={detailLead}
-          onClose={() => setDetailId(null)}
-          onEdit={l => { setDetailId(null); setModal({open:true,lead:l}); }}
-          onDelete={id => { deleteLead(id); setDetailId(null); }}
-          repProfiles={repProfiles}
-          onTransfer={handleTransfer}
-        />
+      {detailId&&(
+        <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
+          onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
+          onDelete={id=>{deleteLead(id);setDetailId(null);}}
+          repProfiles={repProfiles} onTransfer={handleTransfer}/>
       )}
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
