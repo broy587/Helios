@@ -456,24 +456,24 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
 // ── Team Management (owner + manager) ─────────────────────────────────
 function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDataRefresh}) {
   const isOwner = currentUser.id === OWNER_ID;
-  const [selectedTeamId, setSelectedTeamId] = useState(teams.length>0?teams[0].id:"");
+  const [selectedTeamId, setSelectedTeamId] = useState("all");
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [teamLogo, setTeamLogo] = useState("");
   const [saving, setSaving] = useState(false);
+  const [repActionOpen, setRepActionOpen] = useState(null); // rep id with open dropdown
+  const [assignTeamOpen, setAssignTeamOpen] = useState(null); // rep id for team assign sheet
   const logoRef = useRef(null);
 
-  // keep selectedTeamId valid when teams load/change
-  useEffect(()=>{
-    if (teams.length>0 && !teams.find(t=>t.id===selectedTeamId)) setSelectedTeamId(teams[0].id);
-  },[teams]);
-
   const selectedTeam = teams.find(t=>t.id===selectedTeamId);
-  const members = selectedTeamId ? (teamMembers[selectedTeamId]||[]) : [];
+  const members = selectedTeamId && selectedTeamId!=="all" ? (teamMembers[selectedTeamId]||[]) : [];
   const memberIds = members.map(m=>m.user_id);
-  const repProfiles = profiles.filter(p=>p.role==="rep");
-  const nonMembers = repProfiles.filter(r=>!memberIds.includes(r.id));
+  const allReps = profiles.filter(p=>p.role==="rep"||p.role==="manager");
+  const nonMembers = allReps.filter(r=>!memberIds.includes(r.id));
+
+  // Get teams a rep belongs to
+  const getRepTeams = (repId) => teams.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===repId));
 
   const handleLogoUpload = e => {
     const file=e.target.files[0]; if(!file) return;
@@ -505,21 +505,52 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
   const handleDeleteTeam = async () => {
     if (!window.confirm(`Delete team "${selectedTeam?.name}"? This cannot be undone.`)) return;
     await sb.from("teams").delete().eq("id",selectedTeamId);
+    setSelectedTeamId("all");
     await onDataRefresh();
   };
+
+  const handleChangeRole = async (repId, newRole) => {
+    await sb.from("profiles").update({role:newRole}).eq("id",repId);
+    setRepActionOpen(null);
+    await onDataRefresh();
+  };
+
+  const handleDeleteRep = async (repId, repName) => {
+    if (!window.confirm(`Delete ${repName} from the database? This cannot be undone.`)) return;
+    await sb.from("leads").delete().eq("owner_id",repId);
+    await sb.from("team_members").delete().eq("user_id",repId);
+    await sb.from("profiles").delete().eq("id",repId);
+    setRepActionOpen(null);
+    await onDataRefresh();
+  };
+
+  const handleAssignToTeam = async (repId, teamId) => {
+    const already = (teamMembers[teamId]||[]).some(m=>m.user_id===repId);
+    if (!already) await sb.from("team_members").insert({team_id:teamId,user_id:repId});
+    setAssignTeamOpen(null);
+    await onDataRefresh();
+  };
+
+  const handleRemoveFromTeam = async (repId, teamId) => {
+    await sb.from("team_members").delete().eq("team_id",teamId).eq("user_id",repId);
+    await onDataRefresh();
+  };
+
+  // Reps to show in current view
+  const displayReps = selectedTeamId==="all"
+    ? allReps
+    : allReps.filter(r=>memberIds.includes(r.id));
 
   return (
     <div style={{padding:"20px 16px"}}>
 
       {/* Team selector dropdown + add button */}
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
-        <div style={{flex:1,position:"relative"}}>
-          <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
-            style={{...inputStyle,fontWeight:600,fontSize:15}}>
-            {teams.length===0 && <option value="">No teams yet</option>}
-            {teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
+        <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+          style={{...inputStyle,flex:1,fontWeight:600,fontSize:15}}>
+          <option value="all">View All</option>
+          {teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
         {isOwner && (
           <button onClick={()=>setShowAddTeam(true)}
             style={{flexShrink:0,padding:"9px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
@@ -528,10 +559,9 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
         )}
       </div>
 
-      {/* Selected team detail */}
-      {selectedTeam ? (
+      {/* Team header (when a specific team is selected) */}
+      {selectedTeam && (
         <>
-          {/* Team header */}
           <div style={{background:"#fff",borderRadius:14,padding:"18px 16px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:14}}>
             {selectedTeam.logo_url ? (
               <img src={selectedTeam.logo_url} style={{width:52,height:52,borderRadius:12,objectFit:"cover",border:"1.5px solid #e2e8f0"}}/>
@@ -546,8 +576,6 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
               <button onClick={handleDeleteTeam} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>Delete</button>
             )}
           </div>
-
-          {/* Quick stats */}
           {(() => {
             const tLeads=leads.filter(l=>memberIds.includes(l.owner_id));
             return (
@@ -561,8 +589,6 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
               </div>
             );
           })()}
-
-          {/* Members list */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Members</div>
             <button onClick={()=>setShowAddMember(true)}
@@ -570,38 +596,94 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
               + Add Member
             </button>
           </div>
-
-          {members.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No members yet. Add some reps!</div>}
-          {members.map(m=>{
-            const rep=profiles.find(p=>p.id===m.user_id);
-            if (!rep) return null;
-            const repLeads=leads.filter(l=>l.owner_id===rep.id);
-            return (
-              <div key={m.user_id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:15,color:"#4338ca",flexShrink:0}}>
-                  {rep.name[0].toUpperCase()}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
-                  <div style={{fontSize:11,color:"#94a3b8"}}>{rep.email}</div>
-                </div>
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <div style={{textAlign:"center",background:"#f1f5f9",borderRadius:8,padding:"4px 8px"}}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#f97316"}}>{repLeads.length}</div>
-                    <div style={{fontSize:9,color:"#94a3b8"}}>leads</div>
-                  </div>
-                  <button onClick={()=>handleRemoveMember(m.user_id)}
-                    style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"5px 8px",color:"#ef4444",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
-                </div>
-              </div>
-            );
-          })}
         </>
-      ) : (
-        <div style={{textAlign:"center",padding:"40px 20px",color:"#94a3b8",fontSize:14}}>
-          {isOwner ? "Create your first team to get started." : "No teams available."}
+      )}
+
+      {/* Section label for View All */}
+      {selectedTeamId==="all" && (
+        <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>
+          All Reps ({allReps.length})
         </div>
       )}
+
+      {/* Rep cards */}
+      {displayReps.length===0 && (
+        <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>
+          {selectedTeamId==="all" ? "No reps in the system yet." : "No members yet. Add some reps!"}
+        </div>
+      )}
+      {displayReps.map(rep=>{
+        const repLeads=leads.filter(l=>l.owner_id===rep.id);
+        const repTeams=getRepTeams(rep.id);
+        const isOpen=repActionOpen===rep.id;
+        return (
+          <div key={rep.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:15,color:"#4338ca",flexShrink:0}}>
+                {rep.name[0].toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
+                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":"#475569"}}>{rep.role}</span>
+                </div>
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{rep.email}</div>
+                {repTeams.length>0 && (
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                    {repTeams.map(t=>(
+                      <span key={t.id} style={{fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:20,background:"#fef3c7",color:"#92400e"}}>{t.name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                <div style={{textAlign:"center",background:"#f1f5f9",borderRadius:8,padding:"4px 8px"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#f97316"}}>{repLeads.length}</div>
+                  <div style={{fontSize:9,color:"#94a3b8"}}>leads</div>
+                </div>
+                {selectedTeamId!=="all" && (
+                  <button onClick={()=>handleRemoveMember(rep.id)}
+                    style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 8px",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
+                )}
+                {isOwner && (
+                  <div style={{position:"relative"}}>
+                    <button onClick={()=>setRepActionOpen(isOpen?null:rep.id)}
+                      style={{background:isOpen?"#f1f5f9":"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 10px",color:"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      ···
+                    </button>
+                    {isOpen && (
+                      <div style={{position:"absolute",right:0,top:"100%",marginTop:4,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",zIndex:200,minWidth:180,overflow:"hidden"}}>
+                        {/* Role toggle */}
+                        <div style={{padding:"8px 14px",borderBottom:"1px solid #f1f5f9"}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Role</div>
+                          <div style={{display:"flex",gap:6}}>
+                            {["rep","manager"].map(role=>(
+                              <button key={role} onClick={()=>handleChangeRole(rep.id,role)}
+                                style={{flex:1,padding:"5px 0",borderRadius:6,border:`1.5px solid ${rep.role===role?"#3b82f6":"#e2e8f0"}`,background:rep.role===role?"#dbeafe":"#fff",color:rep.role===role?"#1e3a8a":"#64748b",fontWeight:rep.role===role?700:500,cursor:"pointer",fontSize:12,textTransform:"capitalize"}}>
+                                {role}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Assign to team */}
+                        <button onClick={()=>{setRepActionOpen(null);setAssignTeamOpen(rep.id);}}
+                          style={{width:"100%",padding:"10px 14px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",color:"#0f172a",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                          Assign to Team
+                        </button>
+                        {/* Delete rep */}
+                        <button onClick={()=>handleDeleteRep(rep.id,rep.name)}
+                          style={{width:"100%",padding:"10px 14px",border:"none",background:"#fff",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                          Delete Rep
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
 
       {/* Invite codes section */}
       <div style={{marginTop:28}}>
@@ -615,7 +697,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
           <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>New Team</div>
-              <button onClick={()=>setShowAddTeam(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+              <button onClick={()=>setShowAddTeam(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>X</button>
             </div>
             <div style={{marginBottom:14}}>
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Name</label>
@@ -641,13 +723,13 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
         </div>
       )}
 
-      {/* Add Member modal */}
-      {showAddMember && (
+      {/* Add Member modal (team-specific) */}
+      {showAddMember && selectedTeam && (
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setShowAddMember(false)}>
           <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"70vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Add Member</div>
-              <button onClick={()=>setShowAddMember(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Add to {selectedTeam.name}</div>
+              <button onClick={()=>setShowAddMember(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>X</button>
             </div>
             {nonMembers.length===0 ? (
               <div style={{textAlign:"center",color:"#94a3b8",fontSize:14,padding:"20px 0"}}>All reps are already on this team.</div>
@@ -660,13 +742,50 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
                   <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
                   <div style={{fontSize:11,color:"#94a3b8"}}>{rep.email}</div>
                 </div>
-                <button onClick={()=>{handleAddMember(rep.id);}}
+                <button onClick={()=>handleAddMember(rep.id)}
                   style={{padding:"6px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>Add</button>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* Assign to team sheet */}
+      {assignTeamOpen && (()=>{
+        const rep=profiles.find(p=>p.id===assignTeamOpen);
+        const repTeamIds=(Object.entries(teamMembers).filter(([tid,ms])=>ms.some(m=>m.user_id===assignTeamOpen)).map(([tid])=>tid));
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setAssignTeamOpen(null)}>
+            <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"70vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>Teams for {rep?.name}</div>
+                <button onClick={()=>setAssignTeamOpen(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>X</button>
+              </div>
+              {teams.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:14,padding:"20px 0"}}>No teams created yet.</div>}
+              {teams.map(t=>{
+                const onTeam=repTeamIds.includes(t.id);
+                return (
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #f1f5f9"}}>
+                    {t.logo_url?<img src={t.logo_url} style={{width:36,height:36,borderRadius:8,objectFit:"cover",border:"1.5px solid #e2e8f0",flexShrink:0}}/>
+                      :<div style={{width:36,height:36,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>☀</div>}
+                    <div style={{flex:1,fontWeight:700,fontSize:14,color:"#0f172a"}}>{t.name}</div>
+                    {onTeam ? (
+                      <button onClick={()=>handleRemoveFromTeam(assignTeamOpen,t.id)}
+                        style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:12}}>Remove</button>
+                    ) : (
+                      <button onClick={()=>handleAssignToTeam(assignTeamOpen,t.id)}
+                        style={{padding:"6px 12px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:12}}>Add</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Close dropdown on outside click */}
+      {repActionOpen && <div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setRepActionOpen(null)}/>}
     </div>
   );
 }
