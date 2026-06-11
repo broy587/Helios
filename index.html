@@ -1303,8 +1303,8 @@ function App() {
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
     ["stats","Stats"],
-    ...(isPrivileged?[["team","Team"]]:[])]
-  ;
+    ...(isPrivileged?[["team","Team"]]:[])
+  ];
 
   return (
     <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column"}}>
