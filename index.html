@@ -576,19 +576,6 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
               <button onClick={handleDeleteTeam} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>Delete</button>
             )}
           </div>
-          {(() => {
-            const tLeads=leads.filter(l=>memberIds.includes(l.owner_id));
-            return (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:20}}>
-                {[["Leads",tLeads.length,"#f97316"],["ACs",milestoneCount(tLeads,"AC"),"#3b82f6"],["Installs",milestoneCount(tLeads,"Install"),"#10b981"],["PTOs",milestoneCount(tLeads,"PTO"),"#f59e0b"]].map(([lbl,val,col])=>(
-                  <div key={lbl} style={{background:"#fff",borderRadius:10,padding:"10px 6px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:18,fontWeight:800,color:col}}>{val}</div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>{lbl}</div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Members</div>
             <button onClick={()=>setShowAddMember(true)}
@@ -685,11 +672,13 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
         );
       })}
 
-      {/* Invite codes section */}
-      <div style={{marginTop:28}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Invite Codes</div>
-        <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}/>
-      </div>
+      {/* Invite codes section — owner only */}
+      {isOwner && (
+        <div style={{marginTop:28}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Invite Codes</div>
+          <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}/>
+        </div>
+      )}
 
       {/* Add Team modal */}
       {showAddTeam && (
