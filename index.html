@@ -79,13 +79,8 @@ const MILESTONE_INDEX = {
 const CANCELLED_STAGE = "ARC / Cancels";
 
 function getEffectiveStageIndex(lead) {
-  // Use peak_stage (highest stage ever legitimately reached) for stats
-  // This handles both cancelled leads AND leads moved backward by mistake
-  const peakIdx = STAGE_PROGRESSION.indexOf(lead.peak_stage||"");
-  const currentIdx = STAGE_PROGRESSION.indexOf(lead.stage);
-  // Peak is the higher of current or stored peak
-  const effectiveIdx = Math.max(peakIdx, currentIdx);
-  return effectiveIdx >= 0 ? effectiveIdx : -1;
+  // Stats are based purely on current stage - no history tracking needed
+  return STAGE_PROGRESSION.indexOf(lead.stage);
 }
 
 function milestoneCount(leads, milestone) {
@@ -941,11 +936,6 @@ function App() {
       ? (changes.length>0 ? [{ts:formatTs(),changes},...(existing.history||[])] : (existing.history||[]))
       : [{ts:formatTs(),changes:["Lead created"]}];
 
-    // Only update peak_stage if new stage is further forward than current peak
-    const newStageIdx = STAGE_PROGRESSION.indexOf(form.stage||STAGES[0]);
-    const existingPeakIdx = STAGE_PROGRESSION.indexOf(existing?.peak_stage||existing?.stage||"");
-    const peakStage = newStageIdx > existingPeakIdx ? (form.stage||STAGES[0]) : (existing?.peak_stage||form.stage||STAGES[0]);
-
     const payload = {
       name:form.name||"",
       address:form.address||"",
@@ -955,7 +945,6 @@ function App() {
       meter:form.meter||"",
       notes:form.notes||"",
       stage:form.stage||STAGES[0],
-      peak_stage:peakStage,
       bill_photos:form.billPhotos||[],
       bill_retrieved:form.billRetrieved||"",
       knew_solar:form.knewSolar||"",
@@ -986,17 +975,12 @@ function App() {
     const lead = leads.find(l=>l.id===id);
     if (!lead) return;
     const entry = {ts:formatTs(),changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
-    // Only update peak_stage if moving forward (higher index), never backward
-    const currentPeakIdx = STAGE_PROGRESSION.indexOf(lead.peak_stage||lead.stage);
-    const newIdx = STAGE_PROGRESSION.indexOf(newStage);
-    const newPeak = newIdx > currentPeakIdx ? newStage : (lead.peak_stage||lead.stage);
     await sb.from("leads").update({
       stage:newStage,
-      peak_stage:newPeak,
       history:[entry,...(lead.history||[])],
       updated_at:new Date().toISOString()
     }).eq("id",id);
-    setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,peak_stage:newPeak,history:[entry,...(l.history||[])]}:l));
+    setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
   };
 
   const handleTransfer = async (leadId, toRepId) => {
