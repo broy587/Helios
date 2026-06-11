@@ -1579,6 +1579,7 @@ function App() {
   const [tab,setTab]=useState("pipeline");
   const [modal,setModal]=useState({open:false,lead:null});
   const [detailId,setDetailId]=useState(null);
+  const [pipelineFilter,setPipelineFilter]=useState("mine");
 
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
@@ -1680,10 +1681,6 @@ function App() {
 
   const isOwner = user.id===OWNER_ID;
   const isPrivileged = profile.role==="manager" || isOwner;
-
-  // ── Pipeline filter ──────────────────────────────────────────────
-  // "mine" | "team:{id}" | "rep:{id}"
-  const [pipelineFilter, setPipelineFilter] = useState("mine");
 
   // Build filter options based on role
   const getPipelineOptions = () => {
