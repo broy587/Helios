@@ -1569,6 +1569,8 @@ function App() {
   const [modal,setModal]=useState({open:false,lead:null});
   const [detailId,setDetailId]=useState(null);
   const [pipelineFilter,setPipelineFilter]=useState("mine");
+  const [teamDropOpen,setTeamDropOpen]=useState(false);
+  const [repDropOpen,setRepDropOpen]=useState(false);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
@@ -1754,38 +1756,49 @@ function App() {
           <>
             {/* Pipeline sub-tab bar */}
             {isPrivileged && (
-              <div style={{background:"#fff",borderBottom:"1.5px solid #f1f5f9",display:"flex",padding:"0 16px",gap:0}}>
-                {/* Mine */}
-                <button onClick={()=>setPipelineFilter("mine")}
-                  style={{padding:"10px 16px",border:"none",borderBottom:`2px solid ${pipelineSubTab==="mine"?"#f97316":"transparent"}`,background:"none",color:pipelineSubTab==="mine"?"#f97316":"#94a3b8",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
-                  Mine
+              <div style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",borderTop:"1.5px solid #e2e8f0",display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+                {/* My Pipeline pill */}
+                <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
+                  style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="mine"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="mine"?"#f97316":"#fff",color:pipelineSubTab==="mine"?"#fff":"#64748b",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
+                  My Pipeline
                 </button>
-                {/* Team */}
-                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${pipelineSubTab==="team"?"#f97316":"transparent"}`}}>
-                  <button onClick={()=>setPipelineFilter(`team:${activeTeamId}`)}
-                    style={{padding:"10px 8px 10px 16px",border:"none",background:"none",color:pipelineSubTab==="team"?"#f97316":"#94a3b8",fontWeight:pipelineSubTab==="team"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
-                    Team
+                {/* Team pill + dropdown */}
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>{setTeamDropOpen(o=>!o);setRepDropOpen(false);if(!pipelineFilter.startsWith("team:")&&visibleTeams.length>0)setPipelineFilter(`team:${visibleTeams[0].id}`);}}
+                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="team"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="team"?"#f97316":"#fff",color:pipelineSubTab==="team"?"#fff":"#64748b",fontWeight:pipelineSubTab==="team"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+                    {pipelineSubTab==="team"&&activeTeamId?(visibleTeams.find(t=>t.id===activeTeamId)?.name||"Team"):"Team"}
+                    <span style={{fontSize:9,opacity:0.7}}>{teamDropOpen?"▲":"▼"}</span>
                   </button>
-                  {visibleTeams.length>1 && (
-                    <select value={activeTeamId} onChange={e=>setPipelineFilter(`team:${e.target.value}`)}
-                      style={{border:"none",background:"none",color:pipelineSubTab==="team"?"#f97316":"#94a3b8",fontWeight:600,cursor:"pointer",fontSize:12,padding:"0 8px 0 0",outline:"none",maxWidth:90}}>
-                      {visibleTeams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                  {teamDropOpen&&visibleTeams.length>0&&(
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden"}}>
+                      {visibleTeams.map(t=>(
+                        <button key={t.id} onClick={()=>{setPipelineFilter(`team:${t.id}`);setTeamDropOpen(false);}}
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":"#fff",color:activeTeamId===t.id?"#f97316":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-                {/* Reps */}
-                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${pipelineSubTab==="rep"?"#f97316":"transparent"}`}}>
-                  <button onClick={()=>{ if(visibleReps.length>0) setPipelineFilter(`rep:${visibleReps[0].id}`); }}
-                    style={{padding:"10px 8px 10px 16px",border:"none",background:"none",color:pipelineSubTab==="rep"?"#f97316":"#94a3b8",fontWeight:pipelineSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
-                    Reps
+                {/* Reps pill + dropdown */}
+                <div style={{position:"relative"}}>
+                  <button onClick={()=>{setRepDropOpen(o=>!o);setTeamDropOpen(false);if(!pipelineFilter.startsWith("rep:")&&visibleReps.length>0)setPipelineFilter(`rep:${visibleReps[0].id}`);}}
+                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="rep"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="rep"?"#f97316":"#fff",color:pipelineSubTab==="rep"?"#fff":"#64748b",fontWeight:pipelineSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+                    {pipelineSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps"}
+                    <span style={{fontSize:9,opacity:0.7}}>{repDropOpen?"▲":"▼"}</span>
                   </button>
-                  {visibleReps.length>0 && (
-                    <select value={activeRepId} onChange={e=>setPipelineFilter(`rep:${e.target.value}`)}
-                      style={{border:"none",background:"none",color:pipelineSubTab==="rep"?"#f97316":"#94a3b8",fontWeight:600,cursor:"pointer",fontSize:12,padding:"0 8px 0 0",outline:"none",maxWidth:100}}>
-                      {visibleReps.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
+                  {repDropOpen&&visibleReps.length>0&&(
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                      {visibleReps.map(r=>(
+                        <button key={r.id} onClick={()=>{setPipelineFilter(`rep:${r.id}`);setRepDropOpen(false);}}
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":"#fff",color:activeRepId===r.id?"#f97316":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                          {r.name}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
+                {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </div>
             )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
