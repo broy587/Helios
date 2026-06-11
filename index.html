@@ -1577,7 +1577,6 @@ function App() {
   const [teams,setTeams]=useState([]);
   const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
   const [tab,setTab]=useState("pipeline");
-  const [viewingRep,setViewingRep]=useState(null);
   const [modal,setModal]=useState({open:false,lead:null});
   const [detailId,setDetailId]=useState(null);
 
@@ -1634,7 +1633,9 @@ function App() {
   };
 
   const saveLead = async (form) => {
-    const ownerId=viewingRep?viewingRep.id:user.id;
+    // Determine owner: if viewing a specific rep's pipeline, add lead for that rep
+    let ownerId=user.id;
+    if(pipelineFilter.startsWith("rep:")){ownerId=pipelineFilter.replace("rep:","");}
     const existing=modal.lead&&modal.lead.id?leads.find(l=>l.id===modal.lead.id):null;
     const changes=[];
     if(existing){
