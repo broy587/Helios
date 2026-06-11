@@ -485,9 +485,10 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
   const handleCreateTeam = async () => {
     if (!teamName.trim()) return;
     setSaving(true);
-    await sb.from("teams").insert({name:teamName.trim(),logo_url:teamLogo||null,created_by:currentUser.id});
+    const {data:newTeam} = await sb.from("teams").insert({name:teamName.trim(),logo_url:teamLogo||null,created_by:currentUser.id}).select().single();
     setTeamName(""); setTeamLogo(""); setShowAddTeam(false);
     await onDataRefresh();
+    if (newTeam) setSelectedTeamId(newTeam.id);
     setSaving(false);
   };
 
