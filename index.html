@@ -1209,39 +1209,47 @@ function App() {
   },[]);
 
   const loadUser = async (u) => {
-    const {data:prof}=await sb.from("profiles").select("*").eq("id",u.id).single();
-    setUser(u); setProfile(prof);
-    await loadData(u,prof);
-    setLoading(false);
+    try {
+      const {data:prof}=await sb.from("profiles").select("*").eq("id",u.id).single();
+      setUser(u); setProfile(prof);
+      await loadData(u,prof);
+    } catch(e) {
+      console.error("loadUser error:",e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadData = async (u, prof) => {
-    const p=prof||profile;
-    const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
-    if (isPrivileged) {
-      const [{data:allLeads},{data:allProfiles},{data:teamsData},{data:membersData}] = await Promise.all([
-        sb.from("leads").select("*").order("created_at",{ascending:false}),
-        sb.from("profiles").select("*"),
-        sb.from("teams").select("*").order("created_at",{ascending:false}),
-        sb.from("team_members").select("*"),
-      ]);
-      setLeads(allLeads||[]);
-      setProfiles(allProfiles||[]);
-      setTeams(teamsData||[]);
-      // Group members by team
-      const grouped={};
-      (membersData||[]).forEach(m=>{
-        if(!grouped[m.team_id])grouped[m.team_id]=[];
-        grouped[m.team_id].push(m);
-      });
-      setTeamMembers(grouped);
-    } else {
-      const [{data:myLeads},{data:allProfiles}] = await Promise.all([
-        sb.from("leads").select("*").eq("owner_id",u.id).order("created_at",{ascending:false}),
-        sb.from("profiles").select("*"),
-      ]);
-      setLeads(myLeads||[]);
-      setProfiles(allProfiles||[]);
+    try {
+      const p=prof||profile;
+      const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
+      if (isPrivileged) {
+        const [leadsRes,profilesRes,teamsRes,membersRes] = await Promise.all([
+          sb.from("leads").select("*").order("created_at",{ascending:false}),
+          sb.from("profiles").select("*"),
+          sb.from("teams").select("*").order("created_at",{ascending:false}),
+          sb.from("team_members").select("*"),
+        ]);
+        setLeads(leadsRes.data||[]);
+        setProfiles(profilesRes.data||[]);
+        setTeams(teamsRes.data||[]);
+        const grouped={};
+        (membersRes.data||[]).forEach(m=>{
+          if(!grouped[m.team_id])grouped[m.team_id]=[];
+          grouped[m.team_id].push(m);
+        });
+        setTeamMembers(grouped);
+      } else {
+        const [leadsRes,profilesRes] = await Promise.all([
+          sb.from("leads").select("*").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("profiles").select("*"),
+        ]);
+        setLeads(leadsRes.data||[]);
+        setProfiles(profilesRes.data||[]);
+      }
+    } catch(e) {
+      console.error("loadData error:",e);
     }
   };
 
