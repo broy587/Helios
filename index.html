@@ -571,7 +571,9 @@ function GoalsSection({teamId, teamGoals, leads, teamMemberIds, canEdit, current
     } else {
       await sb.from("team_goals").insert({team_id:teamId,period:editing,...form,created_by:currentUserId,updated_at:new Date().toISOString()});
     }
-    setSaving(false); setEditing(null); await onRefresh();
+    await onRefresh(); // refresh first so parent gets new data
+    setSaving(false);
+    setEditing(null); // close modal after data is fresh
   };
 
   const tabs = [{key:"weekly",label:`This Week`},{key:"quarterly",label:getQuarterLabel(new Date())}];
@@ -2340,7 +2342,7 @@ function App() {
             selectedRepId={statsRepId} setSelectedRepId={setStatsRepId}/>
         )}
         {tab==="team"&&isPrivileged&&(
-          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} onDataRefresh={()=>loadData(user,profile)} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
+          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
       </div>
 
