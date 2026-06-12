@@ -200,7 +200,11 @@ function getStageReachedAt(lead, minStageIdx) {
         if (match && match[1]) {
           const newStageIdx = STAGE_PROGRESSION.indexOf(match[1]);
           if (newStageIdx >= minStageIdx && entry.ts) {
-            try { return new Date(entry.ts); } catch(e) { continue; }
+            try {
+            const d = new Date(entry.ts);
+            if (!isNaN(d.getTime())) return d;
+          } catch(e) {}
+          continue;
           }
         }
       }
@@ -223,9 +227,11 @@ function milestoneCountInRange(leads, milestone, range) {
         if (!range) return true;
         const reachedAt = getStageReachedAt(l, minIdx);
         if (!reachedAt) return false;
-        return reachedAt >= range.start && reachedAt <= range.end;
+        const rs = range.start instanceof Date ? range.start : new Date(range.start);
+        const re = range.end instanceof Date ? range.end : new Date(range.end);
+        return reachedAt >= rs && reachedAt <= re;
       } catch(e) { return false; }
-    });
+    }).length;
   } catch(e) { return 0; }
 }
 
