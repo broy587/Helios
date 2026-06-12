@@ -2744,7 +2744,7 @@ function SettingsPage({onBack, dark, setDark}) {
 }
 
 // ── Report Issue Page ─────────────────────────────────────────────────
-function ReportIssuePage({onBack, user, profile, isOwner}) {
+function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const dark=useDark();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -2773,7 +2773,11 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
 
   const handleResolve = async (id) => {
     await sb.from("support_tickets").delete().eq("id",id);
-    setTickets(ts=>ts.filter(t=>t.id!==id));
+    setTickets(ts=>{
+      const updated = ts.filter(t=>t.id!==id);
+      if(onTicketsChanged) onTicketsChanged(updated.length);
+      return updated;
+    });
   };
 
   return (
@@ -2891,7 +2895,8 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
         )}
 
         {page==="report" && (
-          <ReportIssuePage onBack={()=>setPage("menu")} user={user} profile={profile} isOwner={isOwner}/>
+          <ReportIssuePage onBack={()=>setPage("menu")} user={user} profile={profile} isOwner={isOwner}
+            onTicketsChanged={(count)=>onTicketRead&&onTicketRead(count)}/>
         )}
       </div>
     </>
@@ -2938,17 +2943,20 @@ function App() {
   },[]);
 
   // Load unread ticket count for owner
-  useEffect(()=>{
+  const refreshTicketCount = React.useCallback(async () => {
     if (!user || user.id!==OWNER_ID) return;
-    const loadTicketCount = async () => {
-      const {count} = await sb.from("support_tickets").select("*",{count:"exact",head:true});
-      setUnreadTickets(count||0);
-    };
-    loadTicketCount();
-    // Poll every 60 seconds
-    const interval = setInterval(loadTicketCount, 60000);
-    return ()=>clearInterval(interval);
+    const {count} = await sb.from("support_tickets").select("*",{count:"exact",head:true});
+    setUnreadTickets(count||0);
   },[user]);
+
+  useEffect(()=>{
+    refreshTicketCount();
+    const interval = setInterval(refreshTicketCount, 30000);
+    return ()=>clearInterval(interval);
+  },[refreshTicketCount]);
+
+  // Refresh count when drawer opens
+  useEffect(()=>{ if(drawerOpen) refreshTicketCount(); },[drawerOpen]);
 
   // Auto-set team tab to user's first team once teams load (if no saved state)
   useEffect(()=>{
@@ -3362,7 +3370,7 @@ function App() {
         onSignOut={handleSignOut}
         isOwner={isOwner}
         unreadTickets={unreadTickets}
-        onTicketRead={()=>setUnreadTickets(0)}
+        onTicketRead={(count)=>setUnreadTickets(typeof count==="number"?count:0)}
       />
     </div>
     </DarkCtx.Provider>
