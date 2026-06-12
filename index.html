@@ -2443,6 +2443,11 @@ function App() {
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
+        if(leadsRes.error) console.error("leads error:",leadsRes.error);
+        if(profilesRes.error) console.error("profiles error:",profilesRes.error);
+        if(teamsRes.error) console.error("teams error:",teamsRes.error);
+        if(membersRes.error) console.error("members error:",membersRes.error);
+        if(goalsRes.error) console.error("goals error:",goalsRes.error);
         setLeads(leadsRes.data||[]);
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
@@ -2466,6 +2471,11 @@ function App() {
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
+        if(leadsRes.error) console.error("leads error:",leadsRes.error);
+        if(profilesRes.error) console.error("profiles error:",profilesRes.error);
+        if(teamsRes.error) console.error("teams error:",teamsRes.error);
+        if(membersRes.error) console.error("members error:",membersRes.error);
+        if(goalsRes.error) console.error("goals error:",goalsRes.error);
         setLeads(leadsRes.data||[]);
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
