@@ -143,9 +143,26 @@ const MILESTONE_INDEX = {
 };
 
 function getEffectiveStageIndex(lead) {
-  // For arced leads, use arc_stage for stats (where they were when cancelled)
-  const stage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage : lead.stage;
-  return STAGE_PROGRESSION.indexOf(stage);
+  if (!lead.is_arc) return STAGE_PROGRESSION.indexOf(lead.stage);
+  // For arced leads: use arc_stage if valid and not ARC itself
+  if (lead.arc_stage && lead.arc_stage !== "ARC / Cancels") {
+    return STAGE_PROGRESSION.indexOf(lead.arc_stage);
+  }
+  // Fallback: scan history for last non-ARC stage
+  if (lead.history && lead.history.length > 0) {
+    for (const entry of lead.history) {
+      for (const change of (entry.changes||[])) {
+        // History entries look like: "Stage: "X" to "ARC / Cancels""
+        const match = change.match(/Stage: "(.+)" to "ARC \/ Cancels"/);
+        if (match && match[1]) {
+          const idx = STAGE_PROGRESSION.indexOf(match[1]);
+          if (idx >= 0) return idx;
+        }
+      }
+    }
+  }
+  // If nothing found, don't count this lead for any milestone
+  return -1;
 }
 function milestoneCount(leads, milestone) {
   const minIdx = MILESTONE_INDEX[milestone];
