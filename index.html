@@ -1702,11 +1702,45 @@ function App() {
     });
   },[]);
 
+  // Auto-set team tab to user's first team once teams load (if no saved state)
+  useEffect(()=>{
+    if (!user || !teams.length) return;
+    // Only auto-set if teamTabSelected is still "all" and no saved ui_state
+    const prof = profile;
+    if (prof && prof.ui_state && prof.ui_state.teamTabSelected) return; // already restored
+    // Find first team this user belongs to
+    const myTeam = teams.find(t => (teamMembers[t.id]||[]).some(m=>m.user_id===user.id));
+    if (myTeam) setTeamTabSelected(myTeam.id);
+    // else stays "all"
+  },[teams]);
+
   const loadUser = async (u) => {
     try {
       const {data:prof}=await sb.from("profiles").select("*").eq("id",u.id).single();
       setUser(u); setProfile(prof);
       await loadData(u,prof);
+      // Restore UI state
+      if (prof && prof.ui_state && Object.keys(prof.ui_state).length > 0) {
+        const s = prof.ui_state;
+        if (s.tab) setTab(s.tab);
+        if (s.pipelineFilter) setPipelineFilter(s.pipelineFilter);
+        if (s.statsTimeFilter) setStatsTimeFilter(s.statsTimeFilter);
+        if (s.statsCustomRange) setStatsCustomRange({
+          start: new Date(s.statsCustomRange.start),
+          end: new Date(s.statsCustomRange.end)
+        });
+        if (s.statsTeamId) setStatsTeamId(s.statsTeamId);
+        if (s.statsRepSearch) setStatsRepSearch(s.statsRepSearch);
+        if (s.statsRepId) setStatsRepId(s.statsRepId);
+        if (s.recruitsFilter) setRecruitsFilter(s.recruitsFilter);
+        // Team tab: use saved value or auto-assign to user's first team
+        if (s.teamTabSelected) {
+          setTeamTabSelected(s.teamTabSelected);
+        }
+      } else {
+        // First login — auto-assign team tab to user's first team
+        // We'll handle this after teams load in a useEffect
+      }
     } catch(e) {
       console.error("loadUser error:",e);
     } finally {
@@ -1747,6 +1781,27 @@ function App() {
     }
   };
 
+  // ── Persist UI state to Supabase ─────────────────────────────────
+  const saveUIState = async (patch) => {
+    if (!user) return;
+    await sb.from("profiles").update({ ui_state: patch }).eq("id", user.id);
+  };
+
+  const buildUIState = (overrides={}) => ({
+    tab: overrides.tab ?? tab,
+    pipelineFilter: overrides.pipelineFilter ?? pipelineFilter,
+    teamTabSelected: overrides.teamTabSelected ?? teamTabSelected,
+    statsTimeFilter: overrides.statsTimeFilter ?? statsTimeFilter,
+    statsCustomRange: overrides.statsCustomRange ?? (statsCustomRange ? {
+      start: statsCustomRange.start.toISOString(),
+      end: statsCustomRange.end.toISOString()
+    } : null),
+    statsTeamId: overrides.statsTeamId ?? statsTeamId,
+    statsRepSearch: overrides.statsRepSearch ?? statsRepSearch,
+    statsRepId: overrides.statsRepId ?? statsRepId,
+    recruitsFilter: overrides.recruitsFilter ?? recruitsFilter,
+  });
+
   const saveLead = async (form) => {
     // Determine owner: if viewing a specific rep's pipeline, add lead for that rep
     let ownerId=user.id;
@@ -1784,6 +1839,30 @@ function App() {
   };
 
   const handleSignOut=async()=>{await sb.auth.signOut();setUser(null);setProfile(null);setLeads([]);};
+
+  // Save UI state to Supabase whenever anything changes
+  useEffect(()=>{
+    if (!user) return;
+    const state = {
+      tab,
+      pipelineFilter,
+      teamTabSelected,
+      statsTimeFilter,
+      statsCustomRange: statsCustomRange ? {
+        start: statsCustomRange.start.toISOString(),
+        end: statsCustomRange.end.toISOString()
+      } : null,
+      statsTeamId,
+      statsRepSearch,
+      statsRepId,
+      recruitsFilter,
+    };
+    // Debounce — don't hammer Supabase on every keystroke
+    const timer = setTimeout(()=>{
+      sb.from("profiles").update({ui_state:state}).eq("id",user.id);
+    }, 800);
+    return ()=>clearTimeout(timer);
+  },[tab,pipelineFilter,teamTabSelected,statsTimeFilter,statsCustomRange,statsTeamId,statsRepSearch,statsRepId,recruitsFilter]);
 
   if(loading)return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0f172a,#1e293b)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1850,7 +1929,7 @@ function App() {
   const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
-    ["leadgen","Lead Gen"],
+    ["leadgen","Leads"],
     ["stats","Stats"],
     ...(isPrivileged?[["team","Team"]]:[])
   ];
@@ -1947,7 +2026,7 @@ function App() {
         {tab==="leadgen"&&(
           <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
             <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20}}>🚀</div>
-            <div style={{fontSize:22,fontWeight:800,color:"#0f172a",marginBottom:8}}>Lead Gen</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#0f172a",marginBottom:8}}>Leads</div>
             <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
           </div>
         )}
