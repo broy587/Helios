@@ -1920,6 +1920,8 @@ function AppointmentPicker({value,onChange}) {
 }
 
 function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
+  const dark=useDark();
+  const [localVals, setLocalVals] = React.useState({});
   const questions=[
     {key:"billRetrieved",db:"bill_retrieved",label:"Was the bill input?"},
     {key:"knewSolar",db:"knew_solar",label:"Did homeowner know solar was/could be involved?"},
@@ -1927,8 +1929,6 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
     {key:"decisionMakers",db:"decision_makers",label:"Were all decision makers present?"}
   ];
   if (readOnly) {
-    const dark=useDark();
-    const [localVals, setLocalVals] = React.useState({});
     const getValue = (q) => localVals[q.db] !== undefined ? localVals[q.db] : (lead&&lead[q.db])||"";
     const toggle = async (q) => {
       const cur = getValue(q);
