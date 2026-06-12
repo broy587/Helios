@@ -1163,10 +1163,12 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
 
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Members</div>
-            <button onClick={()=>setShowAddMember(true)}
-              style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid #f97316",background:"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:13}}>
-              + Add Member
-            </button>
+            {(isOwner || currentUser.role==="manager") && (
+              <button onClick={()=>setShowAddMember(true)}
+                style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid #f97316",background:"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:13}}>
+                + Add Member
+              </button>
+            )}
           </div>
         </>
       )}
@@ -2954,7 +2956,7 @@ function App() {
     ["recruits","Recruits"],
     ["leadgen","Leads"],
     ["stats","Stats"],
-    ...(isPrivileged?[["team","Team"]]:[])
+    ["team","Team"]
   ];
 
   return (
@@ -2987,7 +2989,7 @@ function App() {
         {tab==="pipeline" && (
           <>
             {/* Pipeline sub-tab bar */}
-            {true && (
+            {isPrivileged && (
               <div style={{background:dark?"#0f172a":"#f8fafc",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
@@ -3069,7 +3071,7 @@ function App() {
             selectedRepId={statsRepId} setSelectedRepId={setStatsRepId}/>
           </StatsErrorBoundary>
         )}
-        {tab==="team"&&isPrivileged&&(
+        {tab==="team"&&(
           <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
       </div>
