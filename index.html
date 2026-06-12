@@ -1918,7 +1918,7 @@ function CloseSection({form,setForm,readOnly,lead}) {
     const getValue = (q) => localVals[q.db] !== undefined ? localVals[q.db] : (lead&&lead[q.db])||"";
     const toggle = async (q) => {
       const cur = getValue(q);
-      const next = cur==="Yes"?"No":cur==="No"?"":  "Yes";
+      const next = cur==="Yes"?"No":"Yes";
       setLocalVals(v=>({...v,[q.db]:next}));
       await sb.from("leads").update({[q.db]:next||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
     };
@@ -1935,8 +1935,8 @@ function CloseSection({form,setForm,readOnly,lead}) {
               <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                 <span style={{fontSize:11,color:isNo?"#ef4444":"#94a3b8",fontWeight:isNo?700:400}}>No</span>
                 <div onClick={()=>toggle(q)}
-                  style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":isNo?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-                  <div style={{position:"absolute",top:2,left:isYes?18:isNo?2:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s",opacity:v?1:0.5}}/>
+                  style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  <div style={{position:"absolute",top:2,left:isYes?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
                 </div>
                 <span style={{fontSize:11,color:isYes?"#10b981":"#94a3b8",fontWeight:isYes?700:400}}>Yes</span>
               </div>
@@ -1982,7 +1982,7 @@ function UsagePulledToggle({leadId, initialValue}) {
     <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
       <span style={{fontSize:11,color:isNo?"#ef4444":"#94a3b8",fontWeight:isNo?700:400}}>No</span>
       <div onClick={toggle}
-        style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":isNo?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
         <div style={{position:"absolute",top:2,left:isYes?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
       </div>
       <span style={{fontSize:11,color:isYes?"#10b981":"#94a3b8",fontWeight:isYes?700:400}}>Yes</span>
