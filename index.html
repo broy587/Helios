@@ -295,18 +295,21 @@ const formatTs = () => {
 // ── Auth ──────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }) {
   const [mode,setMode]=useState("login");
-  const [email,setEmail]=useState("");
+  const [email,setEmail]=useState(()=>localStorage.getItem("pp_saved_email")||"");
   const [password,setPassword]=useState("");
   const [name,setName]=useState("");
   const [inviteCode,setInviteCode]=useState("");
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [msg,setMsg]=useState("");
+  const [rememberMe,setRememberMe]=useState(()=>!!localStorage.getItem("pp_saved_email"));
 
   const handleLogin = async () => {
     setLoading(true); setError("");
     const {data,error}=await sb.auth.signInWithPassword({email,password});
     if (error){setError(error.message);setLoading(false);return;}
+    if (rememberMe) localStorage.setItem("pp_saved_email", email);
+    else localStorage.removeItem("pp_saved_email");
     const {data:profile}=await sb.from("profiles").select("*").eq("id",data.user.id).single();
     onAuth(data.user,profile);
     setLoading(false);
@@ -363,6 +366,15 @@ function AuthScreen({ onAuth }) {
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Invite Code</label>
             <input value={inviteCode} onChange={e=>setInviteCode(e.target.value)} placeholder="e.g. SUN-F38E" style={{...inputStyle,textTransform:"uppercase"}}/>
             <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Get this from your manager</div>
+          </div>
+        )}
+        {mode==="login" && (
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+            <div onClick={()=>setRememberMe(r=>!r)}
+              style={{width:20,height:20,borderRadius:5,border:`2px solid ${rememberMe?"#f97316":"#cbd5e1"}`,background:rememberMe?"#f97316":"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {rememberMe && <span style={{color:"#fff",fontSize:13,lineHeight:1}}>✓</span>}
+            </div>
+            <span style={{fontSize:13,color:"#64748b",cursor:"pointer"}} onClick={()=>setRememberMe(r=>!r)}>Remember my email</span>
           </div>
         )}
         <button onClick={mode==="login"?handleLogin:handleSignup} disabled={loading}
@@ -1984,8 +1996,12 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                   </div>
                 )}
                 {label==="Email" && (
-                  <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fee2e2",textDecoration:"none",fontSize:15,flexShrink:0}}>✉️</a>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <a href={`googlegmail://co?to=${encodeURIComponent(value)}`}
+                      style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fee2e2",textDecoration:"none",fontSize:15}}>📱</a>
+                    <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fee2e2",textDecoration:"none",fontSize:15}}>✉️</a>
+                  </div>
                 )}
                 {label==="Address" && (
                   <a href={`https://maps.google.com/?q=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
@@ -2063,17 +2079,11 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           )}
         </div>
       </div>
-      {imgOpen!==null&&photos&&photos[imgOpen] && (
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
-          <img src={photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain"}}/>
-          <div style={{display:"flex",gap:12,marginTop:16,alignItems:"center"}}>
-            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.max(0,i-1));}} disabled={imgOpen===0}
-              style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>‹</button>
-            <span style={{color:"#fff",fontSize:13}}>{imgOpen+1} / {photos.length}</span>
-            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===photos.length-1}
-              style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>›</button>
-          </div>
-          <div style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}} onClick={()=>setImgOpen(null)}>✕</div>
+      {imgOpen!==null && photos && photos[imgOpen] && (
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
+          <img src={photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}/>
+          <div style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}}>✕</div>
+          <div style={{position:"absolute",bottom:16,color:"#fff",fontSize:13,opacity:0.7,background:"rgba(0,0,0,0.4)",padding:"4px 12px",borderRadius:20}}>{imgOpen+1} of {photos.length} — tap to close</div>
         </div>
       )}
     </div>
