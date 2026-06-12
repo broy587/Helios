@@ -539,10 +539,6 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
   // Filtered reps by search
   const filteredReps = teamReps.filter(r=>r.name.toLowerCase().includes(repSearch.toLowerCase()));
 
-  // Selected rep details
-  const selectedRep = selectedRepId ? profiles.find(p=>p.id===selectedRepId) : null;
-  const selectedRepLeads = selectedRep ? filteredLeads.filter(l=>l.owner_id===selectedRep.id) : [];
-
   return (
     <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f1f5f9",minHeight:"100%"}}>
       <div style={{marginBottom:16}}>
