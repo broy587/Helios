@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Solar Pipeline" />
-  <title>Solar Pipeline</title>
+  <meta name="apple-mobile-web-app-title" content="Pipeline Push" />
+  <title>Pipeline Push</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -172,7 +172,7 @@ function AuthScreen({ onAuth }) {
       <div style={{background:"#fff",borderRadius:20,padding:32,width:"min(100%,400px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 12px"}}>☀</div>
-          <div style={{fontWeight:800,fontSize:22,color:"#0f172a"}}>Solar Pipeline</div>
+          <div style={{fontWeight:800,fontSize:22,color:"#0f172a"}}>Pipeline Push</div>
           <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Sunrun Sales CRM</div>
         </div>
         {msg && <div style={{background:"#d1fae5",border:"1.5px solid #10b981",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#065f46",marginBottom:16}}>{msg}</div>}
@@ -317,13 +317,10 @@ function TimeFilterBar({active,onSelect}) {
 }
 
 // ── Stats View ────────────────────────────────────────────────────────
-function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
-  const [timeFilter,setTimeFilter]=useState("alltime");
-  const [customRange,setCustomRange]=useState(null);
+function StatsView({leads, profiles, currentUser, teams, teamMembers,
+  timeFilter, setTimeFilter, customRange, setCustomRange,
+  selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const [showDatePicker,setShowDatePicker]=useState(false);
-  const [selectedTeamId,setSelectedTeamId]=useState("all");
-  const [repSearch,setRepSearch]=useState("");
-  const [selectedRepId,setSelectedRepId]=useState("");
 
   const handleFilterSelect = (key) => {
     if (key==="custom"){setShowDatePicker(true);return;}
@@ -468,9 +465,8 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers}) {
 }
 
 // ── Team Management (owner + manager) ─────────────────────────────────
-function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDataRefresh}) {
+function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
   const isOwner = currentUser.id === OWNER_ID;
-  const [selectedTeamId, setSelectedTeamId] = useState("all");
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -638,10 +634,6 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, onDat
                 )}
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                <div style={{textAlign:"center",background:"#f1f5f9",borderRadius:8,padding:"4px 8px"}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#f97316"}}>{repLeads.length}</div>
-                  <div style={{fontSize:9,color:"#94a3b8"}}>leads</div>
-                </div>
                 {selectedTeamId!=="all" && (
                   <button onClick={()=>handleRemoveMember(rep.id)}
                     style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 8px",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
@@ -970,15 +962,18 @@ function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onClick={()=>{if(!moved.current)onView(recruit);}}
       style={{background:"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"none"}}>
-      <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:3}}>{fullName}</div>
-      {recruit.phone&&<div style={{fontSize:12,color:"#94a3b8"}}>{recruit.phone}</div>}
-      {recruit.social_media&&<div style={{fontSize:11,color:"#6366f1",marginTop:2}}>{recruit.social_media}</div>}
+      <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{fullName}</div>
     </div>
   );
 }
 
-function RecruitsDashboard({currentUser}) {
+function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
+  recruitsFilter, setRecruitsFilter,
+  recruitsTeamDropOpen, setRecruitsTeamDropOpen,
+  recruitsRepDropOpen, setRecruitsRepDropOpen}) {
+
   const isOwner = currentUser && currentUser.id===OWNER_ID;
+  const isPrivileged = isOwner || currentUser.role==="manager";
   const [recruits,setRecruits]=useState([]);
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState({open:false,recruit:null});
@@ -990,16 +985,52 @@ function RecruitsDashboard({currentUser}) {
   const boardRef=useRef(null);
   const scrollAnim=useRef(null);
 
-  useEffect(()=>{ if(isOwner) loadRecruits(); else setLoading(false); },[]);
+  useEffect(()=>{ loadRecruits(); },[]);
 
   const loadRecruits = async () => {
     setLoading(true);
-    const {data}=await sb.from("recruits").select("*").order("created_at",{ascending:false});
+    // Owner loads all, manager loads team members', rep loads own
+    let query = sb.from("recruits").select("*").order("created_at",{ascending:false});
+    if (!isOwner && !isPrivileged) query = query.eq("owner_id", currentUser.id);
+    const {data}=await query;
     setRecruits(data||[]); setLoading(false);
   };
 
+  // Filter logic — same pattern as pipeline
+  const visibleTeams = isOwner ? teams : teams.filter(t=>{
+    const ms=teamMembers[t.id]||[];
+    return ms.some(m=>m.user_id===currentUser.id) || t.created_by===currentUser.id;
+  });
+  const activeTeamId = recruitsFilter.startsWith("team:") ? recruitsFilter.replace("team:","") : (visibleTeams.length>0?visibleTeams[0].id:"");
+  const activeRepId = recruitsFilter.startsWith("rep:") ? recruitsFilter.replace("rep:","") : "";
+  const visibleReps = isOwner
+    ? profiles.filter(p=>p.id!==currentUser.id&&(p.role==="rep"||p.role==="manager"))
+    : profiles.filter(p=>{
+        if(p.id===currentUser.id) return false;
+        return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
+      });
+  const recruitsSubTab = recruitsFilter==="mine"?"mine":recruitsFilter.startsWith("team:")?"team":recruitsFilter.startsWith("rep:")?"rep":"mine";
+
+  const getFilteredRecruits = () => {
+    if (recruitsFilter==="mine") return recruits.filter(r=>r.owner_id===currentUser.id);
+    if (recruitsFilter.startsWith("team:")) {
+      const teamId=recruitsFilter.replace("team:","");
+      const memberIds=(teamMembers[teamId]||[]).map(m=>m.user_id);
+      return recruits.filter(r=>memberIds.includes(r.owner_id));
+    }
+    if (recruitsFilter.startsWith("rep:")) {
+      const repId=recruitsFilter.replace("rep:","");
+      return recruits.filter(r=>r.owner_id===repId);
+    }
+    return recruits.filter(r=>r.owner_id===currentUser.id);
+  };
+  const filteredRecruits = getFilteredRecruits();
+
   const saveRecruit = async (form) => {
     const existing=modal.recruit&&modal.recruit.id?recruits.find(r=>r.id===modal.recruit.id):null;
+    // Owner can only add to their own unless viewing a rep's pipeline
+    let ownerId=currentUser.id;
+    if(recruitsFilter.startsWith("rep:"))ownerId=recruitsFilter.replace("rep:","");
     const changes=[];
     if(existing){
       const fields={first_name:"First Name",last_name:"Last Name",phone:"Phone",email:"Email",social_media:"Social Media",notes:"Notes",stage:"Stage"};
@@ -1009,7 +1040,7 @@ function RecruitsDashboard({currentUser}) {
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Recruit created"]}];
     const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],history:newHistory,updated_at:new Date().toISOString()};
     if(existing){await sb.from("recruits").update(payload).eq("id",existing.id);}
-    else{await sb.from("recruits").insert({...payload,id:generateId(),owner_id:currentUser.id,created_at:new Date().toISOString()});}
+    else{await sb.from("recruits").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,recruit:null});
     await loadRecruits();
   };
@@ -1039,12 +1070,6 @@ function RecruitsDashboard({currentUser}) {
     window.addEventListener("touchmove",onMove,{passive:false}); window.addEventListener("touchend",onEnd);
   };
 
-  if(!isOwner) return (
-    <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
-      <div style={{fontSize:16,color:"#94a3b8",fontWeight:500}}>Access restricted.</div>
-    </div>
-  );
-
   if(loading) return (
     <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{fontSize:14,color:"#94a3b8"}}>Loading recruits...</div>
@@ -1053,18 +1078,68 @@ function RecruitsDashboard({currentUser}) {
 
   const draggingRecruit=recruits.find(r=>r.id===dragId);
   const detailRecruit=recruits.find(r=>r.id===detailId)||null;
+  // Can edit/add: rep editing own, or privileged viewing rep pipeline
+  const canEdit = recruitsFilter==="mine" || recruitsFilter.startsWith("rep:") || isOwner;
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      {/* Filter bar — same style as pipeline */}
+      {isPrivileged && (
+        <div style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",borderTop:"1.5px solid #e2e8f0",display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+          <button onClick={()=>{setRecruitsFilter("mine");setRecruitsTeamDropOpen(false);setRecruitsRepDropOpen(false);}}
+            style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${recruitsSubTab==="mine"?"#f97316":"#e2e8f0"}`,background:recruitsSubTab==="mine"?"#f97316":"#fff",color:recruitsSubTab==="mine"?"#fff":"#64748b",fontWeight:recruitsSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
+            My Recruits
+          </button>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>{setRecruitsTeamDropOpen(o=>!o);setRecruitsRepDropOpen(false);if(!recruitsFilter.startsWith("team:")&&visibleTeams.length>0)setRecruitsFilter(`team:${visibleTeams[0].id}`);}}
+              style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${recruitsSubTab==="team"?"#f97316":"#e2e8f0"}`,background:recruitsSubTab==="team"?"#f97316":"#fff",color:recruitsSubTab==="team"?"#fff":"#64748b",fontWeight:recruitsSubTab==="team"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+              {recruitsSubTab==="team"&&activeTeamId?(visibleTeams.find(t=>t.id===activeTeamId)?.name||"Team"):"Team"}
+              <span style={{fontSize:9,opacity:0.7}}>{recruitsTeamDropOpen?"▲":"▼"}</span>
+            </button>
+            {recruitsTeamDropOpen&&visibleTeams.length>0&&(
+              <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden"}}>
+                {visibleTeams.map(t=>(
+                  <button key={t.id} onClick={()=>{setRecruitsFilter(`team:${t.id}`);setRecruitsTeamDropOpen(false);}}
+                    style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":"#fff",color:activeTeamId===t.id?"#f97316":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>{setRecruitsRepDropOpen(o=>!o);setRecruitsTeamDropOpen(false);if(!recruitsFilter.startsWith("rep:")&&visibleReps.length>0)setRecruitsFilter(`rep:${visibleReps[0].id}`);}}
+              style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${recruitsSubTab==="rep"?"#f97316":"#e2e8f0"}`,background:recruitsSubTab==="rep"?"#f97316":"#fff",color:recruitsSubTab==="rep"?"#fff":"#64748b",fontWeight:recruitsSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+              {recruitsSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps"}
+              <span style={{fontSize:9,opacity:0.7}}>{recruitsRepDropOpen?"▲":"▼"}</span>
+            </button>
+            {recruitsRepDropOpen&&visibleReps.length>0&&(
+              <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                {visibleReps.map(r=>(
+                  <button key={r.id} onClick={()=>{setRecruitsFilter(`rep:${r.id}`);setRecruitsRepDropOpen(false);}}
+                    style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":"#fff",color:activeRepId===r.id?"#f97316":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {(recruitsTeamDropOpen||recruitsRepDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setRecruitsTeamDropOpen(false);setRecruitsRepDropOpen(false);}}/>}
+        </div>
+      )}
+
+      {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px 0"}}>
         <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Recruits</div>
         <button onClick={()=>setModal({open:true,recruit:null})}
           style={{background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14}}>+ Add</button>
       </div>
+
+      {/* Board */}
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1}}>
         {RECRUIT_STAGES.map(stage=>{
           const colors=getRecruitStageColor(stage);
-          const stageRecruits=recruits.filter(r=>r.stage===stage);
+          const stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
           const isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
@@ -1461,8 +1536,14 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       if(dx>8||dy>8){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
   };
   const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
+  const handleMouseDown=e=>{
+    if(e.button!==0)return;
+    e.preventDefault();
+    onTouchDragStart(e,lead.id);
+  };
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
       onClick={()=>{if(!moved.current)onView(lead);}}
       style={{background:"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:1,touchAction:"none"}}>
       <div style={{flex:1,minWidth:0}}>
@@ -1495,16 +1576,30 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
   const draggingLead=leads.find(l=>l.id===dragId);
   const dropdownResults=search.length>0?leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v&&v.toLowerCase().includes(search.toLowerCase()))).slice(0,8):[];
 
-  const handleTouchDragStart=(e,id)=>{
-    setDragId(id); setDragPos({x:e.touches[0].clientX,y:e.touches[0].clientY});
+  const startDrag = (id, x, y, isMouse) => {
+    setDragId(id); setDragPos({x,y});
     const EDGE=60,MAX_SPEED=12;
     const startScroll=dir=>{if(scrollAnim.current)return;const step=()=>{if(!boardRef.current)return;boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED;scrollAnim.current=requestAnimationFrame(step);};scrollAnim.current=requestAnimationFrame(step);};
     const stopScroll=()=>{if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;}};
-    const onMove=ev=>{ev.preventDefault();const x=ev.touches[0].clientX,y=ev.touches[0].clientY;setDragPos({x,y});
+    const getPos=ev=>isMouse?{x:ev.clientX,y:ev.clientY}:{x:ev.touches[0].clientX,y:ev.touches[0].clientY};
+    const onMove=ev=>{
+      if(!isMouse)ev.preventDefault();
+      const {x,y}=getPos(ev); setDragPos({x,y});
       if(x<EDGE){stopScroll();startScroll("left");}else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}else stopScroll();
-      let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);};
-    const onEnd=()=>{setDragId(null);setDragOver(over=>{if(over)onStageChange(id,over);return null;});stopScroll();window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onEnd);};
-    window.addEventListener("touchmove",onMove,{passive:false}); window.addEventListener("touchend",onEnd);
+      let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);
+    };
+    const onEnd=()=>{
+      setDragId(null);setDragOver(over=>{if(over)onStageChange(id,over);return null;});stopScroll();
+      if(isMouse){window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);}
+      else{window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onEnd);}
+    };
+    if(isMouse){window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onEnd);}
+    else{window.addEventListener("touchmove",onMove,{passive:false});window.addEventListener("touchend",onEnd);}
+  };
+
+  const handleTouchDragStart=(e,id)=>{
+    if(e._isMouse) startDrag(id,e._mouseEvent.clientX,e._mouseEvent.clientY,true);
+    else startDrag(id,e.touches[0].clientX,e.touches[0].clientY,false);
   };
 
   const detailLead=(allLeads||leads).find(l=>l.id===detailId)||null;
@@ -1587,6 +1682,18 @@ function App() {
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
+  // Persist team tab selection
+  const [teamTabSelected,setTeamTabSelected]=useState("all");
+  // Persist stats tab selections
+  const [statsTimeFilter,setStatsTimeFilter]=useState("alltime");
+  const [statsCustomRange,setStatsCustomRange]=useState(null);
+  const [statsTeamId,setStatsTeamId]=useState("all");
+  const [statsRepSearch,setStatsRepSearch]=useState("");
+  const [statsRepId,setStatsRepId]=useState("");
+  // Persist recruits filter
+  const [recruitsFilter,setRecruitsFilter]=useState("mine");
+  const [recruitsTeamDropOpen,setRecruitsTeamDropOpen]=useState(false);
+  const [recruitsRepDropOpen,setRecruitsRepDropOpen]=useState(false);
 
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
@@ -1742,7 +1849,8 @@ function App() {
 
   const tabs=[
     ["pipeline","Pipeline"],
-    ...(isOwner?[["recruits","Recruits"]]:[]),
+    ["recruits","Recruits"],
+    ["leadgen","Lead Gen"],
     ["stats","Stats"],
     ...(isPrivileged?[["team","Team"]]:[])
   ];
@@ -1753,7 +1861,7 @@ function App() {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>☀</div>
           <div>
-            <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1}}>Solar Pipeline</div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:15,lineHeight:1}}>Pipeline Push</div>
             <div style={{color:"#94a3b8",fontSize:11}}>{profile.name} · {isOwner?"owner":profile.role}</div>
           </div>
         </div>
@@ -1821,12 +1929,38 @@ function App() {
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else setDetailId(typeof l==="string"?l:l.id);}}/>
           </>
         )}
-        {tab==="recruits"&&isOwner&&<RecruitsDashboard currentUser={{...profile,id:user.id}}/>}
+        {tab==="recruits"&&(
+          <RecruitsDashboard
+            currentUser={{...profile,id:user.id}}
+            profiles={profiles}
+            teams={teams}
+            teamMembers={teamMembers}
+            allLeads={leads}
+            recruitsFilter={recruitsFilter}
+            setRecruitsFilter={setRecruitsFilter}
+            recruitsTeamDropOpen={recruitsTeamDropOpen}
+            setRecruitsTeamDropOpen={setRecruitsTeamDropOpen}
+            recruitsRepDropOpen={recruitsRepDropOpen}
+            setRecruitsRepDropOpen={setRecruitsRepDropOpen}
+          />
+        )}
+        {tab==="leadgen"&&(
+          <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
+            <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20}}>🚀</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#0f172a",marginBottom:8}}>Lead Gen</div>
+            <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
+          </div>
+        )}
         {tab==="stats"&&(
-          <StatsView leads={visibleLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}/>
+          <StatsView leads={visibleLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+            timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
+            customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
+            selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
+            repSearch={statsRepSearch} setRepSearch={setStatsRepSearch}
+            selectedRepId={statsRepId} setSelectedRepId={setStatsRepId}/>
         )}
         {tab==="team"&&isPrivileged&&(
-          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} onDataRefresh={()=>loadData(user,profile)}/>
+          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} onDataRefresh={()=>loadData(user,profile)} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
       </div>
 
