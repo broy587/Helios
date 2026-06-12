@@ -106,7 +106,7 @@ const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
+  "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
 const STAGE_COLORS = {
@@ -118,7 +118,8 @@ const STAGE_COLORS = {
   "No Close / Numbers":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
   "VC / SRA":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
-  "Cap / Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "CAP":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
+  "Permitting":{bg:"#e0e7ff",border:"#6366f1",badge:"#312e81"},
   "Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
@@ -131,13 +132,13 @@ function getStageColor(stage) {
 const STAGE_PROGRESSION = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
+  "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
 const MILESTONE_INDEX = {
   "AC":      STAGE_PROGRESSION.indexOf("AC / Scheduled"),
   "VC":      STAGE_PROGRESSION.indexOf("VC / SRA"),
-  "CAP":     STAGE_PROGRESSION.indexOf("Cap / Permitting"),
+  "CAP":     STAGE_PROGRESSION.indexOf("CAP"),
   "Install": STAGE_PROGRESSION.indexOf("Install Scheduled"),
   "PTO":     STAGE_PROGRESSION.indexOf("PTO / REP")
 };
