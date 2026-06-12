@@ -786,9 +786,14 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   const [teamName, setTeamName] = useState("");
   const [teamLogo, setTeamLogo] = useState("");
   const [saving, setSaving] = useState(false);
-  const [repActionOpen, setRepActionOpen] = useState(null); // rep id with open dropdown
-  const [assignTeamOpen, setAssignTeamOpen] = useState(null); // rep id for team assign sheet
+  const [repActionOpen, setRepActionOpen] = useState(null);
+  const [assignTeamOpen, setAssignTeamOpen] = useState(null);
+  const [showEditTeam, setShowEditTeam] = useState(false);
+  const [editTeamName, setEditTeamName] = useState("");
+  const [editTeamLogo, setEditTeamLogo] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
   const logoRef = useRef(null);
+  const editLogoRef = useRef(null);
 
   const selectedTeam = teams.find(t=>t.id===selectedTeamId);
   const members = selectedTeamId && selectedTeamId!=="all" ? (teamMembers[selectedTeamId]||[]) : [];
@@ -831,6 +836,28 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
     await sb.from("teams").delete().eq("id",selectedTeamId);
     setSelectedTeamId("all");
     await onDataRefresh();
+  };
+
+  const openEditTeam = () => {
+    setEditTeamName(selectedTeam?.name||"");
+    setEditTeamLogo(selectedTeam?.logo_url||"");
+    setShowEditTeam(true);
+  };
+
+  const handleEditTeamSave = async () => {
+    if (!editTeamName.trim()) return;
+    setEditSaving(true);
+    await sb.from("teams").update({name:editTeamName.trim(), logo_url:editTeamLogo||null}).eq("id",selectedTeamId);
+    await onDataRefresh();
+    setShowEditTeam(false);
+    setEditSaving(false);
+  };
+
+  const handleEditLogoUpload = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>setEditTeamLogo(ev.target.result);
+    reader.readAsDataURL(file);
   };
 
   const handleChangeRole = async (repId, newRole) => {
@@ -896,6 +923,10 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
               <div style={{fontWeight:800,fontSize:18,color:dark?"#f1f5f9":"#0f172a"}}>{selectedTeam.name}</div>
               <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{members.length} member{members.length!==1?"s":""}</div>
             </div>
+            {(isOwner || currentUser.role==="manager") && (
+              <button onClick={openEditTeam}
+                style={{background:"none",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"6px 10px",color:dark?"#94a3b8":"#64748b",fontSize:13,cursor:"pointer",marginRight:4}}>✏️</button>
+            )}
             {isOwner && (
               <button onClick={handleDeleteTeam} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>Delete</button>
             )}
@@ -1026,6 +1057,43 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
         <div style={{marginTop:28}}>
           <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Invite Codes</div>
           <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}/>
+        </div>
+      )}
+
+      {/* Edit Team modal */}
+      {showEditTeam && selectedTeam && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setShowEditTeam(false)}>
+          <div style={{background:dark?"#1e293b":"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:dark?"#f1f5f9":"#0f172a"}}>Edit Team</div>
+              <button onClick={()=>setShowEditTeam(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Name</label>
+              <input value={editTeamName} onChange={e=>setEditTeamName(e.target.value)} placeholder="Team name" style={inputStyle}/>
+            </div>
+            <div style={{marginBottom:22}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Logo</label>
+              {editTeamLogo && (
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <img src={editTeamLogo} style={{width:56,height:56,borderRadius:12,objectFit:"cover",border:"1.5px solid #e2e8f0"}}/>
+                  <button onClick={()=>setEditTeamLogo("")} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"4px 10px",color:"#ef4444",fontSize:12,cursor:"pointer"}}>Remove</button>
+                </div>
+              )}
+              <div onClick={()=>editLogoRef.current&&editLogoRef.current.click()}
+                style={{border:"2px dashed #cbd5e1",borderRadius:8,padding:"12px 16px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc",fontSize:13,color:"#64748b"}}>
+                {editTeamLogo?"Change photo":"Tap to upload logo"}
+              </div>
+              <input ref={editLogoRef} type="file" accept="image/*" onChange={handleEditLogoUpload} style={{display:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowEditTeam(false)} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:dark?"#334155":"#fff",color:dark?"#e2e8f0":"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick={handleEditTeamSave} disabled={!editTeamName.trim()||editSaving}
+                style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:editTeamName.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:editTeamName.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:editTeamName.trim()?"pointer":"default",fontSize:14}}>
+                {editSaving?"Saving...":"Save Changes"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
