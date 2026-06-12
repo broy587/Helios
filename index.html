@@ -2987,7 +2987,7 @@ function App() {
         {tab==="pipeline" && (
           <>
             {/* Pipeline sub-tab bar */}
-            {isPrivileged && (
+            {true && (
               <div style={{background:dark?"#0f172a":"#f8fafc",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
