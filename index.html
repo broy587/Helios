@@ -105,7 +105,7 @@ const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
 ];
 
 const STAGE_COLORS = {
@@ -121,6 +121,7 @@ const STAGE_COLORS = {
   "Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
+  "ARC / Cancels":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"}
 };
 
 function getStageColor(stage) {
@@ -130,7 +131,7 @@ function getStageColor(stage) {
 const STAGE_PROGRESSION = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
 ];
 
 const MILESTONE_INDEX = {
@@ -1967,14 +1968,22 @@ function LeadModal({open,onClose,onSave,initial}) {
               <div style={{fontSize:13,fontWeight:700,color:form.isArc?"#b91c1c":"#0f172a"}}>ARC / Cancel</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Mark this lead as cancelled. Stats will reflect the stage it was in when cancelled.</div>
             </div>
-            <div onClick={()=>setForm(f=>({...f,isArc:!f.isArc,arcStage:!f.isArc?f.stage:""}))}
+            <div onClick={()=>setForm(f=>{
+              const turningOn = !f.isArc;
+              return {
+                ...f,
+                isArc: turningOn,
+                arcStage: turningOn ? f.stage : "",
+                stage: turningOn ? "ARC / Cancels" : (f.arcStage||f.stage)
+              };
+            })}
               style={{width:46,height:26,borderRadius:99,background:form.isArc?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:12}}>
               <div style={{position:"absolute",top:3,left:form.isArc?20:3,width:20,height:20,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
             </div>
           </div>
           {form.isArc && (
             <div style={{marginTop:10,fontSize:12,color:"#7f1d1d",background:"#fee2e2",borderRadius:8,padding:"6px 10px"}}>
-              This lead will be marked as cancelled at stage: <strong>{form.arcStage||form.stage}</strong>
+              This lead will move to the ARC column. Stats will count it at: <strong>{form.arcStage}</strong>
             </div>
           )}
         </div>
@@ -2019,7 +2028,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
-          {lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
+          {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
         </div>
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -2060,7 +2069,11 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
       let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);
     };
     const onEnd=()=>{
-      setDragId(null);setDragOver(over=>{if(over)onStageChange(id,over);return null;});stopScroll();
+      setDragId(null);setDragOver(over=>{
+        // Prevent dragging into ARC column via drag-drop
+        if(over && over!=="ARC / Cancels") onStageChange(id,over);
+        return null;
+      });stopScroll();
       if(isMouse){window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);}
       else{window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onEnd);}
     };
@@ -2109,8 +2122,9 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
-              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`}}>
-                <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{fontSize:12,fontWeight:700,color:stage==="ARC / Cancels"?"#ef4444":dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
+                {stage==="ARC / Cancels"&&<span style={{fontSize:9,fontWeight:700,color:"#ef4444",opacity:0.7}}>ARC ONLY</span>}
               </div>
               <div style={{padding:"10px 10px 6px",minHeight:80}}>
                 {stageLeads.length===0?(
