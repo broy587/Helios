@@ -105,7 +105,7 @@ const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
 const STAGE_COLORS = {
@@ -121,7 +121,6 @@ const STAGE_COLORS = {
   "Install Scheduled":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "Install":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
-  "ARC / Cancels":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"}
 };
 
 function getStageColor(stage) {
@@ -131,7 +130,7 @@ function getStageColor(stage) {
 const STAGE_PROGRESSION = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
   "No Close / No Numbers","No Close / Numbers","Failed Credit","VC / SRA",
-  "Cap / Permitting","Install Scheduled","Install","PTO / REP","ARC / Cancels"
+  "Cap / Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
 const MILESTONE_INDEX = {
@@ -143,26 +142,12 @@ const MILESTONE_INDEX = {
 };
 
 function getEffectiveStageIndex(lead) {
-  if (!lead.is_arc) return STAGE_PROGRESSION.indexOf(lead.stage);
-  // For arced leads: use arc_stage if valid and not ARC itself
-  if (lead.arc_stage && lead.arc_stage !== "ARC / Cancels") {
-    return STAGE_PROGRESSION.indexOf(lead.arc_stage);
+  // ARC leads: count only up to the stage they were in before being ARCed
+  if (lead.is_arc) {
+    if (lead.arc_stage) return STAGE_PROGRESSION.indexOf(lead.arc_stage);
+    return -1; // no arc_stage = don't count
   }
-  // Fallback: scan history for last non-ARC stage
-  if (lead.history && lead.history.length > 0) {
-    for (const entry of lead.history) {
-      for (const change of (entry.changes||[])) {
-        // History entries look like: "Stage: "X" to "ARC / Cancels""
-        const match = change.match(/Stage: "(.+)" to "ARC \/ Cancels"/);
-        if (match && match[1]) {
-          const idx = STAGE_PROGRESSION.indexOf(match[1]);
-          if (idx >= 0) return idx;
-        }
-      }
-    }
-  }
-  // If nothing found, don't count this lead for any milestone
-  return -1;
+  return STAGE_PROGRESSION.indexOf(lead.stage);
 }
 function milestoneCount(leads, milestone) {
   const minIdx = MILESTONE_INDEX[milestone];
@@ -1990,8 +1975,8 @@ function LeadModal({open,onClose,onSave,initial}) {
               return {
                 ...f,
                 isArc: turningOn,
-                arcStage: turningOn ? f.stage : "",
-                stage: turningOn ? "ARC / Cancels" : (f.arcStage||f.stage)
+                arcStage: turningOn ? f.stage : ""
+                // stage does NOT change — ARC is a flag, not a stage
               };
             })}
               style={{width:46,height:26,borderRadius:99,background:form.isArc?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:12}}>
@@ -2000,7 +1985,7 @@ function LeadModal({open,onClose,onSave,initial}) {
           </div>
           {form.isArc && (
             <div style={{marginTop:10,fontSize:12,color:"#7f1d1d",background:"#fee2e2",borderRadius:8,padding:"6px 10px"}}>
-              This lead will move to the ARC column. Stats will count it at: <strong>{form.arcStage}</strong>
+              This lead will appear in the ARC column. Stats will count up to: <strong>{form.arcStage||form.stage}</strong>
             </div>
           )}
         </div>
@@ -2134,14 +2119,14 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
+        {/* Main pipeline stages — no ARC */}
         {STAGES.map(stage=>{
-          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage),isOver=dragOver===stage;
+          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
-              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <div style={{fontSize:12,fontWeight:700,color:stage==="ARC / Cancels"?"#ef4444":dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
-                {stage==="ARC / Cancels"&&<span style={{fontSize:9,fontWeight:700,color:"#ef4444",opacity:0.7}}>ARC ONLY</span>}
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`}}>
+                <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
               </div>
               <div style={{padding:"10px 10px 6px",minHeight:80}}>
                 {stageLeads.length===0?(
@@ -2153,6 +2138,25 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
             </div>
           );
         })}
+        {/* ARC / Cancels — separate column, no drag-drop */}
+        {(()=>{
+          const arcLeads=leads.filter(l=>l.is_arc);
+          return (
+            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #ef4444`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.9}}>
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fee2e2"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff5f5",borderRadius:"12px 12px 0 0"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#ef4444",lineHeight:1.3}}>ARC / Cancels</div>
+                <span style={{fontSize:9,fontWeight:700,color:"#ef4444",opacity:0.8,background:"#fee2e2",padding:"2px 6px",borderRadius:4}}>NO DRAG</span>
+              </div>
+              <div style={{padding:"10px 10px 6px",minHeight:80}}>
+                {arcLeads.length===0?(
+                  <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No cancelled leads</div>
+                ):arcLeads.map(lead=>(
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       {dragId&&draggingLead && (
         <div style={{position:"fixed",left:dragPos.x-100,top:dragPos.y-22,width:200,background:"#fff",border:"2px solid #f97316",borderRadius:10,padding:"10px 14px",boxShadow:"0 8px 30px rgba(0,0,0,0.25)",pointerEvents:"none",zIndex:9999,fontWeight:700,fontSize:14,color:"#1e293b",transform:"rotate(2deg)"}}>
@@ -2616,7 +2620,7 @@ function App() {
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",appointment:form.appointment||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",appointment:form.appointment||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,history:newHistory,updated_at:new Date().toISOString()};
     if(modal.lead&&modal.lead.id){await sb.from("leads").update(payload).eq("id",modal.lead.id);}
     else{await sb.from("leads").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,lead:null});
