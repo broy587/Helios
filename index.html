@@ -105,6 +105,7 @@ const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
 
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "Stale / No Reschedule",
   "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
@@ -114,6 +115,7 @@ const STAGE_COLORS = {
   "AC / Scheduled":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
   "No Show / No Contact":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
   "No Show / Contact":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "Stale / No Reschedule":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / No Offer":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / Offer Given":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "Failed Credit":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
@@ -131,6 +133,7 @@ function getStageColor(stage) {
 
 const STAGE_PROGRESSION = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "Stale / No Reschedule",
   "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
