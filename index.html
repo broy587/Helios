@@ -415,7 +415,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
           <StatCard label="CAP" value={milestoneCount(myLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(myLeads,"CAP"),milestoneCount(myLeads,"VC"))+" of VCs"}/>
-          <StatCard label="Installs" value={milestoneCount(myLeads,"Install")} color="#10b981" sub={pct(milestoneCount(myLeads,"Install"),milestoneCount(myLeads,"CAP"))+" of CAPs"}/>
+          <StatCard label="Install" value={milestoneCount(myLeads,"Install")} color="#10b981" sub={pct(milestoneCount(myLeads,"Install"),milestoneCount(myLeads,"CAP"))+" of CAPs"}/>
           <StatCard label="PTO" value={milestoneCount(myLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(myLeads,"PTO"),milestoneCount(myLeads,"Install"))+" of Installs"}/>
         </div>
       </div>
@@ -440,7 +440,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
             <StatCard label="CAP" value={milestoneCount(teamLeads,"CAP")} color="#8b5cf6"/>
-            <StatCard label="Installs" value={milestoneCount(teamLeads,"Install")} color="#10b981"/>
+            <StatCard label="Install" value={milestoneCount(teamLeads,"Install")} color="#10b981"/>
             <StatCard label="PTO" value={milestoneCount(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
         </div>
@@ -484,7 +484,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
                     <StatCard label="CAP" value={milestoneCount(rLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(rLeads,"CAP"),milestoneCount(rLeads,"VC"))+" of VCs"}/>
-                    <StatCard label="Installs" value={milestoneCount(rLeads,"Install")} color="#10b981" sub={pct(milestoneCount(rLeads,"Install"),milestoneCount(rLeads,"CAP"))+" of CAPs"}/>
+                    <StatCard label="Install" value={milestoneCount(rLeads,"Install")} color="#10b981" sub={pct(milestoneCount(rLeads,"Install"),milestoneCount(rLeads,"CAP"))+" of CAPs"}/>
                     <StatCard label="PTO" value={milestoneCount(rLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(rLeads,"PTO"),milestoneCount(rLeads,"Install"))+" of Installs"}/>
                   </div>
                 </div>
@@ -623,8 +623,8 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
       {goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
         <div>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
-          <GoalBar label="CAPs" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
-          <GoalBar label="Installs" current={inst} goal={goal.install_goal||0} color="#10b981"/>
+          <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
+          <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
           <GoalBar label="PTO" current={pto} goal={goal.pto_goal||0} color="#f59e0b"/>
         </div>
       ) : (
@@ -643,7 +643,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["vc_goal","VC","#6366f1"],["cap_goal","CAPs","#8b5cf6"],["install_goal","Installs","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
