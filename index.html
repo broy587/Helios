@@ -179,69 +179,73 @@ function getLastQuarterRange() {
   return { start:new Date(yr,pq*3,1,0,0,0,0), end:new Date(yr,pq*3+3,0,23,59,59,999) };
 }
 function getQuarterLabel(d) { return `Q${getQuarter(d)+1} ${d.getFullYear()}`; }
-function filterLeadsByRange(leads, range) {
-  if (!range) return leads;
-  return leads.filter(l => { const ts=new Date(l.created_at); return ts>=range.start && ts<=range.end; });
+// ── Stats helpers ────────────────────────────────────────────────────
+
+// Parse a history timestamp string into a Date safely
+function parseHistoryDate(ts) {
+  if (!ts) return null;
+  try {
+    // Format: "Jun 12, 2026 at 1:23 PM"
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) return d;
+    // Try replacing "at" with comma
+    const d2 = new Date(ts.replace(' at ', ', '));
+    if (!isNaN(d2.getTime())) return d2;
+  } catch(e) {}
+  return null;
 }
 
-// Get the timestamp when a lead first reached a given stage (or beyond)
-// by scanning history entries from oldest to newest
+// For a lead, find the earliest date it first reached minStageIdx
 function getStageReachedAt(lead, minStageIdx) {
-  try {
-    if (!lead.history || lead.history.length === 0) {
-      return new Date(lead.created_at);
-    }
-    const chronological = [...lead.history].reverse();
-    for (const entry of chronological) {
-      if (!entry || !entry.changes) continue;
-      for (const change of entry.changes) {
-        if (typeof change !== 'string') continue;
-        const match = change.match(/Stage: ".+" to "(.+)"/);
-        if (match && match[1]) {
-          const newStageIdx = STAGE_PROGRESSION.indexOf(match[1]);
-          if (newStageIdx >= minStageIdx && entry.ts) {
-            try {
-            const d = new Date(entry.ts);
-            if (!isNaN(d.getTime())) return d;
-          } catch(e) {}
-          continue;
-          }
-        }
+  // history is newest-first; reverse to get oldest-first
+  const history = Array.isArray(lead.history) ? [...lead.history].reverse() : [];
+  for (const entry of history) {
+    if (!entry || !Array.isArray(entry.changes)) continue;
+    for (const change of entry.changes) {
+      if (typeof change !== 'string') continue;
+      const match = change.match(/Stage: ".*?" to "(.+?)"/);
+      if (!match) continue;
+      const toStage = match[1];
+      const toIdx = STAGE_PROGRESSION.indexOf(toStage);
+      if (toIdx >= minStageIdx) {
+        const d = parseHistoryDate(entry.ts);
+        if (d) return d;
       }
     }
-    return new Date(lead.created_at);
-  } catch(e) {
-    return new Date(lead.created_at);
   }
+  // Fallback: if lead was created already at or past this stage, use created_at
+  const createdIdx = STAGE_PROGRESSION.indexOf(lead.stage);
+  if (createdIdx >= minStageIdx) return new Date(lead.created_at);
+  return null;
 }
 
-// Time-aware milestone count — counts leads that REACHED the milestone within the range
+// Count leads that reached a milestone within a date range
 function milestoneCountInRange(leads, milestone, range) {
-  try {
-    const minIdx = MILESTONE_INDEX[milestone];
-    if (minIdx === undefined) return 0;
-    return leads.filter(l => {
-      try {
-        const effectiveIdx = getEffectiveStageIndex(l);
-        if (effectiveIdx < minIdx) return false;
-        if (!range) return true;
-        const reachedAt = getStageReachedAt(l, minIdx);
-        if (!reachedAt) return false;
-        const rs = range.start instanceof Date ? range.start : new Date(range.start);
-        const re = range.end instanceof Date ? range.end : new Date(range.end);
-        return reachedAt >= rs && reachedAt <= re;
-      } catch(e) { return false; }
-    }).length;
-  } catch(e) { return 0; }
+  const minIdx = MILESTONE_INDEX[milestone];
+  if (minIdx === undefined) return 0;
+  let count = 0;
+  for (const lead of leads) {
+    const effectiveIdx = getEffectiveStageIndex(lead);
+    if (effectiveIdx < minIdx) continue;
+    if (!range) { count++; continue; }
+    const reachedAt = getStageReachedAt(lead, minIdx);
+    if (!reachedAt) continue;
+    if (reachedAt >= range.start && reachedAt <= range.end) count++;
+  }
+  return count;
 }
 
-// Lead count in range = leads created in the period
+// Leads created within a date range
 function leadsInRange(leads, range) {
   if (!range) return leads;
   return leads.filter(l => {
     const ts = new Date(l.created_at);
     return ts >= range.start && ts <= range.end;
   });
+}
+
+function filterLeadsByRange(leads, range) {
+  return leadsInRange(leads, range);
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -2913,7 +2917,7 @@ function App() {
           </div>
         )}
         {tab==="stats"&&(
-          <StatsView leads={visibleLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+          <StatsView leads={leads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
             timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
             customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
             selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
