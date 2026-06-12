@@ -2025,11 +2025,17 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
             </div>
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
           </div>
-          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter]].map(([label,value])=>value||label==="ESIID"||label==="Meter #"?(
+          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["📊 Smart Meter Texas",null]].map(([label,value])=>value||label==="ESIID"||label==="Meter #"||label==="📊 Smart Meter Texas"?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                 <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>{value||<span style={{color:"#94a3b8",fontStyle:"italic"}}>Not set</span>}</div>
+                {label==="📊 Smart Meter Texas" && (
+                  <a href="https://www.smartmetertexas.com/home" target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0}}>
+                    Open ›
+                  </a>
+                )}
                 {label==="ESIID" && (
                   <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
                     target="_blank" rel="noreferrer"
@@ -2037,12 +2043,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                     🔍 Lookup
                   </a>
                 )}
-                {label==="Meter #" && (
-                  <a href="https://www.smartmetertexas.com/home" target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:11,fontWeight:700,color:"#065f46",flexShrink:0,whiteSpace:"nowrap"}}>
-                    ⚡ SMT
-                  </a>
-                )}
+
                 {label==="Phone" && (
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
                     <a href={`tel:${value}`} style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:15}}>📞</a>
