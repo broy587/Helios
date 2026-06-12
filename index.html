@@ -1511,20 +1511,15 @@ function RecruitModal({open,onClose,onSave,initial}) {
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Input</label>
-          <div style={{display:"flex",gap:8}}>
-            {["Yes","No"].map(opt=>(
-              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,usageInput:f.usageInput===opt?"":opt}))}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,
-                  background:form.usageInput===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",
-                  color:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",
-                  fontWeight:form.usageInput===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                <span style={{width:12,height:12,borderRadius:"50%",border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,
-                  background:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
-                {opt}
-              </button>
-            ))}
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Pulled</label>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:form.usageInput==="No"?"#ef4444":"#94a3b8",fontWeight:form.usageInput==="No"?700:400}}>No</span>
+            <div onClick={()=>setForm(f=>({...f,usageInput:f.usageInput==="Yes"?"No":"Yes"}))}
+              style={{width:44,height:24,borderRadius:99,background:form.usageInput==="Yes"?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:form.usageInput==="Yes"?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+            </div>
+            <span style={{fontSize:12,color:form.usageInput==="Yes"?"#10b981":"#94a3b8",fontWeight:form.usageInput==="Yes"?700:400}}>Yes</span>
           </div>
         </div>
         <div style={{marginBottom:14}}>
@@ -2048,15 +2043,13 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                 <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>
                   {label==="📊 Smart Meter Texas" ? (
                     <div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Input</div>
-                      <div style={{display:"flex",gap:8}}>
-                        {["Yes","No"].map(opt=>(
-                          <span key={opt} style={{padding:"3px 14px",borderRadius:20,fontSize:12,fontWeight:700,
-                            background:lead.usage_input===opt?(opt==="Yes"?"#d1fae5":"#fee2e2"):"#f1f5f9",
-                            color:lead.usage_input===opt?(opt==="Yes"?"#065f46":"#7f1d1d"):"#94a3b8"}}>
-                            {opt}
-                          </span>
-                        ))}
+                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Pulled</div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                        <span style={{fontSize:12,color:lead.usage_input==="No"?"#ef4444":"#94a3b8",fontWeight:lead.usage_input==="No"?700:400}}>No</span>
+                        <div style={{width:44,height:24,borderRadius:99,background:lead.usage_input==="Yes"?"#10b981":"#e2e8f0",position:"relative",flexShrink:0}}>
+                          <div style={{position:"absolute",top:3,left:lead.usage_input==="Yes"?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+                        </div>
+                        <span style={{fontSize:12,color:lead.usage_input==="Yes"?"#10b981":"#94a3b8",fontWeight:lead.usage_input==="Yes"?700:400}}>Yes</span>
                       </div>
                     </div>
                   ) : (value||"")}
@@ -2238,20 +2231,15 @@ function LeadModal({open,onClose,onSave,initial}) {
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Input</label>
-          <div style={{display:"flex",gap:8}}>
-            {["Yes","No"].map(opt=>(
-              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,usageInput:f.usageInput===opt?"":opt}))}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,
-                  background:form.usageInput===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",
-                  color:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",
-                  fontWeight:form.usageInput===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                <span style={{width:12,height:12,borderRadius:"50%",border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,
-                  background:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
-                {opt}
-              </button>
-            ))}
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Pulled</label>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:form.usageInput==="No"?"#ef4444":"#94a3b8",fontWeight:form.usageInput==="No"?700:400}}>No</span>
+            <div onClick={()=>setForm(f=>({...f,usageInput:f.usageInput==="Yes"?"No":"Yes"}))}
+              style={{width:44,height:24,borderRadius:99,background:form.usageInput==="Yes"?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:form.usageInput==="Yes"?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+            </div>
+            <span style={{fontSize:12,color:form.usageInput==="Yes"?"#10b981":"#94a3b8",fontWeight:form.usageInput==="Yes"?700:400}}>Yes</span>
           </div>
         </div>
         <div style={{marginBottom:14}}>
