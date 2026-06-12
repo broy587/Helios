@@ -1942,20 +1942,21 @@ function CloseSection({form,setForm,readOnly,lead}) {
 function EmailButton({email}) {
   const [showOptions, setShowOptions] = useState(false);
 
-  const tryMailtoApp = () => {
-    // Test if mailto opens an app by trying and detecting if page loses focus
-    let appOpened = false;
-    const onBlur = () => { appOpened = true; };
-    window.addEventListener('blur', onBlur);
-    window.location.href = `mailto:${email}`;
+  const openGmailApp = () => {
+    // Try Gmail app URL scheme
+    const gmailUrl = `googlegmail://co?to=${encodeURIComponent(email)}`;
+    const start = Date.now();
+    window.location.href = gmailUrl;
+    // If Gmail app isn't installed, page won't blur — detect after delay
     setTimeout(()=>{
-      window.removeEventListener('blur', onBlur);
-      if (!appOpened) alert("No mail app available on this device.");
+      if (Date.now() - start < 2000) {
+        alert("Gmail app is not available on this device.");
+      }
     }, 1500);
     setShowOptions(false);
   };
 
-  const openGmail = () => {
+  const openGmailBrowser = () => {
     window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}`, '_blank');
     setShowOptions(false);
   };
@@ -1967,12 +1968,12 @@ function EmailButton({email}) {
       {showOptions && (
         <>
           <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowOptions(false)}/>
-          <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,0.18)",border:"1.5px solid #e2e8f0",zIndex:1000,minWidth:180,overflow:"hidden"}}>
-            <button onClick={tryMailtoApp}
+          <div style={{position:"absolute",right:0,top:"calc(100% + 6px)",background:"#fff",borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,0.18)",border:"1.5px solid #e2e8f0",zIndex:1000,minWidth:190,overflow:"hidden"}}>
+            <button onClick={openGmailApp}
               style={{width:"100%",padding:"12px 16px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",textAlign:"left",fontSize:13,fontWeight:600,color:"#0f172a",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-              <span>📱</span> Open in Mail App
+              <span>📱</span> Open Gmail App
             </button>
-            <button onClick={openGmail}
+            <button onClick={openGmailBrowser}
               style={{width:"100%",padding:"12px 16px",border:"none",background:"#fff",textAlign:"left",fontSize:13,fontWeight:600,color:"#0f172a",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
               <span>🌐</span> Open Gmail in Browser
             </button>
