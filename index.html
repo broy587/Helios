@@ -1975,7 +1975,23 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter",lead.meter]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
-              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>{value}</div>
+                {label==="Phone" && (
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <a href={`tel:${value}`} style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:15}}>📞</a>
+                    <a href={`sms:${value}`} style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#dbeafe",textDecoration:"none",fontSize:15}}>💬</a>
+                  </div>
+                )}
+                {label==="Email" && (
+                  <a href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fee2e2",textDecoration:"none",fontSize:15,flexShrink:0}}>✉️</a>
+                )}
+                {label==="Address" && (
+                  <a href={`https://maps.google.com/?q=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fef3c7",textDecoration:"none",fontSize:15,flexShrink:0}}>📍</a>
+                )}
+              </div>
             </div>
           ):null)}
           {lead.notes && (
