@@ -513,13 +513,13 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:14}}>My Stats</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
           <StatCard label="Leads" value={myLeadsInRange.length} color="#f97316"/>
-          <StatCard label="ACs" value={mc(myLeads,"AC")} color="#3b82f6" sub={pct(mc(myLeads,"AC"),myLeadsInRange.length)+" of leads"}/>
-          <StatCard label="VCs" value={mc(myLeads,"VC")} color="#6366f1" sub={pct(mc(myLeads,"VC"),mc(myLeads,"AC"))+" of ACs"}/>
+          <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
+          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6" sub={pct(mc(myLeads,"CAP"),mc(myLeads,"VC"))+" of VCs"}/>
-          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981" sub={pct(mc(myLeads,"Install"),mc(myLeads,"CAP"))+" of CAPs"}/>
-          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b" sub={pct(mc(myLeads,"PTO"),mc(myLeads,"Install"))+" of Installs"}/>
+          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6"/>
+          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981"/>
+          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
         </div>
       </div>
 
@@ -538,8 +538,8 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
           {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
             <StatCard label="Leads" value={teamLeadsInRange.length} color="#f97316"/>
-            <StatCard label="ACs" value={tmc(teamLeads,"AC")} color="#3b82f6" sub={pct(tmc(teamLeads,"AC"),teamLeadsInRange.length)+" of leads"}/>
-            <StatCard label="VCs" value={tmc(teamLeads,"VC")} color="#6366f1" sub={pct(tmc(teamLeads,"VC"),tmc(teamLeads,"AC"))+" of ACs"}/>
+            <StatCard label="AC" value={tmc(teamLeads,"AC")} color="#3b82f6"/>
+            <StatCard label="VC" value={tmc(teamLeads,"VC")} color="#6366f1"/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
             <StatCard label="CAP" value={tmc(teamLeads,"CAP")} color="#8b5cf6"/>
@@ -561,9 +561,12 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         {/* Rep list */}
         {filteredReps.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps found.</div>}
         {filteredReps.map(rep=>{
-          const rLeads=leads.filter(l=>l.owner_id===rep.id);
-          const rLeadsInRange=leadsInRange(rLeads,range);
-          const rmc=(m)=>milestoneCountInRange(rLeads,m,range);
+          let rLeads=[], rLeadsInRange=[], rmc=()=>0;
+          try {
+            rLeads=(leads||[]).filter(l=>l.owner_id===rep.id);
+            rLeadsInRange=leadsInRange(rLeads,range);
+            rmc=(m)=>{try{return milestoneCountInRange(rLeads,m,range);}catch(e){return 0;}};
+          } catch(e) {}
           const isSelected=selectedRepId===rep.id;
           return (
             <div key={rep.id}>
@@ -575,7 +578,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
                   </div>
                   <div>
                     <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
-                    <div style={{fontSize:11,color:"#94a3b8"}}>{rLeadsInRange.length} lead{rLeadsInRange.length!==1?"s":""}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{rLeadsInRange.length} lead{rLeadsInRange.length!==1?"s":""} · {rmc("AC")} AC · {rmc("VC")} VC</div>
                   </div>
                 </div>
                 <span style={{color:"#94a3b8",fontSize:14,fontWeight:700}}>{isSelected?"▲":"▼"}</span>
@@ -584,13 +587,13 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
                 <div style={{background:"#fff",borderRadius:"0 0 12px 12px",padding:"14px 16px",marginBottom:8,border:"1.5px solid #f97316",borderTop:"1.5px solid #f1f5f9",boxShadow:"0 2px 8px rgba(249,115,22,0.08)"}}>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
                     <StatCard label="Leads" value={rLeadsInRange.length} color="#f97316"/>
-                    <StatCard label="ACs" value={rmc("AC")} color="#3b82f6" sub={pct(rmc("AC"),rLeadsInRange.length)+" of leads"}/>
-                    <StatCard label="VCs" value={rmc("VC")} color="#6366f1" sub={pct(rmc("VC"),rmc("AC"))+" of ACs"}/>
+                    <StatCard label="AC" value={rmc("AC")} color="#3b82f6"/>
+                    <StatCard label="VC" value={rmc("VC")} color="#6366f1"/>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                    <StatCard label="CAP" value={rmc("CAP")} color="#8b5cf6" sub={pct(rmc("CAP"),rmc("VC"))+" of VCs"}/>
-                    <StatCard label="Install" value={rmc("Install")} color="#10b981" sub={pct(rmc("Install"),rmc("CAP"))+" of CAPs"}/>
-                    <StatCard label="PTO" value={rmc("PTO")} color="#f59e0b" sub={pct(rmc("PTO"),rmc("Install"))+" of Installs"}/>
+                    <StatCard label="CAP" value={rmc("CAP")} color="#8b5cf6"/>
+                    <StatCard label="Install" value={rmc("Install")} color="#10b981"/>
+                    <StatCard label="PTO" value={rmc("PTO")} color="#f59e0b"/>
                   </div>
                 </div>
               )}
