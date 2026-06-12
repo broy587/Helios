@@ -1130,6 +1130,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
 
 // ── Invite codes section (used inside team management) ─────────────────
 function InviteCodesSection({currentUser, onRefresh}) {
+  const dark=useDark();
   const [codes,setCodes]=useState([]);
   const [loading,setLoading]=useState(true);
 
@@ -1151,14 +1152,14 @@ function InviteCodesSection({currentUser, onRefresh}) {
 
   return (
     <>
-      <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #f97316",background:"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
+      <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #f97316",background:dark?"#1e293b":"#fff",color:"#f97316",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
       {codes.filter(c=>!c.used_by).map(code=>(
-        <div key={code.code} style={{background:"#fff",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+        <div key={code.code} style={{background:dark?"#1e293b":"#fff",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
           <div>
-            <div style={{fontWeight:700,fontSize:15,color:"#0f172a",letterSpacing:"0.08em"}}>{code.code}</div>
+            <div style={{fontWeight:700,fontSize:15,color:dark?"#f1f5f9":"#0f172a",letterSpacing:"0.08em"}}>{code.code}</div>
             <div style={{fontSize:11,color:"#94a3b8"}}>Unused</div>
           </div>
-          <button onClick={()=>navigator.clipboard.writeText(code.code)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:"#475569",cursor:"pointer"}}>Copy</button>
+          <button onClick={()=>navigator.clipboard.writeText(code.code)} style={{background:dark?"#334155":"#f1f5f9",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:dark?"#e2e8f0":"#475569",cursor:"pointer"}}>Copy</button>
         </div>
       ))}
     </>
@@ -1886,7 +1887,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const handleMouseDown=e=>{
     if(e.button!==0)return;
     e.preventDefault();
-    onTouchDragStart(e,lead.id);
+    onTouchDragStart({_isMouse:true, _mouseEvent:e},lead.id);
   };
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
@@ -1896,7 +1897,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
-          <div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
+          <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
         </div>
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -2605,21 +2606,21 @@ function App() {
               <div style={{background:dark?"#0f172a":"#f8fafc",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
-                  style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="mine"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="mine"?"#f97316":"#fff",color:pipelineSubTab==="mine"?"#fff":"#64748b",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
+                  style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="mine"?"#f97316":dark?"#334155":"#e2e8f0"}`,background:pipelineSubTab==="mine"?"#f97316":dark?"#1e293b":"#fff",color:pipelineSubTab==="mine"?"#fff":dark?"#94a3b8":"#64748b",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
                   My Pipeline
                 </button>
                 {/* Team pill + dropdown */}
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setTeamDropOpen(o=>!o);setRepDropOpen(false);if(!pipelineFilter.startsWith("team:")&&visibleTeams.length>0)setPipelineFilter(`team:${visibleTeams[0].id}`);}}
-                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="team"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="team"?"#f97316":"#fff",color:pipelineSubTab==="team"?"#fff":"#64748b",fontWeight:pipelineSubTab==="team"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="team"?"#f97316":dark?"#334155":"#e2e8f0"}`,background:pipelineSubTab==="team"?"#f97316":dark?"#1e293b":"#fff",color:pipelineSubTab==="team"?"#fff":dark?"#94a3b8":"#64748b",fontWeight:pipelineSubTab==="team"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
                     {pipelineSubTab==="team"&&activeTeamId?(visibleTeams.find(t=>t.id===activeTeamId)?.name||"Team"):"Team"}
                     <span style={{fontSize:9,opacity:0.7}}>{teamDropOpen?"▲":"▼"}</span>
                   </button>
                   {teamDropOpen&&visibleTeams.length>0&&(
-                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden"}}>
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:300,minWidth:160,overflow:"hidden"}}>
                       {visibleTeams.map(t=>(
                         <button key={t.id} onClick={()=>{setPipelineFilter(`team:${t.id}`);setTeamDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":"#fff",color:activeTeamId===t.id?"#f97316":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":dark?"#1e293b":"#fff",color:activeTeamId===t.id?"#f97316":dark?"#e2e8f0":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
                           {t.name}
                         </button>
                       ))}
@@ -2629,15 +2630,15 @@ function App() {
                 {/* Reps pill + dropdown */}
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setRepDropOpen(o=>!o);setTeamDropOpen(false);if(!pipelineFilter.startsWith("rep:")&&visibleReps.length>0)setPipelineFilter(`rep:${visibleReps[0].id}`);}}
-                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="rep"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="rep"?"#f97316":"#fff",color:pipelineSubTab==="rep"?"#fff":"#64748b",fontWeight:pipelineSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="rep"?"#f97316":dark?"#334155":"#e2e8f0"}`,background:pipelineSubTab==="rep"?"#f97316":dark?"#1e293b":"#fff",color:pipelineSubTab==="rep"?"#fff":dark?"#94a3b8":"#64748b",fontWeight:pipelineSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
                     {pipelineSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps"}
                     <span style={{fontSize:9,opacity:0.7}}>{repDropOpen?"▲":"▼"}</span>
                   </button>
                   {repDropOpen&&visibleReps.length>0&&(
-                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
                       {visibleReps.map(r=>(
                         <button key={r.id} onClick={()=>{setPipelineFilter(`rep:${r.id}`);setRepDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":"#fff",color:activeRepId===r.id?"#f97316":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":dark?"#1e293b":"#fff",color:activeRepId===r.id?"#f97316":dark?"#e2e8f0":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
                           {r.name}
                         </button>
                       ))}
