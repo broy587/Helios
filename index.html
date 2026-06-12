@@ -1540,7 +1540,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
           {[["Phone",recruit.phone],["Email",recruit.email],["Social Media",recruit.social_media]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
-              <div style={{fontSize:14,color:"#1e293b"}}>{value}</div>
+              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
             </div>
           ):null)}
           {recruit.notes&&(
@@ -1554,7 +1554,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
               <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Change History</div>
               {recruit.history.map((entry,i)=>(
                 <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<recruit.history.length-1?"1px solid #f1f5f9":"none"}}>
-                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>{entry.ts}</div>
+                  <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>{entry.ts}</div>
                   {entry.changes.map((ch,j)=><div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #f97316"}}>{ch}</div>)}
                 </div>
               ))}
@@ -1890,14 +1890,15 @@ function CloseSection({form,setForm,readOnly,lead}) {
     {key:"decisionMakers",db:"decision_makers",label:"Were all decision makers present?"}
   ];
   if (readOnly) {
+    const dark=useDark();
     const hasAny=questions.some(q=>lead&&lead[q.db]);
     if (!hasAny) return null;
     return (
-      <div style={{marginBottom:16,background:"#f8fafc",borderRadius:12,padding:"14px",border:"1.5px solid #e2e8f0"}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Close</div>
+      <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Close</div>
         {questions.map(q=>{const v=lead[q.db];if(!v)return null;return(
           <div key={q.key} style={{marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-            <div style={{fontSize:12,color:"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
             <span style={{padding:"2px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:v==="Yes"?"#d1fae5":"#fee2e2",color:v==="Yes"?"#065f46":"#7f1d1d",whiteSpace:"nowrap"}}>{v}</span>
           </div>
         );})}
@@ -1952,10 +1953,10 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
     <div style={{position:"fixed",inset:0,zIndex:1000}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-        <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
+        <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
-              <div style={{fontSize:20,fontWeight:800,color:"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
+              <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
@@ -1974,13 +1975,13 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           {[["Address",lead.address],["Phone",lead.phone],["Appointment",lead.appointment],["ESIID",lead.esiid],["Meter",lead.meter]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
-              <div style={{fontSize:14,color:"#1e293b"}}>{value}</div>
+              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
             </div>
           ):null)}
           {lead.notes && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
-              <div style={{fontSize:14,color:"#475569",background:"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{lead.notes}</div>
+              <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{lead.notes}</div>
             </div>
           )}
           {photosLoading && <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Loading photos...</div>}
@@ -2003,7 +2004,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
               <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Change History</div>
               {lead.history.map((entry,i)=>(
                 <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<lead.history.length-1?"1px solid #f1f5f9":"none"}}>
-                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>{entry.ts}</div>
+                  <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>{entry.ts}</div>
                   {entry.changes.map((ch,j)=>(
                     <div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #f97316"}}>{ch}</div>
                   ))}
@@ -2013,7 +2014,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           )}
           {showTransfer && (
             <div style={{background:"#f0f9ff",border:"1.5px solid #3b82f6",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:14,color:"#1e3a8a",marginBottom:8}}>Transfer Lead to Rep</div>
+              <div style={{fontWeight:700,fontSize:14,color:dark?"#93c5fd":"#1e3a8a",marginBottom:8}}>Transfer Lead to Rep</div>
               <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} style={{...inputStyle,marginBottom:10}}>
                 <option value="">Select a rep...</option>
                 {repProfiles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
