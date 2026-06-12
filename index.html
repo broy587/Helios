@@ -2771,9 +2771,9 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
     setTimeout(()=>setSent(false),3000);
   };
 
-  const handleResolve = async (id, resolved) => {
-    await sb.from("support_tickets").update({resolved:!resolved}).eq("id",id);
-    setTickets(ts=>ts.map(t=>t.id===id?{...t,resolved:!resolved}:t));
+  const handleResolve = async (id) => {
+    await sb.from("support_tickets").delete().eq("id",id);
+    setTickets(ts=>ts.filter(t=>t.id!==id));
   };
 
   return (
@@ -2802,15 +2802,15 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
             {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
             {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No tickets yet.</div>}
             {tickets.map(t=>(
-              <div key={t.id} style={{background:t.resolved?"#f0fdf4":"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${t.resolved?"#10b981":"#e2e8f0"}`,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+              <div key={t.id} style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:"1.5px solid #e2e8f0",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
                     <div style={{fontSize:11,color:"#94a3b8"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
                   </div>
-                  <button onClick={()=>handleResolve(t.id,t.resolved)}
-                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${t.resolved?"#10b981":"#e2e8f0"}`,background:t.resolved?"#d1fae5":"#fff",color:t.resolved?"#065f46":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                    {t.resolved?"✓ Resolved":"Mark Resolved"}
+                  <button onClick={()=>handleResolve(t.id)}
+                    style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                    Resolve
                   </button>
                 </div>
                 <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>{t.message}</div>
@@ -2824,7 +2824,7 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
 }
 
 // ── Hamburger Drawer ──────────────────────────────────────────────────
-function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner}) {
+function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner, unreadTickets, onTicketRead}) {
   const darkCtx=useDark();
   const [page, setPage] = useState("menu"); // menu | profile | settings | report
 
@@ -2834,7 +2834,7 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
   const menuItems = [
     {key:"profile", icon:"👤", label:"Profile"},
     {key:"settings", icon:"⚙️", label:"Settings"},
-    {key:"report", icon:"🚩", label:"Report an Issue"},
+    {key:"report", icon:"🚩", label:"Report an Issue", badge:isOwner&&unreadTickets>0?unreadTickets:0},
   ];
 
   return (
@@ -2866,6 +2866,7 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
                 style={{width:"100%",padding:"16px 20px",border:"none",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`,background:dark?"#1e293b":"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left"}}>
                 <span style={{fontSize:20,width:28,textAlign:"center"}}>{item.icon}</span>
                 <span style={{fontSize:15,fontWeight:600,color:dark?"#f1f5f9":"#0f172a",flex:1}}>{item.label}</span>
+                {item.badge>0 && <span style={{background:"#ef4444",color:"#fff",borderRadius:99,fontSize:10,fontWeight:800,padding:"1px 6px",marginRight:4}}>{item.badge}</span>}
                 <span style={{color:"#cbd5e1",fontSize:16}}>›</span>
               </button>
             ))}
@@ -2902,6 +2903,7 @@ function App() {
   const [user,setUser]=useState(null);
   const [profile,setProfile]=useState(null);
   const [drawerOpen,setDrawerOpen]=useState(false);
+  const [unreadTickets,setUnreadTickets]=useState(0);
   const [dark,setDark]=useDarkMode();
   const [loading,setLoading]=useState(true);
   const [leads,setLeads]=useState([]);
@@ -2934,6 +2936,19 @@ function App() {
       else setLoading(false);
     });
   },[]);
+
+  // Load unread ticket count for owner
+  useEffect(()=>{
+    if (!user || user.id!==OWNER_ID) return;
+    const loadTicketCount = async () => {
+      const {count} = await sb.from("support_tickets").select("*",{count:"exact",head:true});
+      setUnreadTickets(count||0);
+    };
+    loadTicketCount();
+    // Poll every 60 seconds
+    const interval = setInterval(loadTicketCount, 60000);
+    return ()=>clearInterval(interval);
+  },[user]);
 
   // Auto-set team tab to user's first team once teams load (if no saved state)
   useEffect(()=>{
@@ -3211,12 +3226,19 @@ function App() {
             <div style={{color:"#94a3b8",fontSize:11}}>{profile.name} · {isOwner?"owner":profile.role}</div>
           </div>
         </div>
-        <button onClick={()=>setDrawerOpen(true)}
-          style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",borderRadius:8,padding:"8px 10px",cursor:"pointer",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",width:36,height:36}}>
-          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
-          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
-          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
-        </button>
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setDrawerOpen(true)}
+            style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",borderRadius:8,padding:"8px 10px",cursor:"pointer",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",width:36,height:36}}>
+            <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+          </button>
+          {isOwner && unreadTickets>0 && (
+            <div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",border:"2px solid #1e293b",pointerEvents:"none"}}>
+              {unreadTickets>9?"9+":unreadTickets}
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{background:dark?"#1e293b":"#fff",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"0 16px",overflowX:"auto"}}>
@@ -3339,6 +3361,8 @@ function App() {
         setDark={setDark}
         onSignOut={handleSignOut}
         isOwner={isOwner}
+        unreadTickets={unreadTickets}
+        onTicketRead={()=>setUnreadTickets(0)}
       />
     </div>
     </DarkCtx.Provider>
