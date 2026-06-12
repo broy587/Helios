@@ -1919,7 +1919,7 @@ function AppointmentPicker({value,onChange}) {
   );
 }
 
-function CloseSection({form,setForm,readOnly,lead}) {
+function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   const questions=[
     {key:"billRetrieved",db:"bill_retrieved",label:"Was the bill input?"},
     {key:"knewSolar",db:"knew_solar",label:"Did homeowner know solar was/could be involved?"},
@@ -1934,7 +1934,9 @@ function CloseSection({form,setForm,readOnly,lead}) {
       const cur = getValue(q);
       const next = cur==="Yes"?"No":"Yes";
       setLocalVals(v=>({...v,[q.db]:next}));
-      await sb.from("leads").update({[q.db]:next||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      await sb.from("leads").update({[q.db]:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      // Update parent lead object so reopening shows correct value
+      if (onUpdate) onUpdate({...lead,[q.db]:next});
     };
     return (
       <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
@@ -2072,12 +2074,13 @@ function HistorySection({lead, dark}) {
   );
 }
 
-function UsagePulledToggle({leadId, initialValue}) {
+function UsagePulledToggle({leadId, initialValue, onUpdate}) {
   const [val, setVal] = React.useState(initialValue);
   const toggle = async () => {
     const next = val==="Yes" ? "No" : "Yes";
     setVal(next);
     await sb.from("leads").update({usage_input:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+    if (onUpdate) onUpdate(next);
   };
   const isYes = val==="Yes";
   const isNo = val==="No";
@@ -2133,7 +2136,7 @@ function EmailButton({email}) {
   );
 }
 
-function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
+function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate}) {
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -2187,7 +2190,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                   {label==="📊 Smart Meter Texas" ? (
                     <div>
                       <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Pulled</div>
-                      <UsagePulledToggle leadId={lead.id} initialValue={lead.usage_input||""}/>
+                      <UsagePulledToggle leadId={lead.id} initialValue={lead.usage_input||""} onUpdate={(v)=>onUpdate&&onUpdate({...lead,usage_input:v})}/>
                     </div>
                   ) : (value||"")}
                 </div>
@@ -2249,7 +2252,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
               </div>
             </div>
           )}
-          <CloseSection readOnly={true} lead={lead}/>
+          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
           )}
@@ -2642,7 +2645,8 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
-          repProfiles={[]} onTransfer={()=>{}}/>
+          repProfiles={[]} onTransfer={()=>{}}
+          onUpdate={updated=>onLeadView(updated,"update")}/>
       )}
     </div>
   );
@@ -3321,7 +3325,7 @@ function App() {
               </div>
             )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
-              onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else setDetailId(typeof l==="string"?l:l.id);}}/>
+              onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}/>
           </>
         )}
         {tab==="recruits"&&(
@@ -3368,7 +3372,8 @@ function App() {
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
-          repProfiles={repProfiles} onTransfer={handleTransfer}/>
+          repProfiles={repProfiles} onTransfer={handleTransfer}
+          onUpdate={updated=>setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l))}/>
       )}
 
       <HamburgerDrawer
