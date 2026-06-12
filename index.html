@@ -1708,6 +1708,21 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showTransfer,setShowTransfer]=useState(false);
   const [transferTo,setTransferTo]=useState("");
+  const [photos,setPhotos]=useState([]);
+  const [photosLoading,setPhotosLoading]=useState(false);
+
+  useEffect(()=>{
+    if(!lead) return;
+    setPhotos([]);
+    // Lazy load bill_photos only when modal opens
+    setPhotosLoading(true);
+    sb.from("leads").select("bill_photos").eq("id",lead.id).single()
+      .then(({data})=>{
+        setPhotos(data?.bill_photos||[]);
+        setPhotosLoading(false);
+      });
+  },[lead?.id]);
+
   if (!lead) return null;
   const colors=getStageColor(lead.stage);
   return (
@@ -1745,11 +1760,12 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
               <div style={{fontSize:14,color:"#475569",background:"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{lead.notes}</div>
             </div>
           )}
-          {lead.bill_photos&&lead.bill_photos.length>0 && (
+          {photosLoading && <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Loading photos...</div>}
+          {photos.length>0 && (
             <div style={{marginBottom:18}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Utility Bills ({lead.bill_photos.length})</div>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Utility Bills ({photos.length})</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                {lead.bill_photos.map((p,i)=>(
+                {photos.map((p,i)=>(
                   <div key={i} style={{position:"relative"}}>
                     <img src={p} onClick={()=>setImgOpen(i)} style={{width:"100%",height:90,borderRadius:8,border:"1.5px solid #e2e8f0",cursor:"zoom-in",objectFit:"cover"}}/>
                     <div style={{position:"absolute",bottom:4,right:5,fontSize:10,color:"#fff",background:"rgba(0,0,0,0.5)",borderRadius:4,padding:"1px 4px"}}>{i+1}</div>
@@ -1807,14 +1823,14 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           )}
         </div>
       </div>
-      {imgOpen!==null&&lead.bill_photos&&lead.bill_photos[imgOpen] && (
+      {imgOpen!==null&&photos&&photos[imgOpen] && (
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
-          <img src={lead.bill_photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain"}}/>
+          <img src={photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"80vh",borderRadius:8,objectFit:"contain"}}/>
           <div style={{display:"flex",gap:12,marginTop:16,alignItems:"center"}}>
             <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.max(0,i-1));}} disabled={imgOpen===0}
               style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>‹</button>
-            <span style={{color:"#fff",fontSize:13}}>{imgOpen+1} / {lead.bill_photos.length}</span>
-            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===lead.bill_photos.length-1}
+            <span style={{color:"#fff",fontSize:13}}>{imgOpen+1} / {photos.length}</span>
+            <button onClick={e=>{e.stopPropagation();setImgOpen(i=>Math.min(lead.bill_photos.length-1,i+1));}} disabled={imgOpen===photos.length-1}
               style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 18px",fontSize:18}}>›</button>
           </div>
           <div style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}} onClick={()=>setImgOpen(null)}>✕</div>
@@ -1829,7 +1845,20 @@ function LeadModal({open,onClose,onSave,initial}) {
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
   const fileInputRef=useRef(null);
-  useEffect(()=>{setForm(initial||emptyForm);setSaving(false);},[initial,open]);
+  useEffect(()=>{
+    if(initial&&initial.id&&open){
+      // Lazy load photos when editing
+      setForm({...initial,billPhotos:[]});
+      setSaving(false);
+      sb.from("leads").select("bill_photos").eq("id",initial.id).single()
+        .then(({data})=>{
+          setForm(f=>({...f,billPhotos:data?.bill_photos||[]}));
+        });
+    } else {
+      setForm(initial||emptyForm);
+      setSaving(false);
+    }
+  },[initial?.id,open]);
   if (!open) return null;
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const handleSave=async()=>{setSaving(true);await onSave(form);setSaving(false);};
@@ -2462,7 +2491,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("*").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,appointment,esiid,meter,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -2490,7 +2519,7 @@ function App() {
         setTeamGoals(goalsGrouped);
       } else {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("*").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,appointment,esiid,meter,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
