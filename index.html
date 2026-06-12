@@ -21,9 +21,31 @@
     input, select, textarea, button { font-family: inherit; }
     ::-webkit-scrollbar { display: none; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    /* Dark mode */
-    body.dark { background:#0f172a; }
-    body.dark input, body.dark select, body.dark textarea { background:#1e293b!important; color:#e2e8f0!important; border-color:#334155!important; }
+    /* ── Dark Mode via CSS custom properties ───────────────────────── */
+    :root {
+      --bg-app:#f1f5f9; --bg-card:#ffffff; --bg-input:#f8fafc; --bg-subtle:#f1f5f9;
+      --text-primary:#0f172a; --text-secondary:#475569; --text-muted:#94a3b8;
+      --border:#e2e8f0; --border-subtle:#f1f5f9;
+      --shadow:rgba(0,0,0,0.06);
+    }
+    body.dark {
+      --bg-app:#0f172a; --bg-card:#1e293b; --bg-input:#0f172a; --bg-subtle:#0d1929;
+      --text-primary:#f1f5f9; --text-secondary:#94a3b8; --text-muted:#64748b;
+      --border:#334155; --border-subtle:#1e293b;
+      --shadow:rgba(0,0,0,0.3);
+    }
+    body.dark { background:var(--bg-app) !important; }
+    body.dark input, body.dark select, body.dark textarea {
+      background:var(--bg-input) !important; color:var(--text-primary) !important;
+      border-color:var(--border) !important;
+    }
+    /* Universal card/surface override */
+    body.dark .dp-card { background:var(--bg-card) !important; border-color:var(--border) !important; color:var(--text-primary) !important; }
+    body.dark .dp-subtle { background:var(--bg-subtle) !important; }
+    body.dark .dp-border { border-color:var(--border) !important; }
+    body.dark .dp-text { color:var(--text-primary) !important; }
+    body.dark .dp-text-2 { color:var(--text-secondary) !important; }
+    body.dark .dp-btn { background:var(--bg-card) !important; color:var(--text-primary) !important; border-color:var(--border) !important; }
     /* Drawer */
     .drawer { position:fixed; top:0; right:0; bottom:0; width:min(300px,85vw); background:#fff; z-index:5000; transform:translateX(100%); transition:transform 0.28s cubic-bezier(0.4,0,0.2,1); box-shadow:-8px 0 40px rgba(0,0,0,0.18); display:flex; flex-direction:column; }
     .drawer.open { transform:translateX(0); }
@@ -66,7 +88,11 @@
 </div>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useContext, createContext } = React;
+const DarkCtx = createContext(false);
+function useDark() { return useContext(DarkCtx); }
+// Theme helper — returns correct color based on dark mode
+function th(dark, light, darkVal) { return dark ? darkVal : light; }
 
 const SUPABASE_URL = "https://hnjsezlfefduyihoiqbb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
@@ -261,10 +287,11 @@ function AuthScreen({ onAuth }) {
 
 // ── Stat card ─────────────────────────────────────────────────────────
 function StatCard({label,value,color,sub}) {
+  const dark=useDark();
   return (
-    <div style={{background:"#fff",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+    <div style={{background:dark?"#1e293b":"#fff",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
       <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
-      <div style={{fontSize:11,color:"#0f172a",fontWeight:600,marginTop:2}}>{label}</div>
+      <div style={{fontSize:11,color:dark?"#e2e8f0":"#0f172a",fontWeight:600,marginTop:2}}>{label}</div>
       {sub && <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{sub}</div>}
     </div>
   );
@@ -364,6 +391,7 @@ function TimeFilterBar({active,onSelect}) {
 function StatsView({leads, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
+  const dark=useDark();
   const [showDatePicker,setShowDatePicker]=useState(false);
 
   const handleFilterSelect = (key) => {
@@ -408,7 +436,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
   const selectedRepLeads = selectedRep ? filteredLeads.filter(l=>l.owner_id===selectedRep.id) : [];
 
   return (
-    <div style={{padding:"20px 16px"}}>
+    <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f1f5f9",minHeight:"100%"}}>
       <div style={{marginBottom:16}}>
         <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect}/>
       </div>
@@ -527,17 +555,18 @@ function getQuarterlyProgress(leads, teamMemberIds) {
 }
 
 function GoalBar({label, current, goal, color}) {
+  const dark=useDark();
   const pct = goal > 0 ? Math.min(100, Math.round((current/goal)*100)) : 0;
   const done = current >= goal && goal > 0;
   return (
     <div style={{marginBottom:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <span style={{fontSize:12,fontWeight:600,color:"#475569"}}>{label}</span>
+        <span style={{fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569"}}>{label}</span>
         <span style={{fontSize:12,fontWeight:700,color:done?"#10b981":color}}>
           {current}/{goal||"—"} {done&&"✓"}
         </span>
       </div>
-      <div style={{background:"#f1f5f9",borderRadius:99,height:7,overflow:"hidden"}}>
+      <div style={{background:dark?"#334155":"#f1f5f9",borderRadius:99,height:7,overflow:"hidden"}}>
         <div style={{width:`${pct}%`,height:"100%",background:done?"#10b981":color,borderRadius:99,transition:"width 0.4s ease"}}/>
       </div>
     </div>
@@ -545,6 +574,7 @@ function GoalBar({label, current, goal, color}) {
 }
 
 function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
+  const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
   const [form, setForm] = useState({vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
@@ -607,9 +637,9 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
   const goal = isWeekly?weeklyGoal:quarterlyGoal;
 
   return (
-    <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1.5px solid #e2e8f0"}}>
+    <div style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"16px",marginBottom:16,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>Team Goals</div>
+        <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Team Goals</div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {/* Period toggle */}
           <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>
@@ -748,6 +778,7 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
 }
 
 function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamGoals, setTeamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
+  const dark=useDark();
   const isOwner = currentUser.id === OWNER_ID;
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
@@ -834,7 +865,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
     : allReps.filter(r=>memberIds.includes(r.id));
 
   return (
-    <div style={{padding:"20px 16px"}}>
+    <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f1f5f9",minHeight:"100%"}}>
 
       {/* Team selector dropdown + add button */}
       <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:20}}>
@@ -925,7 +956,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
         const repTeams=getRepTeams(rep.id);
         const isOpen=repActionOpen===rep.id;
         return (
-          <div key={rep.id} style={{background:"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+          <div key={rep.id} style={{background:dark?"#1e293b":"#fff",borderRadius:12,padding:"12px 14px",marginBottom:8,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
               <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#e0e7ff,#c7d2fe)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:15,color:"#4338ca",flexShrink:0}}>
                 {rep.name[0].toUpperCase()}
@@ -1151,7 +1182,7 @@ function RecruitModal({open,onClose,onSave,initial}) {
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-      <div style={{background:"#fff",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Recruit":"Add Recruit"}</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>X</button>
@@ -1255,6 +1286,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
 }
 
 function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
+  const dark=useDark();
   const colors=getRecruitStageColor(recruit.stage);
   const holdTimer=useRef(null);
   const moved=useRef(false);
@@ -1272,8 +1304,8 @@ function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onClick={()=>{if(!moved.current)onView(recruit);}}
-      style={{background:"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"none"}}>
-      <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{fullName}</div>
+      style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"none"}}>
+      <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{fullName}</div>
     </div>
   );
 }
@@ -1282,7 +1314,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   recruitsFilter, setRecruitsFilter,
   recruitsTeamDropOpen, setRecruitsTeamDropOpen,
   recruitsRepDropOpen, setRecruitsRepDropOpen}) {
-
+  const dark=useDark();
   const isOwner = currentUser && currentUser.id===OWNER_ID;
   const isPrivileged = isOwner || currentUser.role==="manager";
   const [recruits,setRecruits]=useState([]);
@@ -1396,7 +1428,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       {/* Filter bar — same style as pipeline */}
       {isPrivileged && (
-        <div style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",borderTop:"1.5px solid #e2e8f0",display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
           <button onClick={()=>{setRecruitsFilter("mine");setRecruitsTeamDropOpen(false);setRecruitsRepDropOpen(false);}}
             style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${recruitsSubTab==="mine"?"#f97316":"#e2e8f0"}`,background:recruitsSubTab==="mine"?"#f97316":"#fff",color:recruitsSubTab==="mine"?"#fff":"#64748b",fontWeight:recruitsSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
             My Recruits
@@ -1441,20 +1473,20 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
 
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px 0"}}>
-        <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Recruits</div>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Recruits</div>
         <button onClick={()=>setModal({open:true,recruit:null})}
           style={{background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14}}>+ Add</button>
       </div>
 
       {/* Board */}
-      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1}}>
+      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
         {RECRUIT_STAGES.map(stage=>{
           const colors=getRecruitStageColor(stage);
           const stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
           const isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
-              style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:"0 1px 4px rgba(0,0,0,0.06)"}}>
+              style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
               <div style={{padding:"12px 14px 10px",borderBottom:"1.5px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#1e293b",lineHeight:1.3}}>{stage}</div>
                 <span style={{background:colors.badge,color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11,fontWeight:700}}>{stageRecruits.length}</span>
@@ -1598,6 +1630,7 @@ function CloseSection({form,setForm,readOnly,lead}) {
 }
 
 function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
+  const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showTransfer,setShowTransfer]=useState(false);
@@ -1608,7 +1641,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
     <div style={{position:"fixed",inset:0,zIndex:1000}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-        <div style={{background:"#fff",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
+        <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
               <div style={{fontSize:20,fontWeight:800,color:"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
@@ -1718,6 +1751,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
 }
 
 function LeadModal({open,onClose,onSave,initial}) {
+  const dark=useDark();
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
   const fileInputRef=useRef(null);
@@ -1736,7 +1770,7 @@ function LeadModal({open,onClose,onSave,initial}) {
   const removePhoto=idx=>setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-      <div style={{background:"#fff",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
@@ -1834,6 +1868,7 @@ function LeadModal({open,onClose,onSave,initial}) {
 }
 
 function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
+  const dark=useDark();
   const colors=getStageColor(lead.stage);
   const holdTimer=useRef(null);
   const moved=useRef(false);
@@ -1856,7 +1891,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onMouseDown={handleMouseDown}
       onClick={()=>{if(!moved.current)onView(lead);}}
-      style={{background:"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:1,touchAction:"none"}}>
+      style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:1,touchAction:"none"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
@@ -1875,6 +1910,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
 }
 
 function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
+  const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -1922,9 +1958,9 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
             onChange={e=>{setSearch(e.target.value);setShowDropdown(true);}}
             onFocus={()=>{if(search)setShowDropdown(true);}}
             onBlur={()=>setTimeout(()=>setShowDropdown(false),200)}
-            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:13,outline:"none",background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",boxSizing:"border-box"}}/>
           {showDropdown&&search&&dropdownResults.length>0 && (
-            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",marginTop:4,maxHeight:280,overflowY:"auto",zIndex:300}}>
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:4,maxHeight:280,overflowY:"auto",zIndex:300}}>
               {dropdownResults.map(lead=>{const colors=getStageColor(lead.stage);return(
                 <div key={lead.id} onMouseDown={()=>{setSearch("");setShowDropdown(false);setDetailId(lead.id);}}
                   style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1943,14 +1979,14 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
         </div>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
-      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1}}>
+      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
         {STAGES.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
-              style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:"0 1px 4px rgba(0,0,0,0.06)"}}>
-              <div style={{padding:"12px 14px 10px",borderBottom:"1.5px solid #f1f5f9"}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#1e293b",lineHeight:1.3}}>{stage}</div>
+              style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#e2e8f0"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`}}>
+                <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
               </div>
               <div style={{padding:"10px 10px 6px",minHeight:80}}>
                 {stageLeads.length===0?(
@@ -1991,6 +2027,7 @@ function useDarkMode() {
 
 // ── Profile Page ──────────────────────────────────────────────────────
 function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
+  const dark=useDark();
   const [nickname, setNickname] = useState(profile.nickname||"");
   const [birthday, setBirthday] = useState(profile.birthday||"");
   const [avatar, setAvatar] = useState(profile.avatar_url||"");
@@ -2016,10 +2053,10 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
   };
 
   return (
-    <div style={{flex:1,overflowY:"auto"}}>
+    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
-        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Profile</div>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Profile</div>
       </div>
 
       {/* Avatar */}
@@ -2063,16 +2100,16 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
 // ── Settings Page ─────────────────────────────────────────────────────
 function SettingsPage({onBack, dark, setDark}) {
   return (
-    <div style={{flex:1,overflowY:"auto"}}>
+    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
-        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Settings</div>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Settings</div>
       </div>
       <div style={{padding:"0 20px"}}>
-        <div style={{background:"#f8fafc",borderRadius:12,padding:"16px",border:"1.5px solid #e2e8f0"}}>
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:14,fontWeight:700,color:"#0f172a"}}>Dark Mode</div>
+              <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>Dark Mode</div>
               <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Switch to a darker color scheme</div>
             </div>
             <div onClick={()=>setDark(d=>!d)}
@@ -2088,6 +2125,7 @@ function SettingsPage({onBack, dark, setDark}) {
 
 // ── Report Issue Page ─────────────────────────────────────────────────
 function ReportIssuePage({onBack, user, profile, isOwner}) {
+  const dark=useDark();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -2119,10 +2157,10 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
   };
 
   return (
-    <div style={{flex:1,overflowY:"auto"}}>
+    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
-        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Report an Issue</div>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Report an Issue</div>
       </div>
       <div style={{padding:"0 20px"}}>
         {sent && <div style={{background:"#d1fae5",border:"1.5px solid #10b981",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#065f46",marginBottom:16}}>Ticket submitted! We'll look into it.</div>}
@@ -2167,6 +2205,7 @@ function ReportIssuePage({onBack, user, profile, isOwner}) {
 
 // ── Hamburger Drawer ──────────────────────────────────────────────────
 function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner}) {
+  const darkCtx=useDark();
   const [page, setPage] = useState("menu"); // menu | profile | settings | report
 
   // Reset to menu when drawer closes
@@ -2204,14 +2243,14 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
           <div style={{flex:1,overflowY:"auto",padding:"12px 0"}}>
             {menuItems.map((item,i)=>(
               <button key={item.key} onClick={()=>setPage(item.key)}
-                style={{width:"100%",padding:"16px 20px",border:"none",borderBottom:`1px solid #f1f5f9`,background:"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left"}}>
+                style={{width:"100%",padding:"16px 20px",border:"none",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`,background:dark?"#1e293b":"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left"}}>
                 <span style={{fontSize:20,width:28,textAlign:"center"}}>{item.icon}</span>
-                <span style={{fontSize:15,fontWeight:600,color:"#0f172a",flex:1}}>{item.label}</span>
+                <span style={{fontSize:15,fontWeight:600,color:dark?"#f1f5f9":"#0f172a",flex:1}}>{item.label}</span>
                 <span style={{color:"#cbd5e1",fontSize:16}}>›</span>
               </button>
             ))}
             <button onClick={()=>{onClose();onSignOut();}}
-              style={{width:"100%",padding:"16px 20px",border:"none",borderTop:"1.5px solid #f1f5f9",background:"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left",marginTop:8}}>
+              style={{width:"100%",padding:"16px 20px",border:"none",borderTop:`1.5px solid ${dark?"#334155":"#f1f5f9"}`,background:dark?"#1e293b":"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left",marginTop:8}}>
               <span style={{fontSize:20,width:28,textAlign:"center"}}>🚪</span>
               <span style={{fontSize:15,fontWeight:600,color:"#ef4444",flex:1}}>Log Out</span>
             </button>
@@ -2532,7 +2571,8 @@ function App() {
   ];
 
   return (
-    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column"}}>
+    <DarkCtx.Provider value={dark}>
+    <div style={{minHeight:"100vh",background:dark?"#0f172a":"#f1f5f9",display:"flex",flexDirection:"column"}}>
       <div style={{background:"linear-gradient(135deg,#1e293b,#0f172a)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,0.2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>☀</div>
@@ -2549,10 +2589,10 @@ function App() {
         </button>
       </div>
 
-      <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",display:"flex",padding:"0 16px",overflowX:"auto"}}>
+      <div style={{background:dark?"#1e293b":"#fff",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"0 16px",overflowX:"auto"}}>
         {tabs.map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
-            style={{padding:"12px 16px",border:"none",borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`,background:"none",color:tab===key?"#f97316":"#94a3b8",fontWeight:tab===key?700:500,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>{label}</button>
+            style={{padding:"12px 16px",border:"none",borderBottom:`2px solid ${tab===key?"#f97316":"transparent"}`,background:"none",color:tab===key?"#f97316":dark?"#64748b":"#94a3b8",fontWeight:tab===key?700:500,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>{label}</button>
         ))}
       </div>
 
@@ -2561,7 +2601,7 @@ function App() {
           <>
             {/* Pipeline sub-tab bar */}
             {isPrivileged && (
-              <div style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",borderTop:"1.5px solid #e2e8f0",display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+              <div style={{background:dark?"#0f172a":"#f8fafc",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
                   style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="mine"?"#f97316":"#e2e8f0"}`,background:pipelineSubTab==="mine"?"#f97316":"#fff",color:pipelineSubTab==="mine"?"#fff":"#64748b",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
@@ -2669,6 +2709,7 @@ function App() {
         isOwner={isOwner}
       />
     </div>
+    </DarkCtx.Provider>
   );
 }
 
