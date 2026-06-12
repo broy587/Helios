@@ -1948,7 +1948,7 @@ function EmailButton({email}) {
   };
 
   const openGmailBrowser = () => {
-    window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}`, '_blank');
+    window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}`, '_blank', 'noopener');
     setShowOptions(false);
   };
 
@@ -2031,10 +2031,10 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                 <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>{value||<span style={{color:"#94a3b8",fontStyle:"italic"}}>Not set</span>}</div>
                 {label==="📊 Smart Meter Texas" && (
-                  <a href="https://www.smartmetertexas.com/home" target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0}}>
+                  <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener")}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",border:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0,cursor:"pointer"}}>
                     Open ›
-                  </a>
+                  </button>
                 )}
                 {label==="ESIID" && (
                   <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
@@ -2054,8 +2054,8 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                   <EmailButton email={value}/>
                 )}
                 {label==="Address" && (
-                  <a href={`https://maps.google.com/?q=${encodeURIComponent(value)}`} target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fef3c7",textDecoration:"none",fontSize:15,flexShrink:0}}>📍</a>
+                  <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fef3c7",border:"none",fontSize:15,flexShrink:0,cursor:"pointer"}}>📍</button>
                 )}
               </div>
             </div>
