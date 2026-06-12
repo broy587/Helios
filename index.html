@@ -535,7 +535,7 @@ function GoalBar({label, current, goal, color}) {
   );
 }
 
-function GoalsSection({teamId, teamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
+function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
   const [form, setForm] = useState({vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
@@ -566,14 +566,27 @@ function GoalsSection({teamId, teamGoals, leads, teamMemberIds, canEdit, current
   const handleSave = async () => {
     setSaving(true);
     const existing = editing==="weekly" ? weeklyGoal : quarterlyGoal;
-    if (existing && existing.id) {
-      await sb.from("team_goals").update({...form,updated_at:new Date().toISOString()}).eq("id",existing.id);
-    } else {
-      await sb.from("team_goals").insert({team_id:teamId,period:editing,...form,created_by:currentUserId,updated_at:new Date().toISOString()});
-    }
-    await onRefresh(); // refresh first so parent gets new data
+    const newGoalData = {...(existing||{}), ...form, team_id:teamId, period:editing, updated_at:new Date().toISOString()};
+
+    // Optimistic update — update local state immediately so UI feels instant
+    setTeamGoals(prev => ({
+      ...prev,
+      [teamId]: {
+        ...(prev[teamId]||{}),
+        [editing]: {...(prev[teamId]?.[editing]||{}), ...form}
+      }
+    }));
+    setEditing(null); // close modal right away
     setSaving(false);
-    setEditing(null); // close modal after data is fresh
+
+    // Save to Supabase in background
+    if (existing && existing.id) {
+      await sb.from("team_goals").update({...form, updated_at:new Date().toISOString()}).eq("id", existing.id);
+    } else {
+      const {data:inserted} = await sb.from("team_goals").insert({team_id:teamId, period:editing, ...form, created_by:currentUserId, updated_at:new Date().toISOString()}).select().single();
+      // Update local state with the real id so future edits work
+      if (inserted) setTeamGoals(prev=>({...prev,[teamId]:{...(prev[teamId]||{}),[editing]:inserted}}));
+    }
   };
 
   const tabs = [{key:"weekly",label:`This Week`},{key:"quarterly",label:getQuarterLabel(new Date())}];
@@ -633,8 +646,17 @@ function GoalsSection({teamId, teamGoals, leads, teamMemberIds, canEdit, current
             {[["vc_goal","VCs","#6366f1"],["cap_goal","CAPs","#8b5cf6"],["install_goal","Installs","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
-                <input type="number" min="0" value={form[k]}
-                  onChange={e=>setForm(f=>({...f,[k]:parseInt(e.target.value)||0}))}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={form[k]===0?"":form[k]}
+                  placeholder="0"
+                  onFocus={e=>e.target.select()}
+                  onChange={e=>{
+                    const val=e.target.value.replace(/[^0-9]/g,"");
+                    setForm(f=>({...f,[k]:val===""?0:parseInt(val)}));
+                  }}
                   style={{...inputStyle,borderColor:c}}/>
               </div>
             ))}
@@ -716,7 +738,7 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
   );
 }
 
-function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
+function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamGoals, setTeamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
   const isOwner = currentUser.id === OWNER_ID;
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
@@ -841,6 +863,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
           <GoalsSection
             teamId={selectedTeamId}
             teamGoals={teamGoals}
+            setTeamGoals={setTeamGoals}
             leads={leads}
             teamMemberIds={memberIds}
             canEdit={isOwner || currentUser.role==="manager"}
@@ -2342,7 +2365,7 @@ function App() {
             selectedRepId={statsRepId} setSelectedRepId={setStatsRepId}/>
         )}
         {tab==="team"&&isPrivileged&&(
-          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
+          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
       </div>
 
