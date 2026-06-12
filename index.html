@@ -501,25 +501,27 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
     setTimeFilter(key); setCustomRange(null);
   };
   const range = timeFilter==="custom" ? customRange : getFilterRange(timeFilter);
-  // Leads created in range (for "Leads" count)
-  const myLeadsInRange = leadsInRange(leads.filter(l=>l.owner_id===currentUser.id), range);
-  // All leads for milestone counting (time-aware)
-  const myLeads = leads.filter(l=>l.owner_id===currentUser.id);
+  // Deduplicate leads by ID to prevent any double counting
+  const uniqueLeads = Array.from(new Map((leads||[]).map(l=>[l.id,l])).values());
+  // My leads — all (including ARC for milestone history)
+  const myLeads = uniqueLeads.filter(l=>l.owner_id===currentUser.id);
+  // My active leads (non-ARC) created in range — for "Leads" count
+  const myLeadsInRange = leadsInRange(myLeads, range);
   const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
   // Helper: milestone count with time range
-  const mc = (leads, milestone) => milestoneCountInRange(leads, milestone, range);
+  const mc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
 
   const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner";
   const teamOptions = [{id:"all",name:"All Teams"},...teams];
 
   const getTeamLeads = () => {
-    if (selectedTeamId==="all") return leads;
+    if (selectedTeamId==="all") return uniqueLeads;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
-    return leads.filter(l=>memberIds.includes(l.owner_id));
+    return uniqueLeads.filter(l=>memberIds.includes(l.owner_id));
   };
   const teamLeads = getTeamLeads();
   const teamLeadsInRange = leadsInRange(teamLeads, range);
-  const tmc = (leads, milestone) => milestoneCountInRange(leads, milestone, range);
+  const tmc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
 
   const rangeLabel = (() => {
     if (timeFilter==="alltime") return "All Time";
@@ -598,7 +600,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         {filteredReps.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps found.</div>}
         {filteredReps.map(rep=>{
           const isSelected = selectedRepId===rep.id;
-          const rLeads = (leads||[]).filter(l=>l.owner_id===rep.id);
+          const rLeads = uniqueLeads.filter(l=>l.owner_id===rep.id);
           const rInRange = leadsInRange(rLeads, range);
           const rAC = milestoneCountInRange(rLeads,"AC",range);
           const rVC = milestoneCountInRange(rLeads,"VC",range);
