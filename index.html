@@ -184,6 +184,58 @@ function filterLeadsByRange(leads, range) {
   return leads.filter(l => { const ts=new Date(l.created_at); return ts>=range.start && ts<=range.end; });
 }
 
+// Get the timestamp when a lead first reached a given stage (or beyond)
+// by scanning history entries from oldest to newest
+function getStageReachedAt(lead, minStageIdx) {
+  if (!lead.history || lead.history.length === 0) {
+    // No history — use created_at as fallback
+    return new Date(lead.created_at);
+  }
+  // History is stored newest-first, so reverse to get chronological order
+  const chronological = [...lead.history].reverse();
+  for (const entry of chronological) {
+    for (const change of (entry.changes||[])) {
+      // Match "Stage: "X" to "Y"" pattern
+      const match = change.match(/Stage: ".+" to "(.+)"/);
+      if (match && match[1]) {
+        const newStageIdx = STAGE_PROGRESSION.indexOf(match[1]);
+        if (newStageIdx >= minStageIdx) {
+          // Parse the timestamp from the history entry
+          try {
+            return new Date(entry.ts);
+          } catch(e) { return null; }
+        }
+      }
+    }
+  }
+  // If never explicitly moved to this stage via history, use created_at
+  return new Date(lead.created_at);
+}
+
+// Time-aware milestone count — counts leads that REACHED the milestone within the range
+function milestoneCountInRange(leads, milestone, range) {
+  const minIdx = MILESTONE_INDEX[milestone];
+  if (minIdx === undefined) return 0;
+  return leads.filter(l => {
+    const effectiveIdx = getEffectiveStageIndex(l);
+    if (effectiveIdx < minIdx) return false; // hasn't reached this milestone
+    if (!range) return true; // all time — just check if reached
+    // Find when this lead first reached this milestone
+    const reachedAt = getStageReachedAt(l, minIdx);
+    if (!reachedAt) return false;
+    return reachedAt >= range.start && reachedAt <= range.end;
+  });
+}
+
+// Lead count in range = leads created in the period
+function leadsInRange(leads, range) {
+  if (!range) return leads;
+  return leads.filter(l => {
+    const ts = new Date(l.created_at);
+    return ts >= range.start && ts <= range.end;
+  });
+}
+
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const TIME_SLOTS = [
   "8:00 AM","8:30 AM","9:00 AM","9:30 AM","10:00 AM","10:30 AM",
@@ -405,19 +457,25 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
     setTimeFilter(key); setCustomRange(null);
   };
   const range = timeFilter==="custom" ? customRange : getFilterRange(timeFilter);
-  const filteredLeads = filterLeadsByRange(leads, range);
-  const myLeads = filteredLeads.filter(l=>l.owner_id===currentUser.id);
+  // Leads created in range (for "Leads" count)
+  const myLeadsInRange = leadsInRange(leads.filter(l=>l.owner_id===currentUser.id), range);
+  // All leads for milestone counting (time-aware)
+  const myLeads = leads.filter(l=>l.owner_id===currentUser.id);
   const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
+  // Helper: milestone count with time range
+  const mc = (leads, milestone) => milestoneCountInRange(leads, milestone, range);
 
   const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner";
   const teamOptions = [{id:"all",name:"All Teams"},...teams];
 
   const getTeamLeads = () => {
-    if (selectedTeamId==="all") return filteredLeads;
+    if (selectedTeamId==="all") return leads;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
-    return filteredLeads.filter(l=>memberIds.includes(l.owner_id));
+    return leads.filter(l=>memberIds.includes(l.owner_id));
   };
   const teamLeads = getTeamLeads();
+  const teamLeadsInRange = leadsInRange(teamLeads, range);
+  const tmc = (leads, milestone) => milestoneCountInRange(leads, milestone, range);
 
   const rangeLabel = (() => {
     if (timeFilter==="alltime") return "All Time";
@@ -452,14 +510,14 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
       <div style={{marginBottom:28}}>
         <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:14}}>My Stats</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-          <StatCard label="Leads" value={myLeads.length} color="#f97316"/>
-          <StatCard label="ACs" value={milestoneCount(myLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(myLeads,"AC"),myLeads.length)+" of leads"}/>
-          <StatCard label="VCs" value={milestoneCount(myLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(myLeads,"VC"),milestoneCount(myLeads,"AC"))+" of ACs"}/>
+          <StatCard label="Leads" value={myLeadsInRange.length} color="#f97316"/>
+          <StatCard label="ACs" value={mc(myLeads,"AC")} color="#3b82f6" sub={pct(mc(myLeads,"AC"),myLeadsInRange.length)+" of leads"}/>
+          <StatCard label="VCs" value={mc(myLeads,"VC")} color="#6366f1" sub={pct(mc(myLeads,"VC"),mc(myLeads,"AC"))+" of ACs"}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          <StatCard label="CAP" value={milestoneCount(myLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(myLeads,"CAP"),milestoneCount(myLeads,"VC"))+" of VCs"}/>
-          <StatCard label="Install" value={milestoneCount(myLeads,"Install")} color="#10b981" sub={pct(milestoneCount(myLeads,"Install"),milestoneCount(myLeads,"CAP"))+" of CAPs"}/>
-          <StatCard label="PTO" value={milestoneCount(myLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(myLeads,"PTO"),milestoneCount(myLeads,"Install"))+" of Installs"}/>
+          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6" sub={pct(mc(myLeads,"CAP"),mc(myLeads,"VC"))+" of VCs"}/>
+          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981" sub={pct(mc(myLeads,"Install"),mc(myLeads,"CAP"))+" of CAPs"}/>
+          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b" sub={pct(mc(myLeads,"PTO"),mc(myLeads,"Install"))+" of Installs"}/>
         </div>
       </div>
 
@@ -477,14 +535,14 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
           </div>
           {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-            <StatCard label="Leads" value={teamLeads.length} color="#f97316"/>
-            <StatCard label="ACs" value={milestoneCount(teamLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(teamLeads,"AC"),teamLeads.length)+" of leads"}/>
-            <StatCard label="VCs" value={milestoneCount(teamLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(teamLeads,"VC"),milestoneCount(teamLeads,"AC"))+" of ACs"}/>
+            <StatCard label="Leads" value={teamLeadsInRange.length} color="#f97316"/>
+            <StatCard label="ACs" value={tmc(teamLeads,"AC")} color="#3b82f6" sub={pct(tmc(teamLeads,"AC"),teamLeadsInRange.length)+" of leads"}/>
+            <StatCard label="VCs" value={tmc(teamLeads,"VC")} color="#6366f1" sub={pct(tmc(teamLeads,"VC"),tmc(teamLeads,"AC"))+" of ACs"}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
-            <StatCard label="CAP" value={milestoneCount(teamLeads,"CAP")} color="#8b5cf6"/>
-            <StatCard label="Install" value={milestoneCount(teamLeads,"Install")} color="#10b981"/>
-            <StatCard label="PTO" value={milestoneCount(teamLeads,"PTO")} color="#f59e0b"/>
+            <StatCard label="CAP" value={tmc(teamLeads,"CAP")} color="#8b5cf6"/>
+            <StatCard label="Install" value={tmc(teamLeads,"Install")} color="#10b981"/>
+            <StatCard label="PTO" value={tmc(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
         </div>
       )}
@@ -501,7 +559,9 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         {/* Rep list */}
         {filteredReps.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps found.</div>}
         {filteredReps.map(rep=>{
-          const rLeads=filteredLeads.filter(l=>l.owner_id===rep.id);
+          const rLeads=leads.filter(l=>l.owner_id===rep.id);
+          const rLeadsInRange=leadsInRange(rLeads,range);
+          const rmc=(m)=>milestoneCountInRange(rLeads,m,range);
           const isSelected=selectedRepId===rep.id;
           return (
             <div key={rep.id}>
@@ -513,7 +573,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
                   </div>
                   <div>
                     <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{rep.name}</div>
-                    <div style={{fontSize:11,color:"#94a3b8"}}>{rLeads.length} lead{rLeads.length!==1?"s":""}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{rLeadsInRange.length} lead{rLeadsInRange.length!==1?"s":""}</div>
                   </div>
                 </div>
                 <span style={{color:"#94a3b8",fontSize:14,fontWeight:700}}>{isSelected?"▲":"▼"}</span>
@@ -521,14 +581,14 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
               {isSelected && (
                 <div style={{background:"#fff",borderRadius:"0 0 12px 12px",padding:"14px 16px",marginBottom:8,border:"1.5px solid #f97316",borderTop:"1.5px solid #f1f5f9",boxShadow:"0 2px 8px rgba(249,115,22,0.08)"}}>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
-                    <StatCard label="Leads" value={rLeads.length} color="#f97316"/>
-                    <StatCard label="ACs" value={milestoneCount(rLeads,"AC")} color="#3b82f6" sub={pct(milestoneCount(rLeads,"AC"),rLeads.length)+" of leads"}/>
-                    <StatCard label="VCs" value={milestoneCount(rLeads,"VC")} color="#6366f1" sub={pct(milestoneCount(rLeads,"VC"),milestoneCount(rLeads,"AC"))+" of ACs"}/>
+                    <StatCard label="Leads" value={rLeadsInRange.length} color="#f97316"/>
+                    <StatCard label="ACs" value={rmc("AC")} color="#3b82f6" sub={pct(rmc("AC"),rLeadsInRange.length)+" of leads"}/>
+                    <StatCard label="VCs" value={rmc("VC")} color="#6366f1" sub={pct(rmc("VC"),rmc("AC"))+" of ACs"}/>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                    <StatCard label="CAP" value={milestoneCount(rLeads,"CAP")} color="#8b5cf6" sub={pct(milestoneCount(rLeads,"CAP"),milestoneCount(rLeads,"VC"))+" of VCs"}/>
-                    <StatCard label="Install" value={milestoneCount(rLeads,"Install")} color="#10b981" sub={pct(milestoneCount(rLeads,"Install"),milestoneCount(rLeads,"CAP"))+" of CAPs"}/>
-                    <StatCard label="PTO" value={milestoneCount(rLeads,"PTO")} color="#f59e0b" sub={pct(milestoneCount(rLeads,"PTO"),milestoneCount(rLeads,"Install"))+" of Installs"}/>
+                    <StatCard label="CAP" value={rmc("CAP")} color="#8b5cf6" sub={pct(rmc("CAP"),rmc("VC"))+" of VCs"}/>
+                    <StatCard label="Install" value={rmc("Install")} color="#10b981" sub={pct(rmc("Install"),rmc("CAP"))+" of CAPs"}/>
+                    <StatCard label="PTO" value={rmc("PTO")} color="#f59e0b" sub={pct(rmc("PTO"),rmc("Install"))+" of Installs"}/>
                   </div>
                 </div>
               )}
