@@ -21,6 +21,15 @@
     input, select, textarea, button { font-family: inherit; }
     ::-webkit-scrollbar { display: none; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Dark mode */
+    body.dark { background:#0f172a; }
+    body.dark input, body.dark select, body.dark textarea { background:#1e293b!important; color:#e2e8f0!important; border-color:#334155!important; }
+    /* Drawer */
+    .drawer { position:fixed; top:0; right:0; bottom:0; width:min(300px,85vw); background:#fff; z-index:5000; transform:translateX(100%); transition:transform 0.28s cubic-bezier(0.4,0,0.2,1); box-shadow:-8px 0 40px rgba(0,0,0,0.18); display:flex; flex-direction:column; }
+    .drawer.open { transform:translateX(0); }
+    .drawer-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:4999; opacity:0; pointer-events:none; transition:opacity 0.28s; }
+    .drawer-overlay.open { opacity:1; pointer-events:all; }
+    body.dark .drawer { background:#1e293b; }
     #splash {
       position:fixed;inset:0;background:linear-gradient(135deg,#0f172a,#1e293b);
       display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -1969,10 +1978,272 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
   );
 }
 
+
+// ── Dark mode helper ──────────────────────────────────────────────────
+function useDarkMode() {
+  const [dark, setDark] = useState(() => localStorage.getItem("pp_dark")==="1");
+  useEffect(()=>{
+    document.body.classList.toggle("dark", dark);
+    localStorage.setItem("pp_dark", dark?"1":"0");
+  },[dark]);
+  return [dark, setDark];
+}
+
+// ── Profile Page ──────────────────────────────────────────────────────
+function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
+  const [nickname, setNickname] = useState(profile.nickname||"");
+  const [birthday, setBirthday] = useState(profile.birthday||"");
+  const [avatar, setAvatar] = useState(profile.avatar_url||"");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const fileRef = useRef(null);
+
+  const myTeams = teams.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===user.id));
+
+  const handlePhoto = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>setAvatar(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await sb.from("profiles").update({nickname:nickname.trim()||null, birthday:birthday||null, avatar_url:avatar||null}).eq("id",user.id);
+    setSaving(false); setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+    onSave({...profile, nickname:nickname.trim()||null, birthday:birthday||null, avatar_url:avatar||null});
+  };
+
+  return (
+    <div style={{flex:1,overflowY:"auto"}}>
+      <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
+        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Profile</div>
+      </div>
+
+      {/* Avatar */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:24}}>
+        <div style={{position:"relative",cursor:"pointer"}} onClick={()=>fileRef.current&&fileRef.current.click()}>
+          {avatar
+            ? <img src={avatar} style={{width:88,height:88,borderRadius:"50%",objectFit:"cover",border:"3px solid #f97316"}}/>
+            : <div style={{width:88,height:88,borderRadius:"50%",background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,fontWeight:800,color:"#fff"}}>
+                {(profile.nickname||profile.name||"?")[0].toUpperCase()}
+              </div>
+          }
+          <div style={{position:"absolute",bottom:2,right:2,width:26,height:26,borderRadius:"50%",background:"#0f172a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:"2px solid #fff"}}>📷</div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{display:"none"}}/>
+        <div style={{marginTop:10,fontSize:14,fontWeight:700,color:"#0f172a"}}>{profile.name}</div>
+        <div style={{fontSize:12,color:"#94a3b8"}}>{profile.email}</div>
+        <div style={{marginTop:4,display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
+          <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:"#f1f5f9",color:"#475569"}}>{profile.role}</span>
+          {myTeams.map(t=><span key={t.id} style={{fontSize:11,fontWeight:600,padding:"2px 10px",borderRadius:20,background:"#fef3c7",color:"#92400e"}}>{t.name}</span>)}
+        </div>
+      </div>
+
+      <div style={{padding:"0 20px"}}>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Nickname</label>
+          <input value={nickname} onChange={e=>setNickname(e.target.value)} placeholder="What should we call you?" style={inputStyle}/>
+        </div>
+        <div style={{marginBottom:24}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Birthday</label>
+          <input type="date" value={birthday} onChange={e=>setBirthday(e.target.value)} style={inputStyle}/>
+        </div>
+        <button onClick={handleSave} disabled={saving}
+          style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:15,opacity:saving?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          {saving?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:saved?"✓ Saved!":"Save Profile"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Settings Page ─────────────────────────────────────────────────────
+function SettingsPage({onBack, dark, setDark}) {
+  return (
+    <div style={{flex:1,overflowY:"auto"}}>
+      <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
+        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Settings</div>
+      </div>
+      <div style={{padding:"0 20px"}}>
+        <div style={{background:"#f8fafc",borderRadius:12,padding:"16px",border:"1.5px solid #e2e8f0"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:"#0f172a"}}>Dark Mode</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Switch to a darker color scheme</div>
+            </div>
+            <div onClick={()=>setDark(d=>!d)}
+              style={{width:50,height:28,borderRadius:99,background:dark?"#f97316":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:dark?22:3,width:22,height:22,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Report Issue Page ─────────────────────────────────────────────────
+function ReportIssuePage({onBack, user, profile, isOwner}) {
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [loadingTickets, setLoadingTickets] = useState(isOwner);
+
+  useEffect(()=>{
+    if(isOwner) loadTickets();
+  },[]);
+
+  const loadTickets = async () => {
+    setLoadingTickets(true);
+    const {data} = await sb.from("support_tickets").select("*, profiles(name,email)").order("created_at",{ascending:false});
+    setTickets(data||[]);
+    setLoadingTickets(false);
+  };
+
+  const handleSubmit = async () => {
+    if(!message.trim()) return;
+    setSending(true);
+    await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()});
+    setSending(false); setSent(true); setMessage("");
+    setTimeout(()=>setSent(false),3000);
+  };
+
+  const handleResolve = async (id, resolved) => {
+    await sb.from("support_tickets").update({resolved:!resolved}).eq("id",id);
+    setTickets(ts=>ts.map(t=>t.id===id?{...t,resolved:!resolved}:t));
+  };
+
+  return (
+    <div style={{flex:1,overflowY:"auto"}}>
+      <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
+        <div style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>Report an Issue</div>
+      </div>
+      <div style={{padding:"0 20px"}}>
+        {sent && <div style={{background:"#d1fae5",border:"1.5px solid #10b981",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#065f46",marginBottom:16}}>Ticket submitted! We'll look into it.</div>}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Describe the issue</label>
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={5}
+            placeholder="What went wrong? Be as specific as possible..."
+            style={{...inputStyle,resize:"vertical"}}/>
+        </div>
+        <button onClick={handleSubmit} disabled={sending||!message.trim()}
+          style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:message.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:message.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:message.trim()?"pointer":"default",fontSize:15,marginBottom:24}}>
+          {sending?"Submitting...":"Submit Ticket"}
+        </button>
+
+        {/* Owner sees all tickets */}
+        {isOwner && (
+          <div>
+            <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginBottom:12}}>All Tickets</div>
+            {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
+            {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No tickets yet.</div>}
+            {tickets.map(t=>(
+              <div key={t.id} style={{background:t.resolved?"#f0fdf4":"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${t.resolved?"#10b981":"#e2e8f0"}`,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                  </div>
+                  <button onClick={()=>handleResolve(t.id,t.resolved)}
+                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${t.resolved?"#10b981":"#e2e8f0"}`,background:t.resolved?"#d1fae5":"#fff",color:t.resolved?"#065f46":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                    {t.resolved?"✓ Resolved":"Mark Resolved"}
+                  </button>
+                </div>
+                <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>{t.message}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Hamburger Drawer ──────────────────────────────────────────────────
+function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner}) {
+  const [page, setPage] = useState("menu"); // menu | profile | settings | report
+
+  // Reset to menu when drawer closes
+  useEffect(()=>{ if(!open) setTimeout(()=>setPage("menu"),300); },[open]);
+
+  const menuItems = [
+    {key:"profile", icon:"👤", label:"Profile"},
+    {key:"settings", icon:"⚙️", label:"Settings"},
+    {key:"report", icon:"🚩", label:"Report an Issue"},
+  ];
+
+  return (
+    <>
+      <div className={`drawer-overlay${open?" open":""}`} onClick={onClose}/>
+      <div className={`drawer${open?" open":""}`}>
+        {/* Header */}
+        <div style={{background:"linear-gradient(135deg,#1e293b,#0f172a)",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {profile.avatar_url
+              ? <img src={profile.avatar_url} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover",border:"2px solid #f97316"}}/>
+              : <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,color:"#fff"}}>
+                  {(profile.nickname||profile.name||"?")[0].toUpperCase()}
+                </div>
+            }
+            <div>
+              <div style={{color:"#fff",fontWeight:700,fontSize:14}}>{profile.nickname||profile.name}</div>
+              <div style={{color:"#94a3b8",fontSize:11}}>{isOwner?"owner":profile.role}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#94a3b8",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+
+        {/* Pages */}
+        {page==="menu" && (
+          <div style={{flex:1,overflowY:"auto",padding:"12px 0"}}>
+            {menuItems.map((item,i)=>(
+              <button key={item.key} onClick={()=>setPage(item.key)}
+                style={{width:"100%",padding:"16px 20px",border:"none",borderBottom:`1px solid #f1f5f9`,background:"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left"}}>
+                <span style={{fontSize:20,width:28,textAlign:"center"}}>{item.icon}</span>
+                <span style={{fontSize:15,fontWeight:600,color:"#0f172a",flex:1}}>{item.label}</span>
+                <span style={{color:"#cbd5e1",fontSize:16}}>›</span>
+              </button>
+            ))}
+            <button onClick={()=>{onClose();onSignOut();}}
+              style={{width:"100%",padding:"16px 20px",border:"none",borderTop:"1.5px solid #f1f5f9",background:"#fff",display:"flex",alignItems:"center",gap:14,cursor:"pointer",textAlign:"left",marginTop:8}}>
+              <span style={{fontSize:20,width:28,textAlign:"center"}}>🚪</span>
+              <span style={{fontSize:15,fontWeight:600,color:"#ef4444",flex:1}}>Log Out</span>
+            </button>
+          </div>
+        )}
+
+        {page==="profile" && (
+          <ProfilePage
+            profile={profile} user={user} teams={teams} teamMembers={teamMembers}
+            onBack={()=>setPage("menu")}
+            onSave={(updated)=>setProfile(updated)}
+          />
+        )}
+
+        {page==="settings" && (
+          <SettingsPage onBack={()=>setPage("menu")} dark={dark} setDark={setDark}/>
+        )}
+
+        {page==="report" && (
+          <ReportIssuePage onBack={()=>setPage("menu")} user={user} profile={profile} isOwner={isOwner}/>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────
 function App() {
   const [user,setUser]=useState(null);
   const [profile,setProfile]=useState(null);
+  const [drawerOpen,setDrawerOpen]=useState(false);
+  const [dark,setDark]=useDarkMode();
   const [loading,setLoading]=useState(true);
   const [leads,setLeads]=useState([]);
   const [profiles,setProfiles]=useState([]);
@@ -2270,7 +2541,12 @@ function App() {
             <div style={{color:"#94a3b8",fontSize:11}}>{profile.name} · {isOwner?"owner":profile.role}</div>
           </div>
         </div>
-        <button onClick={handleSignOut} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#94a3b8",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>Sign Out</button>
+        <button onClick={()=>setDrawerOpen(true)}
+          style={{background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",borderRadius:8,padding:"8px 10px",cursor:"pointer",display:"flex",flexDirection:"column",gap:4,alignItems:"center",justifyContent:"center",width:36,height:36}}>
+          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+          <span style={{display:"block",width:16,height:2,background:"#fff",borderRadius:2}}/>
+        </button>
       </div>
 
       <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",display:"flex",padding:"0 16px",overflowX:"auto"}}>
@@ -2378,6 +2654,20 @@ function App() {
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
           repProfiles={repProfiles} onTransfer={handleTransfer}/>
       )}
+
+      <HamburgerDrawer
+        open={drawerOpen}
+        onClose={()=>setDrawerOpen(false)}
+        user={user}
+        profile={profile}
+        setProfile={setProfile}
+        teams={teams}
+        teamMembers={teamMembers}
+        dark={dark}
+        setDark={setDark}
+        onSignOut={handleSignOut}
+        isOwner={isOwner}
+      />
     </div>
   );
 }
