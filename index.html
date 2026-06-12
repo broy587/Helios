@@ -34,7 +34,8 @@
       --border:#334155; --border-subtle:#1e293b;
       --shadow:rgba(0,0,0,0.3);
     }
-    body.dark { background:var(--bg-app) !important; }
+    body.dark { background:var(--bg-app) !important; --sc-bg:#1e293b; --sc-text:#e2e8f0; }
+    :root { --sc-bg:#fff; --sc-text:#0f172a; }
     body.dark input, body.dark select, body.dark textarea {
       background:var(--bg-input) !important; color:var(--text-primary) !important;
       border-color:var(--border) !important;
@@ -195,14 +196,18 @@ function parseHistoryDate(ts) {
   return null;
 }
 
-// For a lead, find the earliest date it first reached minStageIdx
+// For a lead, find when it first reached minStageIdx
 function getStageReachedAt(lead, minStageIdx) {
-  // history is newest-first; reverse to get oldest-first
+  // history is newest-first; reverse to get oldest-first (chronological)
   const history = Array.isArray(lead.history) ? [...lead.history].reverse() : [];
+  
+  // Scan history for the first time a stage at or above minStageIdx was reached
   for (const entry of history) {
     if (!entry || !Array.isArray(entry.changes)) continue;
     for (const change of entry.changes) {
       if (typeof change !== 'string') continue;
+      // Match "Stage: "X" to "Y"" or "Lead created"
+      if (change === 'Lead created') continue;
       const match = change.match(/Stage: ".*?" to "(.+?)"/);
       if (!match) continue;
       const toStage = match[1];
@@ -213,9 +218,20 @@ function getStageReachedAt(lead, minStageIdx) {
       }
     }
   }
-  // Fallback: if lead was created already at or past this stage, use created_at
-  const createdIdx = STAGE_PROGRESSION.indexOf(lead.stage);
-  if (createdIdx >= minStageIdx) return new Date(lead.created_at);
+  
+  // If no history entry found, check if lead was created at or past this stage
+  // (lead was added directly into this stage)
+  const effectiveStage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage : lead.stage;
+  const currentIdx = STAGE_PROGRESSION.indexOf(effectiveStage);
+  if (currentIdx >= minStageIdx) {
+    return new Date(lead.created_at);
+  }
+  
+  // Also check updated_at as a fallback for stage moves without clean history
+  if (lead.updated_at) {
+    return new Date(lead.updated_at);
+  }
+  
   return null;
 }
 
@@ -357,11 +373,11 @@ function AuthScreen({ onAuth }) {
 
 // ── Stat card ─────────────────────────────────────────────────────────
 function StatCard({label,value,color,sub}) {
-  const dark=useDark();
+  // Use CSS var for dark mode instead of hook to avoid hook-in-map issues
   return (
-    <div style={{background:dark?"#1e293b":"#fff",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
-      <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
-      <div style={{fontSize:11,color:dark?"#e2e8f0":"#0f172a",fontWeight:600,marginTop:2}}>{label}</div>
+    <div style={{background:"var(--sc-bg,#fff)",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+      <div style={{fontSize:22,fontWeight:800,color}}>{value ?? 0}</div>
+      <div style={{fontSize:11,color:"var(--sc-text,#0f172a)",fontWeight:600,marginTop:2}}>{label}</div>
       {sub && <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{sub}</div>}
     </div>
   );
