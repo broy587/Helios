@@ -187,44 +187,46 @@ function filterLeadsByRange(leads, range) {
 // Get the timestamp when a lead first reached a given stage (or beyond)
 // by scanning history entries from oldest to newest
 function getStageReachedAt(lead, minStageIdx) {
-  if (!lead.history || lead.history.length === 0) {
-    // No history — use created_at as fallback
-    return new Date(lead.created_at);
-  }
-  // History is stored newest-first, so reverse to get chronological order
-  const chronological = [...lead.history].reverse();
-  for (const entry of chronological) {
-    for (const change of (entry.changes||[])) {
-      // Match "Stage: "X" to "Y"" pattern
-      const match = change.match(/Stage: ".+" to "(.+)"/);
-      if (match && match[1]) {
-        const newStageIdx = STAGE_PROGRESSION.indexOf(match[1]);
-        if (newStageIdx >= minStageIdx) {
-          // Parse the timestamp from the history entry
-          try {
-            return new Date(entry.ts);
-          } catch(e) { return null; }
+  try {
+    if (!lead.history || lead.history.length === 0) {
+      return new Date(lead.created_at);
+    }
+    const chronological = [...lead.history].reverse();
+    for (const entry of chronological) {
+      if (!entry || !entry.changes) continue;
+      for (const change of entry.changes) {
+        if (typeof change !== 'string') continue;
+        const match = change.match(/Stage: ".+" to "(.+)"/);
+        if (match && match[1]) {
+          const newStageIdx = STAGE_PROGRESSION.indexOf(match[1]);
+          if (newStageIdx >= minStageIdx && entry.ts) {
+            try { return new Date(entry.ts); } catch(e) { continue; }
+          }
         }
       }
     }
+    return new Date(lead.created_at);
+  } catch(e) {
+    return new Date(lead.created_at);
   }
-  // If never explicitly moved to this stage via history, use created_at
-  return new Date(lead.created_at);
 }
 
 // Time-aware milestone count — counts leads that REACHED the milestone within the range
 function milestoneCountInRange(leads, milestone, range) {
-  const minIdx = MILESTONE_INDEX[milestone];
-  if (minIdx === undefined) return 0;
-  return leads.filter(l => {
-    const effectiveIdx = getEffectiveStageIndex(l);
-    if (effectiveIdx < minIdx) return false; // hasn't reached this milestone
-    if (!range) return true; // all time — just check if reached
-    // Find when this lead first reached this milestone
-    const reachedAt = getStageReachedAt(l, minIdx);
-    if (!reachedAt) return false;
-    return reachedAt >= range.start && reachedAt <= range.end;
-  });
+  try {
+    const minIdx = MILESTONE_INDEX[milestone];
+    if (minIdx === undefined) return 0;
+    return leads.filter(l => {
+      try {
+        const effectiveIdx = getEffectiveStageIndex(l);
+        if (effectiveIdx < minIdx) return false;
+        if (!range) return true;
+        const reachedAt = getStageReachedAt(l, minIdx);
+        if (!reachedAt) return false;
+        return reachedAt >= range.start && reachedAt <= range.end;
+      } catch(e) { return false; }
+    });
+  } catch(e) { return 0; }
 }
 
 // Lead count in range = leads created in the period
