@@ -2062,11 +2062,18 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
                   ) : (value||"")}
                 </div>
                 {label==="📊 Smart Meter Texas" && (
-                  <a href="https://www.smartmetertexas.com/home"
-                    onClick={e=>{e.preventDefault();const w=window.open("https://www.smartmetertexas.com/home","_blank");if(!w)window.location.href="https://www.smartmetertexas.com/home";}}
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0,cursor:"pointer"}}>
+                  <button onClick={()=>{
+                      const a=document.createElement("a");
+                      a.href="https://www.smartmetertexas.com/home";
+                      a.target="_blank";
+                      a.rel="noopener noreferrer";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                    }}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",border:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0,cursor:"pointer"}}>
                     Open ›
-                  </a>
+                  </button>
                 )}
                 {label==="ESIID" && (
                   <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
