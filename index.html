@@ -1935,7 +1935,7 @@ function CloseSection({form,setForm,readOnly,lead}) {
               <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                 <span style={{fontSize:11,color:isNo?"#ef4444":"#94a3b8",fontWeight:isNo?700:400}}>No</span>
                 <div onClick={()=>toggle(q)}
-                  style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                  style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":isNo?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
                   <div style={{position:"absolute",top:2,left:isYes?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
                 </div>
                 <span style={{fontSize:11,color:isYes?"#10b981":"#94a3b8",fontWeight:isYes?700:400}}>Yes</span>
@@ -1969,6 +1969,95 @@ function CloseSection({form,setForm,readOnly,lead}) {
 
 
 
+
+// ── History Section ───────────────────────────────────────────────────
+function HistorySection({lead, dark}) {
+  const [open, setOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [history, setHistory] = React.useState(lead.history||[]);
+  const [saving, setSaving] = React.useState(false);
+
+  const deleteEntry = (i) => {
+    setHistory(h => h.filter((_,idx)=>idx!==i));
+  };
+
+  const deleteChange = (entryIdx, changeIdx) => {
+    setHistory(h => h.map((entry, i) => {
+      if (i!==entryIdx) return entry;
+      const newChanges = entry.changes.filter((_,j)=>j!==changeIdx);
+      return {...entry, changes:newChanges};
+    }).filter(e=>e.changes&&e.changes.length>0));
+  };
+
+  const saveHistory = async () => {
+    setSaving(true);
+    await sb.from("leads").update({history, updated_at:new Date().toISOString()}).eq("id",lead.id);
+    setSaving(false);
+    setEditing(false);
+    lead.history = history; // update local ref
+  };
+
+  return (
+    <div style={{marginBottom:16,borderTop:`1.5px solid ${dark?"#334155":"#f1f5f9"}`,paddingTop:14}}>
+      {/* Header row */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:open?12:0}}>
+        <button onClick={()=>setOpen(o=>!o)}
+          style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,padding:0}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+            Change History ({history.length})
+          </span>
+          <span style={{fontSize:11,color:"#94a3b8"}}>{open?"▲":"▼"}</span>
+        </button>
+        {open && !editing && (
+          <button onClick={()=>setEditing(true)}
+            style={{background:"none",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:7,padding:"3px 10px",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer"}}>
+            Edit
+          </button>
+        )}
+        {open && editing && (
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>{setEditing(false);setHistory(lead.history||[]);}}
+              style={{background:"none",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:7,padding:"3px 10px",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer"}}>
+              Cancel
+            </button>
+            <button onClick={saveHistory} disabled={saving}
+              style={{background:"#f97316",border:"none",borderRadius:7,padding:"3px 10px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+              {saving?"Saving...":"Save"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* History entries */}
+      {open && history.map((entry,i)=>(
+        <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<history.length-1?`1px solid ${dark?"#334155":"#f1f5f9"}`:"none",position:"relative"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <div style={{fontSize:11,color:"#64748b"}}>{entry.ts}</div>
+            {editing && (
+              <button onClick={()=>deleteEntry(i)}
+                style={{background:"#fee2e2",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,color:"#ef4444",cursor:"pointer"}}>
+                Delete Entry
+              </button>
+            )}
+          </div>
+          {(entry.changes||[]).map((ch,j)=>(
+            <div key={j} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
+              <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #f97316",flex:1}}>{ch}</div>
+              {editing && (
+                <button onClick={()=>deleteChange(i,j)}
+                  style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>×</button>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+      {open && history.length===0 && (
+        <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No history entries.</div>
+      )}
+    </div>
+  );
+}
+
 function UsagePulledToggle({leadId, initialValue}) {
   const [val, setVal] = React.useState(initialValue);
   const toggle = async () => {
@@ -1982,7 +2071,7 @@ function UsagePulledToggle({leadId, initialValue}) {
     <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
       <span style={{fontSize:11,color:isNo?"#ef4444":"#94a3b8",fontWeight:isNo?700:400}}>No</span>
       <div onClick={toggle}
-        style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+        style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":isNo?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
         <div style={{position:"absolute",top:2,left:isYes?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
       </div>
       <span style={{fontSize:11,color:isYes?"#10b981":"#94a3b8",fontWeight:isYes?700:400}}>Yes</span>
@@ -2148,18 +2237,8 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
           )}
           <CloseSection readOnly={true} lead={lead}/>
           {lead.history&&lead.history.length>0 && (
-            <div style={{marginBottom:16,borderTop:"1.5px solid #f1f5f9",paddingTop:14}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Change History</div>
-              {lead.history.map((entry,i)=>(
-                <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<lead.history.length-1?"1px solid #f1f5f9":"none"}}>
-                  <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>{entry.ts}</div>
-                  {entry.changes.map((ch,j)=>(
-                    <div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #f97316"}}>{ch}</div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+            <HistorySection lead={lead} dark={dark}/>
+          )      )}
           {showTransfer && (
             <div style={{background:"#f0f9ff",border:"1.5px solid #3b82f6",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
               <div style={{fontWeight:700,fontSize:14,color:dark?"#93c5fd":"#1e3a8a",marginBottom:8}}>Transfer Lead to Rep</div>
