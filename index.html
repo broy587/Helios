@@ -202,19 +202,25 @@ function parseHistoryDate(ts) {
 
 // For a lead, find when it first reached minStageIdx
 function getStageReachedAt(lead, minStageIdx) {
-  // history is newest-first; reverse to get oldest-first (chronological)
+  // For ARC leads, use arc_stage as the effective stage
+  const effectiveStage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage : lead.stage;
+  const effectiveIdx = STAGE_PROGRESSION.indexOf(effectiveStage);
+
+  // If lead never reached this milestone, return null immediately
+  if (effectiveIdx < minStageIdx) return null;
+
+  // Scan history (newest-first, so reverse for chronological order)
   const history = Array.isArray(lead.history) ? [...lead.history].reverse() : [];
-  
-  // Scan history for the first time a stage at or above minStageIdx was reached
   for (const entry of history) {
     if (!entry || !Array.isArray(entry.changes)) continue;
     for (const change of entry.changes) {
       if (typeof change !== 'string') continue;
-      // Match "Stage: "X" to "Y"" or "Lead created"
       if (change === 'Lead created') continue;
       const match = change.match(/Stage: ".*?" to "(.+?)"/);
       if (!match) continue;
       const toStage = match[1];
+      // Skip ARC stage — not a real pipeline stage
+      if (toStage === 'ARC / Cancels') continue;
       const toIdx = STAGE_PROGRESSION.indexOf(toStage);
       if (toIdx >= minStageIdx) {
         const d = parseHistoryDate(entry.ts);
@@ -222,21 +228,14 @@ function getStageReachedAt(lead, minStageIdx) {
       }
     }
   }
-  
-  // If no history entry found, check if lead was created at or past this stage
-  // (lead was added directly into this stage)
-  const effectiveStage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage : lead.stage;
-  const currentIdx = STAGE_PROGRESSION.indexOf(effectiveStage);
-  if (currentIdx >= minStageIdx) {
-    return new Date(lead.created_at);
-  }
-  
-  // Also check updated_at as a fallback for stage moves without clean history
+
+  // No history entry found — lead was created at or moved to this stage
+  // without a matching history entry. Use updated_at if available, else created_at
   if (lead.updated_at) {
-    return new Date(lead.updated_at);
+    const u = new Date(lead.updated_at);
+    if (!isNaN(u.getTime())) return u;
   }
-  
-  return null;
+  return new Date(lead.created_at);
 }
 
 // Count leads that reached a milestone within a date range
