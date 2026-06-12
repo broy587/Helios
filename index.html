@@ -1454,18 +1454,32 @@ function InviteCodesSection({currentUser, onRefresh}) {
     await loadCodes();
   };
 
+  const deleteCode = async (code) => {
+    await sb.from("invite_codes").delete().eq("code",code);
+    setCodes(cs=>cs.filter(c=>c.code!==code));
+  };
+
   if (loading) return <div style={{fontSize:13,color:"#94a3b8",padding:"10px 0"}}>Loading...</div>;
 
   return (
     <>
       <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #6b2d4e",background:dark?"#1e293b":"#faf6f0",color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
       {codes.filter(c=>!c.used_by).map(code=>(
-        <div key={code.code} style={{background:dark?"#1e293b":"#fff",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
+        <div key={code.code} style={{background:dark?"#1e293b":"#faf6f0",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
           <div>
-            <div style={{fontWeight:700,fontSize:15,color:dark?"#f1f5f9":"#0f172a",letterSpacing:"0.08em"}}>{code.code}</div>
+            <div style={{fontWeight:700,fontSize:15,color:dark?"#f1f5f9":"#1a2456",letterSpacing:"0.08em"}}>{code.code}</div>
             <div style={{fontSize:11,color:"#94a3b8"}}>Unused</div>
           </div>
-          <button onClick={()=>navigator.clipboard.writeText(code.code)} style={{background:dark?"#334155":"#f1f5f9",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:dark?"#e2e8f0":"#475569",cursor:"pointer"}}>Copy</button>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>navigator.clipboard.writeText(code.code)}
+              style={{background:dark?"#334155":"#ede3d6",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:dark?"#e2e8f0":"#475569",cursor:"pointer"}}>
+              Copy
+            </button>
+            <button onClick={()=>deleteCode(code.code)}
+              style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>
+              ✕
+            </button>
+          </div>
         </div>
       ))}
     </>
