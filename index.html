@@ -1498,6 +1498,7 @@ function getRecruitStageColor(stage){ return RECRUIT_STAGE_COLORS[stage]||{bg:"#
 const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0] };
 
 function RecruitModal({open,onClose,onSave,initial}) {
+  const dark=useDark();
   const [form,setForm]=useState(initial||emptyRecruit);
   useEffect(()=>{setForm(initial||emptyRecruit);},[initial,open]);
   if(!open) return null;
@@ -1558,6 +1559,7 @@ function RecruitModal({open,onClose,onSave,initial}) {
 }
 
 function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
+  const dark=useDark();
   const [confirmDelete,setConfirmDelete]=useState(false);
   if(!recruit) return null;
   const colors=getRecruitStageColor(recruit.stage);
@@ -1987,7 +1989,9 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
 
 
 // ── History Section ───────────────────────────────────────────────────
-function HistorySection({lead, dark}) {
+function HistorySection({lead, dark: darkProp}) {
+  const darkCtx=useDark();
+  const dark = darkProp !== undefined ? darkProp : darkCtx;
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [history, setHistory] = React.useState(lead.history||[]);
