@@ -276,7 +276,7 @@ const TIME_SLOTS = [
 ];
 
 const emptyForm = {
-  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",notes:"",
+  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",knewSolar:"",closerInside:"",
   decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:""
 };
@@ -1512,6 +1512,22 @@ function RecruitModal({open,onClose,onSave,initial}) {
           </div>
         ))}
         <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Input</label>
+          <div style={{display:"flex",gap:8}}>
+            {["Yes","No"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,usageInput:f.usageInput===opt?"":opt}))}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,
+                  background:form.usageInput===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",
+                  color:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",
+                  fontWeight:form.usageInput===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <span style={{width:12,height:12,borderRadius:"50%",border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,
+                  background:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Notes about this recruit..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
@@ -2029,12 +2045,28 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer}) {
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>{value||<span style={{color:"#94a3b8",fontStyle:"italic"}}>Not set</span>}</div>
+                <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>
+                  {label==="📊 Smart Meter Texas" ? (
+                    <div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Input</div>
+                      <div style={{display:"flex",gap:8}}>
+                        {["Yes","No"].map(opt=>(
+                          <span key={opt} style={{padding:"3px 14px",borderRadius:20,fontSize:12,fontWeight:700,
+                            background:lead.usage_input===opt?(opt==="Yes"?"#d1fae5":"#fee2e2"):"#f1f5f9",
+                            color:lead.usage_input===opt?(opt==="Yes"?"#065f46":"#7f1d1d"):"#94a3b8"}}>
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (value||"")}
+                </div>
                 {label==="📊 Smart Meter Texas" && (
-                  <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener")}
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",border:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0,cursor:"pointer"}}>
+                  <a href="https://www.smartmetertexas.com/home"
+                    onClick={e=>{e.preventDefault();const w=window.open("https://www.smartmetertexas.com/home","_blank");if(!w)window.location.href="https://www.smartmetertexas.com/home";}}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:12,fontWeight:700,color:"#065f46",flexShrink:0,cursor:"pointer"}}>
                     Open ›
-                  </button>
+                  </a>
                 )}
                 {label==="ESIID" && (
                   <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
@@ -2199,6 +2231,22 @@ function LeadModal({open,onClose,onSave,initial}) {
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Input</label>
+          <div style={{display:"flex",gap:8}}>
+            {["Yes","No"].map(opt=>(
+              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,usageInput:f.usageInput===opt?"":opt}))}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,
+                  background:form.usageInput===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",
+                  color:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",
+                  fontWeight:form.usageInput===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <span style={{width:12,height:12,borderRadius:"50%",border:`2px solid ${form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,
+                  background:form.usageInput===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
@@ -2831,7 +2879,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -2859,7 +2907,7 @@ function App() {
         setTeamGoals(goalsGrouped);
       } else {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -2925,7 +2973,7 @@ function App() {
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,history:newHistory,updated_at:new Date().toISOString()};
     if(modal.lead&&modal.lead.id){await sb.from("leads").update(payload).eq("id",modal.lead.id);}
     else{await sb.from("leads").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,lead:null});
@@ -3162,7 +3210,7 @@ function App() {
       </div>
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
