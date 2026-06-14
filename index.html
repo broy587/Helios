@@ -4346,7 +4346,26 @@ function App() {
     await loadData(user,profile);
   };
 
-  const deleteLead=async(id)=>{await sb.from("leads").delete().eq("id",id);await loadData(user,profile);};
+  const deleteLead=async(id)=>{
+    // Find the lead to get its address
+    const lead = leads.find(l=>l.id===id);
+    await sb.from("leads").delete().eq("id",id);
+    // Clear lead disposition on any matching canvass pin
+    if(lead&&lead.address){
+      const {data:matchingHomes} = await sb.from("canvass_homes")
+        .select("id,address")
+        .eq("prescreen","lead");
+      if(matchingHomes){
+        const toUpdate = matchingHomes.filter(h=>
+          h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
+        );
+        for(const h of toUpdate){
+          await sb.from("canvass_homes").update({prescreen:null,updated_at:new Date().toISOString()}).eq("id",h.id);
+        }
+      }
+    }
+    await loadData(user,profile);
+  };
 
   const handleStageChange=async(id,newStage)=>{
     const lead=leads.find(l=>l.id===id);if(!lead)return;
