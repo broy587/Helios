@@ -3066,7 +3066,18 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
       : null;
 
   const saveNote = async() => {
-    await onSaveNote(home, note);
+    if(home._isTemp||home._isPipelineLead||!home.id){
+      // For unsaved homes, save to DB first then update note
+      const {data} = await sb.from("canvass_homes").insert({
+        address:home.address, lat:home.lat, lng:home.lng,
+        owner_name:home.owner_name||null, phone:home.phone||null,
+        notes:note||null, prescreen:home.prescreen||null,
+        updated_at:new Date().toISOString()
+      }).select().single();
+      if(data && onSaveNote) onSaveNote({...home,id:data.id}, note);
+    } else {
+      await onSaveNote(home, note);
+    }
     setNoteSaved(true);
     setTimeout(()=>setNoteSaved(false), 2000);
   };
@@ -3178,20 +3189,15 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         </div>
       </div>
 
-      {/* Delete / Save */}
-      <div style={{padding:"0 20px 32px"}}>
-        {home._isTemp ? (
-          <button onClick={saveToMap} disabled={saving}
-            style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>
-            {saving?"Saving...":"+ Save Pin to Map"}
-          </button>
-        ) : (
+      {/* Delete */}
+      {!home._isTemp&&!home._isPipelineLead&&home.id&&(
+        <div style={{padding:"0 20px 32px"}}>
           <button onClick={()=>onDelete(home.id)}
             style={{width:"100%",padding:"10px 0",borderRadius:10,border:"1px solid rgba(239,68,68,0.3)",background:"transparent",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
             Remove Pin
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4024,6 +4030,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             }
           }}
           onSaveNote={async(home,note)=>{
+            if(!home.id) return;
             await sb.from("canvass_homes").update({notes:note,updated_at:new Date().toISOString()}).eq("id",home.id);
             setHomes(hs=>hs.map(h=>h.id===home.id?{...h,notes:note}:h));
             setSelectedHome(h=>({...h,notes:note}));
