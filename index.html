@@ -3202,7 +3202,7 @@ const STAGE_EMOJIS = {
   "Lead: Need Bill/Appointment": "📋",
   "AC / Scheduled":              "📅",
   "No Show / No Contact":        "👻",
-  "No Show / Contact":           "📵",
+  "No Show / Contact":           "📲",
   "Stale / No Reschedule":       "🧊",
   "No Close / No Offer":         "🚪",
   "No Close / Offer Given":      "💬",
@@ -3211,7 +3211,7 @@ const STAGE_EMOJIS = {
   "CAP":                         "📝",
   "Permitting":                  "🏛️",
   "Install Scheduled":           "🔧",
-  "Install":                     "⚙️",
+  "Install":                     "🔋",
   "PTO / REP":                   "🌞",
   "ARC / Cancels":               "🔴",
 };
@@ -3693,8 +3693,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
             const next=cur==="roadmap"?"satellite":"roadmap";
             mapInstanceRef.current.setMapTypeId(next);
             setSatellite(s=>{localStorage.setItem("canvass_satellite",!s);return !s;});
-          }} style={btnStyle} title={satellite?"Street Map":"Satellite"}>
-            <span style={{fontSize:20}}>{satellite?"🗺️":"🛰️"}</span>
+          }} style={{...btnStyle,border:satellite?"2px solid #10b981":"none",background:satellite?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title={satellite?"Switch to Map":"Switch to Satellite"}>
+            <span style={{fontSize:20}}>{satellite?"🛰️":"🗺️"}</span>
           </button>
 
           {/* Homes toggle */}
