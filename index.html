@@ -3216,7 +3216,7 @@ const STAGE_EMOJIS = {
   "ARC / Cancels":               "🔴",
 };
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
+function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles}) {
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -3736,6 +3736,53 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
             )}
           </div>
 
+          {/* Lead Scope */}
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Viewing Leads</div>
+          <div style={{marginBottom:14}}>
+            {/* Mine — always available */}
+            {[{key:"mine",label:"My Leads",icon:"👤"}].map(opt=>(
+              <div key={opt.key} onClick={()=>setCanvassLeadFilter(opt.key)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===opt.key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===opt.key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
+                <span style={{fontSize:14}}>{opt.icon}</span>
+                <span style={{fontSize:13,color:canvassLeadFilter===opt.key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===opt.key?700:400,flex:1}}>{opt.label}</span>
+                {canvassLeadFilter===opt.key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
+              </div>
+            ))}
+            {/* Teams — managers and owner */}
+            {(isOwner||(currentUser&&currentUser.role==="manager"))&&teams&&teams.map(t=>{
+              const key="team:"+t.id;
+              return(
+                <div key={key} onClick={()=>setCanvassLeadFilter(key)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
+                  <span style={{fontSize:14}}>👥</span>
+                  <span style={{fontSize:13,color:canvassLeadFilter===key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===key?700:400,flex:1}}>{t.name}</span>
+                  {canvassLeadFilter===key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
+                </div>
+              );
+            })}
+            {/* Individual reps — managers and owner */}
+            {(isOwner||(currentUser&&currentUser.role==="manager"))&&profiles&&profiles.filter(p=>p.role==="rep").map(p=>{
+              const key="rep:"+p.id;
+              return(
+                <div key={key} onClick={()=>setCanvassLeadFilter(key)}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
+                  <span style={{fontSize:14}}>🧑</span>
+                  <span style={{fontSize:13,color:canvassLeadFilter===key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===key?700:400,flex:1}}>{p.name}</span>
+                  {canvassLeadFilter===key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
+                </div>
+              );
+            })}
+            {/* All — owner only */}
+            {isOwner&&(
+              <div onClick={()=>setCanvassLeadFilter("all")}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter==="all"?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter==="all"?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
+                <span style={{fontSize:14}}>🌐</span>
+                <span style={{fontSize:13,color:canvassLeadFilter==="all"?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter==="all"?700:400,flex:1}}>All Reps</span>
+                {canvassLeadFilter==="all"&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
+              </div>
+            )}
+          </div>
+
           {/* Dispositions */}
           <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Dispositions</div>
           {DISPOSITIONS.map(d=>{
@@ -3950,6 +3997,7 @@ function App() {
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
+  const [canvassLeadFilter,setCanvassLeadFilter]=useState("mine"); // mine | team:id | rep:id | all
   // Persist team tab selection
   const [teamTabSelected,setTeamTabSelected]=useState("all");
   // Persist stats tab selections
@@ -4380,7 +4428,28 @@ function App() {
           </div>
         )}
         {tab==="canvass"&&isOwner&&(
-          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home, existingLead)=>{
+          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
+            leads={(()=>{
+              if(canvassLeadFilter==="mine") return leads.filter(l=>l.owner_id===user.id);
+              if(canvassLeadFilter==="all") return leads;
+              if(canvassLeadFilter.startsWith("team:")){
+                const tid=canvassLeadFilter.replace("team:","");
+                const members=(teamMembers[tid]||[]).map(m=>m.user_id);
+                return leads.filter(l=>members.includes(l.owner_id));
+              }
+              if(canvassLeadFilter.startsWith("rep:")){
+                const rid=canvassLeadFilter.replace("rep:","");
+                return leads.filter(l=>l.owner_id===rid);
+              }
+              return leads.filter(l=>l.owner_id===user.id);
+            })()}
+            canvassLeadFilter={canvassLeadFilter}
+            setCanvassLeadFilter={setCanvassLeadFilter}
+            currentUser={user}
+            isOwner={isOwner}
+            teams={teams}
+            teamMembers={teamMembers}
+            profiles={profiles} onCreateLead={(home, existingLead)=>{
   setTab("pipeline");
   setTimeout(()=>{
     if(existingLead){
