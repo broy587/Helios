@@ -3217,6 +3217,14 @@ const STAGE_EMOJIS = {
 };
 // ── Canvass Tab ───────────────────────────────────────────────────────
 function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles}) {
+  const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
+  const isManager = myProfile&&myProfile.role==="manager";
+  const isPrivileged = isOwner||isManager;
+  const visibleTeams = isOwner ? (teams||[]) : (teams||[]).filter(t=>{
+    const ms=(teamMembers&&teamMembers[t.id])||[];
+    return ms.some(m=>m.user_id===currentUser?.id)||t.created_by===currentUser?.id;
+  });
+  const repProfiles = (profiles||[]).filter(p=>p.role==="rep"&&p.id!==currentUser?.id);
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -3749,7 +3757,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
               </div>
             ))}
             {/* Teams — managers and owner */}
-            {(isOwner||(currentUser&&currentUser.role==="manager"))&&teams&&teams.map(t=>{
+            {isPrivileged&&visibleTeams.map(t=>{
               const key="team:"+t.id;
               return(
                 <div key={key} onClick={()=>setCanvassLeadFilter(key)}
@@ -3761,7 +3769,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
               );
             })}
             {/* Individual reps — managers and owner */}
-            {(isOwner||(currentUser&&currentUser.role==="manager"))&&profiles&&profiles.filter(p=>p.role==="rep").map(p=>{
+            {isPrivileged&&repProfiles.map(p=>{
               const key="rep:"+p.id;
               return(
                 <div key={key} onClick={()=>setCanvassLeadFilter(key)}
