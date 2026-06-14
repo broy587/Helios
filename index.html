@@ -3030,8 +3030,113 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
 }
 
 
+
+// ── Canvass Home Popup ────────────────────────────────────────────────
+const DISPOSITIONS = [
+  {key:"lead", label:"LEAD", color:"#10b981", icon:"⚡"},
+  {key:"nh",   label:"NH",   color:"#3b82f6", icon:"🏠"},
+  {key:"cb",   label:"CB",   color:"#f59e0b", icon:"📞"},
+  {key:"nn",   label:"NN",   color:"#f97316", icon:"⏰"},
+  {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
+];
+
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreateLead, leads}) {
+  const [note, setNote] = React.useState(home.notes||"");
+  const [noteSaved, setNoteSaved] = React.useState(false);
+
+  // Check if a lead already exists for this address
+  const linkedLead = leads && home.address
+    ? leads.find(l=>l.address&&l.address.toLowerCase().includes(home.address.split(",")[0].toLowerCase()))
+    : null;
+
+  const saveNote = async() => {
+    await onSaveNote(home, note);
+    setNoteSaved(true);
+    setTimeout(()=>setNoteSaved(false), 2000);
+  };
+
+  return (
+    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(18,18,28,0.97)",borderRadius:"20px 20px 0 0",maxHeight:"75vh",overflowY:"auto",zIndex:1000,boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
+      {/* Header */}
+      <div style={{padding:"20px 20px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div style={{flex:1,minWidth:0}}>
+          {linkedLead && (
+            <div onClick={()=>onCreateLead(home, linkedLead)}
+              style={{display:"inline-flex",alignItems:"center",gap:6,background:"#10b981",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700,color:"#fff",marginBottom:8,cursor:"pointer"}}>
+              ⚡ Lead created — tap to view
+            </div>
+          )}
+          <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:2}}>
+            {home.owner_name || home.address.split(",")[0]}
+          </div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>{home.address}</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:"50%",width:32,height:32,cursor:"pointer",color:"#fff",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:12}}>✕</button>
+      </div>
+
+      {/* Disposition buttons */}
+      <div style={{padding:"16px 20px",display:"flex",gap:10,justifyContent:"space-between"}}>
+        {DISPOSITIONS.map(d=>{
+          const isActive = home.prescreen===d.key;
+          return (
+            <div key={d.key} onClick={()=>{
+              onDisposition(home, d.key);
+              if(d.key==="lead") onCreateLead(home, null);
+            }}
+              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}}>
+              <div style={{width:52,height:52,borderRadius:"50%",background:isActive?d.color:"rgba(255,255,255,0.08)",border:`2px solid ${isActive?d.color:"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,transition:"all 0.15s"}}>
+                {d.icon}
+              </div>
+              <span style={{fontSize:10,fontWeight:700,color:isActive?d.color:"rgba(255,255,255,0.4)"}}>{d.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Notes */}
+      <div style={{padding:"0 20px 12px"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Notes</div>
+        <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"flex-end",gap:10}}>
+          <textarea value={note} onChange={e=>setNote(e.target.value)}
+            placeholder="Add notes..."
+            rows={2}
+            style={{flex:1,background:"none",border:"none",outline:"none",color:"#fff",fontSize:13,resize:"none",fontFamily:"inherit",lineHeight:1.5}}/>
+          <button onClick={saveNote}
+            style={{background:"none",border:"none",color:noteSaved?"#10b981":"#3b82f6",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0,padding:0}}>
+            {noteSaved?"✓ Saved":"Save"}
+          </button>
+        </div>
+      </div>
+
+      {/* Property info */}
+      <div style={{padding:"0 20px 12px"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Property Details</div>
+        <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
+          {[["Owner/Contact", home.owner_name], ["Phone", home.phone]].map(([l,v])=>v?(
+            <div key={l} style={{marginBottom:8}}>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>{l}</div>
+              <div style={{fontSize:13,color:"#fff"}}>{v}</div>
+            </div>
+          ):null)}
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:4}}>
+            Owner/renter data available with data provider integration
+          </div>
+        </div>
+      </div>
+
+      {/* Delete */}
+      <div style={{padding:"0 20px 32px"}}>
+        <button onClick={()=>onDelete(home.id)}
+          style={{width:"100%",padding:"10px 0",borderRadius:10,border:"1px solid rgba(239,68,68,0.3)",background:"transparent",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
+          Remove Pin
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey}) {
+function CanvassTab({gmapsKey, leads, onCreateLead}) {
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -3180,7 +3285,8 @@ function CanvassTab({gmapsKey}) {
     markersRef.current=[];
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
-      const color=PRESCREEN_COLORS[home.prescreen||""]||"#1a2456";
+      const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
+      const color=dispColors[home.prescreen||""]||"rgba(255,255,255,0.7)";
       const marker=new window.google.maps.Marker({
         position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
         map:mapInstanceRef.current,
@@ -3371,66 +3477,85 @@ function CanvassTab({gmapsKey}) {
     </div>
   );
 
+  const btnStyle = {width:48,height:48,borderRadius:12,background:"rgba(20,20,30,0.85)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.4)",backdropFilter:"blur(4px)"};
+
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",position:"relative"}}>
-      {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#faf6f0",borderBottom:"1.5px solid #c8b8a2"}}>
-        <div style={{fontSize:16,fontWeight:800,color:"#1a2456"}}>Canvass Map</div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+    <div style={{position:"relative",height:"calc(100vh - 110px)",overflow:"hidden"}}>
+
+      {/* Map fills everything */}
+      {!mapLoaded?(
+        <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#1a2456"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🛰️</div>
+            <div style={{fontSize:14,color:"#fff",fontWeight:600,opacity:0.8}}>Loading map...</div>
+          </div>
+        </div>
+      ):(
+        <div ref={mapRef} style={{width:"100%",height:"100%"}}/>
+      )}
+
+      {/* Left side controls — like the reference image */}
+      {mapLoaded && (
+        <div style={{position:"absolute",top:12,left:12,display:"flex",flexDirection:"column",gap:8,zIndex:200}}>
+          {/* Satellite toggle */}
           <button onClick={()=>{
             if(!mapInstanceRef.current)return;
             const cur=mapInstanceRef.current.getMapTypeId();
             const next=cur==="roadmap"?"satellite":"roadmap";
             mapInstanceRef.current.setMapTypeId(next);
             setSatellite(s=>{localStorage.setItem("canvass_satellite",!s);return !s;});
-          }}
-            style={{background:"none",border:`1.5px solid #c8b8a2`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#1a2456",display:"flex",alignItems:"center",gap:6}}>
-            {satellite?"🗺️ Map":"🛰️ Satellite"}
+          }} style={btnStyle} title={satellite?"Street Map":"Satellite"}>
+            <span style={{fontSize:20}}>{satellite?"🗺️":"🛰️"}</span>
           </button>
+
+          {/* Homes toggle */}
           <button onClick={()=>{
             const next=!showBuildings;
             setShowBuildings(next);
             if(!next){buildingMarkersRef.current.forEach(m=>m.setMap(null));buildingMarkersRef.current=[];}
             else fetchBuildings();
-          }}
-            style={{background:showBuildings?"#1a2456":"none",border:`1.5px solid ${showBuildings?"#1a2456":"#c8b8a2"}`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:showBuildings?"#fff":"#1a2456"}}>
-            🏠 Homes
+          }} style={{...btnStyle,border:showBuildings?"2px solid #10b981":"none"}} title="Toggle Homes">
+            <span style={{fontSize:20}}>🏠</span>
           </button>
-          <button onClick={()=>setShowAddForm(true)}
-            style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:13}}>
-            + Add Home
+
+          {/* My location */}
+          <button onClick={goToMyLocation} style={btnStyle} title="My Location">
+            <span style={{fontSize:20}}>{locating?"⏳":"➤"}</span>
+          </button>
+
+          {/* Add home */}
+          <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
+            <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
           </button>
         </div>
-      </div>
+      )}
 
-      {/* Search bar */}
+      {/* Search bar — bottom like reference image */}
       {mapLoaded && (
-        <div style={{padding:"10px 16px",background:"#faf6f0",borderBottom:"1.5px solid #c8b8a2",position:"relative",zIndex:500}}>
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 16px 20px",background:"rgba(15,15,20,0.85)",backdropFilter:"blur(8px)",zIndex:200}}>
           <div style={{position:"relative"}}>
             <input
               type="text"
-              placeholder="Search address..."
+              placeholder="Search for a place or address"
               value={searchVal}
               onChange={e=>handleSearchInput(e.target.value)}
               onFocus={()=>{if(suggestions.length>0)setShowSuggestions(true);}}
               onBlur={()=>setTimeout(()=>setShowSuggestions(false),200)}
-              style={{...inputStyle,paddingLeft:36,background:"#fff",border:"1.5px solid #c8b8a2"}}
+              style={{width:"100%",padding:"12px 16px 12px 42px",borderRadius:12,border:"none",background:"rgba(255,255,255,0.12)",color:"#fff",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
             />
-            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:16,pointerEvents:"none"}}>🔍</span>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16,opacity:0.6}}>🔍</span>
             {searchVal && (
               <button onClick={()=>{setSearchVal("");setSuggestions([]);setShowSuggestions(false);if(window._searchMarker)window._searchMarker.setMap(null);}}
-                style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16}}>✕</button>
+                style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",fontSize:18}}>✕</button>
             )}
           </div>
           {showSuggestions && suggestions.length>0 && (
-            <div style={{position:"absolute",left:16,right:16,top:"100%",background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",border:"1.5px solid #c8b8a2",overflow:"hidden",zIndex:600}}>
+            <div style={{position:"absolute",bottom:"100%",left:16,right:16,marginBottom:4,background:"rgba(20,20,30,0.95)",borderRadius:12,boxShadow:"0 -4px 20px rgba(0,0,0,0.4)",overflow:"hidden",zIndex:300,backdropFilter:"blur(8px)"}}>
               {suggestions.map((s,i)=>(
                 <div key={s.place_id} onMouseDown={()=>handleSelectSuggestion(s)}
-                  style={{padding:"11px 14px",borderBottom:i<suggestions.length-1?"1px solid #f1f5f9":"none",cursor:"pointer",fontSize:13,color:"#1a2456",display:"flex",alignItems:"center",gap:10}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#faf6f0"}
-                  onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                  <span style={{fontSize:16,flexShrink:0}}>📍</span>
-                  <span>{s.description}</span>
+                  style={{padding:"12px 16px",borderBottom:i<suggestions.length-1?"1px solid rgba(255,255,255,0.08)":"none",cursor:"pointer",fontSize:13,color:"#fff",display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:14,opacity:0.7}}>📍</span>
+                  <span style={{opacity:0.9}}>{s.description}</span>
                 </div>
               ))}
             </div>
@@ -3438,50 +3563,25 @@ function CanvassTab({gmapsKey}) {
         </div>
       )}
 
-      {/* Map */}
-      {!mapLoaded?(
-        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",background:"#f5ede0"}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:12}}>🗺️</div>
-            <div style={{fontSize:14,color:"#6b2d4e",fontWeight:600}}>Loading map...</div>
-          </div>
-        </div>
-      ):(
-        <div style={{position:"relative",flex:1,width:"100%"}}>
-          <div ref={mapRef} style={{width:"100%",height:"100%"}}/>
-          {/* My Location button */}
-          <button onClick={goToMyLocation}
-            style={{position:"absolute",bottom:24,right:12,width:44,height:44,borderRadius:"50%",background:"#fff",border:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,zIndex:100}}>
-            {locating?"⏳":"➤"}
-          </button>
-        </div>
-      )}
-
       {/* Selected home popup */}
       {selectedHome&&(
-        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#faf6f0",borderRadius:"20px 20px 0 0",padding:"20px 20px 32px",boxShadow:"0 -8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #c8b8a2",zIndex:1000}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-            <div>
-              <div style={{fontSize:15,fontWeight:800,color:"#1a2456",marginBottom:4}}>{selectedHome.address}</div>
-              {selectedHome.prescreen&&(
-                <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:prescreenColor(selectedHome.prescreen),color:"#fff"}}>
-                  {prescreenLabel(selectedHome.prescreen)}
-                </span>
-              )}
-            </div>
-            <button onClick={()=>setSelectedHome(null)} style={{background:"none",border:"none",fontSize:20,color:"#94a3b8",cursor:"pointer"}}>✕</button>
-          </div>
-          {[["Owner",selectedHome.owner_name],["Phone",selectedHome.phone],["Notes",selectedHome.notes]].map(([l,v])=>v?(
-            <div key={l} style={{marginBottom:8}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:1}}>{l}</div>
-              <div style={{fontSize:13,color:"#1a2456"}}>{v}</div>
-            </div>
-          ):null)}
-          <button onClick={()=>handleDeleteHome(selectedHome.id)}
-            style={{marginTop:8,width:"100%",padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
-            Delete Pin
-          </button>
-        </div>
+        <HomePopup
+          home={selectedHome}
+          onClose={()=>setSelectedHome(null)}
+          onDelete={handleDeleteHome}
+          onDisposition={async(home,disp)=>{
+            await sb.from("canvass_homes").update({prescreen:disp,updated_at:new Date().toISOString()}).eq("id",home.id);
+            setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
+            setSelectedHome(h=>({...h,prescreen:disp}));
+          }}
+          onSaveNote={async(home,note)=>{
+            await sb.from("canvass_homes").update({notes:note,updated_at:new Date().toISOString()}).eq("id",home.id);
+            setHomes(hs=>hs.map(h=>h.id===home.id?{...h,notes:note}:h));
+            setSelectedHome(h=>({...h,notes:note}));
+          }}
+          onCreateLead={onCreateLead}
+          leads={leads}
+        />
       )}
 
       {/* Add Home form */}
@@ -3971,7 +4071,7 @@ function App() {
           </div>
         )}
         {tab==="canvass"&&isOwner&&(
-          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"/>
+          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home)=>{setTab("pipeline");setTimeout(()=>setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}}),100);}}/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
