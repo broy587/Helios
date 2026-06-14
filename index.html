@@ -3083,16 +3083,11 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         updated_at:new Date().toISOString()
       }).select().single();
       if(data) {
-        home.id = data.id;
-        home._isTemp = false;
-        home._isPipelineLead = false;
-        if(onSaveNote) onSaveNote(data, note.trim());
+        if(onSaveNote) await onSaveNote(data, note.trim());
       }
     } else {
       await onSaveNote(home, note.trim());
     }
-    // Update home.notes directly so the saved note display updates immediately
-    home.notes = note.trim();
     setNote("");
     setNoteSaved(true);
     setTimeout(()=>setNoteSaved(false), 2000);
@@ -4054,14 +4049,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           }}
           onSaveNote={async(home,note)=>{
             if(!home.id) return;
-            // If this is a newly created home (from note save), add it to homes list
+            // Update or insert note
             const exists = homes.some(h=>h.id===home.id);
-            if(!exists){
-              setHomes(hs=>[...hs,{...home,notes:note}]);
-            } else {
+            if(exists){
               await sb.from("canvass_homes").update({notes:note,updated_at:new Date().toISOString()}).eq("id",home.id);
-              setHomes(hs=>hs.map(h=>h.id===home.id?{...h,notes:note}:h));
             }
+            // Reload all homes from DB so state is fresh
+            const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
+            if(data) setHomes(data);
             setSelectedHome(h=>({...h,id:home.id,notes:note,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
