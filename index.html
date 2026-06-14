@@ -4400,7 +4400,7 @@ function App() {
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
     ...(isOwner?[["leadgen","Leads"]]:[]),
-    ...(isOwner?[["canvass","Canvass"]]:[]),
+    ["canvass","Canvass"],
     ["stats","Stats"],
     ["team","Team"]
   ];
@@ -4520,7 +4520,7 @@ function App() {
             <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
           </div>
         )}
-        {tab==="canvass"&&isOwner&&(
+        {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
             leads={(()=>{
               const filters = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
