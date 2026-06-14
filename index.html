@@ -3041,7 +3041,8 @@ function CanvassTab({gmapsKey}) {
   const [geocoding, setGeocoding] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [satellite, setSatellite] = React.useState(false);
-  const [showBuildings, setShowBuildings] = React.useState(false);
+  const [showBuildings, setShowBuildings] = React.useState(true);
+  const [locating, setLocating] = React.useState(false);
   const buildingMarkersRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
   const [searchVal, setSearchVal] = React.useState("");
@@ -3082,13 +3083,25 @@ function CanvassTab({gmapsKey}) {
   React.useEffect(()=>{
     if(!mapLoaded||!mapRef.current||mapInstanceRef.current)return;
     try{
-      mapInstanceRef.current=new window.google.maps.Map(mapRef.current,{
+      const map = new window.google.maps.Map(mapRef.current,{
         center:{lat:32.7767,lng:-96.7970},
         zoom:12,
         mapTypeId:"roadmap",
         streetViewControl:false,
         mapTypeControl:false,
       });
+      mapInstanceRef.current=map;
+      // Auto-zoom to user location on load
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(
+          (pos)=>{
+            map.panTo({lat:pos.coords.latitude,lng:pos.coords.longitude});
+            map.setZoom(16);
+          },
+          ()=>{}, // silently fail
+          {enableHighAccuracy:true,timeout:6000}
+        );
+      }
     }catch(e){setMapError("Map init failed: "+e.message);}
   },[mapLoaded]);
 
@@ -3197,23 +3210,28 @@ function CanvassTab({gmapsKey}) {
     const bounds = mapInstanceRef.current.getBounds();
     if(!bounds) return;
     const zoom = mapInstanceRef.current.getZoom();
-    // Only fetch at zoom 15+ to avoid too many results
-    if(zoom < 15) {
-      // Clear building markers if zoomed out
+    if(zoom < 14) {
       buildingMarkersRef.current.forEach(m=>m.setMap(null));
       buildingMarkersRef.current=[];
+      lastBuildingFetchRef.current=null;
       return;
     }
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
     const bbox = `${sw.lat()},${sw.lng()},${ne.lat()},${ne.lng()}`;
-    // Debounce — don't fetch if same area
     if(lastBuildingFetchRef.current===bbox) return;
     lastBuildingFetchRef.current=bbox;
     try {
-      const query = `[out:json][timeout:10];(way["building"](${bbox});node["building"](${bbox}););out center 500;`;
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+      const query = `[out:json][timeout:25];(way["building"](${bbox});relation["building"](${bbox}););out center 300;`;
+      const url = `https://overpass-api.de/api/interpreter`;
+      const res = await fetch(url, {
+        method:"POST",
+        body:`data=${encodeURIComponent(query)}`,
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      });
+      if(!res.ok) throw new Error("Overpass HTTP "+res.status);
       const data = await res.json();
+      console.log("OSM buildings fetched:",data.elements?.length);
       // Clear old building markers
       buildingMarkersRef.current.forEach(m=>m.setMap(null));
       buildingMarkersRef.current=[];
@@ -3232,15 +3250,15 @@ function CanvassTab({gmapsKey}) {
           map:mapInstanceRef.current,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
-            scale:7,
-            fillColor:alreadyPinned?"transparent":"rgba(255,255,255,0.6)",
-            fillOpacity:alreadyPinned?0:0.7,
+            scale:8,
+            fillColor:"rgba(255,255,255,0.8)",
+            fillOpacity:alreadyPinned?0:0.85,
             strokeColor:alreadyPinned?"transparent":"#1a2456",
-            strokeWeight:1.5,
-            strokeOpacity:0.6,
+            strokeWeight:2,
+            strokeOpacity:alreadyPinned?0:0.9,
           },
           zIndex:1,
-          clickable:!alreadyPinned,
+          clickable:true,
         });
         if(!alreadyPinned){
           marker.addListener("click",()=>{
@@ -3259,6 +3277,26 @@ function CanvassTab({gmapsKey}) {
         buildingMarkersRef.current.push(marker);
       });
     } catch(e) { console.error("Overpass error:",e); }
+  };
+
+  const goToMyLocation = () => {
+    if(!navigator.geolocation){alert("Location not available on this device.");return;}
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{
+        const coords={lat:pos.coords.latitude,lng:pos.coords.longitude};
+        if(mapInstanceRef.current){
+          mapInstanceRef.current.panTo(coords);
+          mapInstanceRef.current.setZoom(16);
+        }
+        setLocating(false);
+      },
+      (err)=>{
+        setLocating(false);
+        alert("Could not get your location. Make sure location access is allowed.");
+      },
+      {enableHighAccuracy:true,timeout:8000}
+    );
   };
 
   const handleAddHome=async()=>{
@@ -3381,7 +3419,14 @@ function CanvassTab({gmapsKey}) {
           </div>
         </div>
       ):(
-        <div ref={mapRef} style={{flex:1,width:"100%"}}/>
+        <div style={{position:"relative",flex:1,width:"100%"}}>
+          <div ref={mapRef} style={{width:"100%",height:"100%"}}/>
+          {/* My Location button */}
+          <button onClick={goToMyLocation}
+            style={{position:"absolute",bottom:24,right:12,width:44,height:44,borderRadius:"50%",background:"#fff",border:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,zIndex:100}}>
+            {locating?"⏳":"📍"}
+          </button>
+        </div>
       )}
 
       {/* Selected home popup */}
