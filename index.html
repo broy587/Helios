@@ -2582,15 +2582,18 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         {lead.appointment && (()=>{
           try {
             // Format: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
+            const MMAP = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
             const dashIdx = lead.appointment.indexOf(' - ');
-            if (dashIdx === -1) return null;
-            const datePart = lead.appointment.substring(0, dashIdx); // "Jun 15, 2026"
-            const afterDash = lead.appointment.substring(dashIdx + 3); // "5:00 PM to 6:30 PM"
-            const startTime = afterDash.split(' to ')[0].trim(); // "5:00 PM"
-            const d = new Date(datePart);
-            if (isNaN(d.getTime())) return null;
-            const formatted = `${d.getMonth()+1}/${d.getDate()} @ ${startTime}`;
-            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{formatted}</div>;
+            if (dashIdx === -1) return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{lead.appointment}</div>;
+            const datePart = lead.appointment.substring(0, dashIdx).trim();
+            const afterDash = lead.appointment.substring(dashIdx + 3);
+            const startTime = afterDash.split(' to ')[0].trim();
+            // Parse "Jun 15, 2026" manually
+            const dp = datePart.split(/[\s,]+/); // ["Jun","15","2026"]
+            const month = MMAP[dp[0]];
+            const day = parseInt(dp[1]);
+            if (!month || !day) return null;
+            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{month}/{day} @ {startTime}</div>;
           } catch(e) { return null; }
         })()}
         {(lead.soft_solid||lead.confirmed) && (
