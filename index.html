@@ -3043,6 +3043,8 @@ const DISPOSITIONS = [
 function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreateLead, leads, onStageChange}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
+  // Re-sync note when home prop updates (after save)
+  React.useEffect(()=>{ setNote(home.notes||""); },[home.notes]);
 
   const [saving, setSaving] = React.useState(false);
 
