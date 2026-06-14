@@ -2581,11 +2581,15 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         </div>
         {lead.appointment && (()=>{
           try {
-            const parts = lead.appointment.split(' - ');
-            const d = new Date(parts[0]);
-            const timePart = parts[1] ? parts[1].split(' to ')[0].trim() : '';
-            // Convert "5:00 PM" to "5:00 PM" keeping AM/PM
-            const formatted = `${d.getMonth()+1}/${d.getDate()} @ ${timePart}`;
+            // Format: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
+            const dashIdx = lead.appointment.indexOf(' - ');
+            if (dashIdx === -1) return null;
+            const datePart = lead.appointment.substring(0, dashIdx); // "Jun 15, 2026"
+            const afterDash = lead.appointment.substring(dashIdx + 3); // "5:00 PM to 6:30 PM"
+            const startTime = afterDash.split(' to ')[0].trim(); // "5:00 PM"
+            const d = new Date(datePart);
+            if (isNaN(d.getTime())) return null;
+            const formatted = `${d.getMonth()+1}/${d.getDate()} @ ${startTime}`;
             return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{formatted}</div>;
           } catch(e) { return null; }
         })()}
