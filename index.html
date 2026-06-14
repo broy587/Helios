@@ -3029,6 +3029,244 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
   );
 }
 
+
+// ── Canvass Tab ───────────────────────────────────────────────────────
+function CanvassTab({gmapsKey}) {
+  const [mapLoaded, setMapLoaded] = React.useState(false);
+  const [mapError, setMapError] = React.useState(null);
+  const [homes, setHomes] = React.useState([]);
+  const [selectedHome, setSelectedHome] = React.useState(null);
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const [addForm, setAddForm] = React.useState({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
+  const [geocoding, setGeocoding] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+  const markersRef = React.useRef([]);
+
+  const PRESCREEN_COLORS = {yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8","":" #1a2456"};
+
+  React.useEffect(()=>{
+    if(window.google&&window.google.maps){setMapLoaded(true);return;}
+    if(document.getElementById("gmaps-script")){
+      const check=setInterval(()=>{if(window.google&&window.google.maps){setMapLoaded(true);clearInterval(check);}},200);
+      return ()=>clearInterval(check);
+    }
+    const script=document.createElement("script");
+    script.id="gmaps-script";
+    script.src=`https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&libraries=places`;
+    script.async=true;
+    script.onload=()=>setMapLoaded(true);
+    script.onerror=()=>setMapError("Failed to load Google Maps. Check your API key.");
+    document.head.appendChild(script);
+  },[]);
+
+  React.useEffect(()=>{ loadHomes(); },[]);
+
+  const loadHomes=async()=>{
+    try{
+      const {data}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
+      setHomes(data||[]);
+    }catch(e){console.error("Canvass load error:",e);}
+  };
+
+  React.useEffect(()=>{
+    if(!mapLoaded||!mapRef.current||mapInstanceRef.current)return;
+    try{
+      mapInstanceRef.current=new window.google.maps.Map(mapRef.current,{
+        center:{lat:32.7767,lng:-96.7970},
+        zoom:12,
+        mapTypeId:"roadmap",
+        streetViewControl:false,
+        mapTypeControl:false,
+      });
+    }catch(e){setMapError("Map init failed: "+e.message);}
+  },[mapLoaded]);
+
+  React.useEffect(()=>{
+    if(!mapInstanceRef.current||!window.google)return;
+    markersRef.current.forEach(m=>m.setMap(null));
+    markersRef.current=[];
+    homes.forEach(home=>{
+      if(!home.lat||!home.lng)return;
+      const color=PRESCREEN_COLORS[home.prescreen||""]||"#1a2456";
+      const marker=new window.google.maps.Marker({
+        position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
+        map:mapInstanceRef.current,
+        icon:{
+          path:window.google.maps.SymbolPath.CIRCLE,
+          scale:11,
+          fillColor:color,
+          fillOpacity:0.85,
+          strokeColor:"#fff",
+          strokeWeight:2,
+        },
+        title:home.address,
+      });
+      marker.addListener("click",()=>setSelectedHome(home));
+      markersRef.current.push(marker);
+    });
+  },[homes,mapLoaded]);
+
+  const geocodeAddress=async(address)=>{
+    const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
+    const data=await res.json();
+    if(data.results&&data.results.length>0){
+      const loc=data.results[0].geometry.location;
+      return {lat:loc.lat,lng:loc.lng};
+    }
+    return null;
+  };
+
+  const handleAddHome=async()=>{
+    if(!addForm.address.trim())return;
+    setSaving(true);setGeocoding(true);
+    try{
+      const coords=await geocodeAddress(addForm.address);
+      setGeocoding(false);
+      const payload={
+        address:addForm.address.trim(),
+        owner_name:addForm.ownerName.trim()||null,
+        phone:addForm.phone.trim()||null,
+        prescreen:addForm.prescreen||null,
+        notes:addForm.notes.trim()||null,
+        lat:coords?.lat||null,
+        lng:coords?.lng||null,
+        updated_at:new Date().toISOString(),
+      };
+      await sb.from("canvass_homes").insert(payload);
+      setAddForm({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
+      setShowAddForm(false);
+      await loadHomes();
+      if(coords&&mapInstanceRef.current){
+        mapInstanceRef.current.panTo(coords);
+        mapInstanceRef.current.setZoom(15);
+      }
+    }catch(e){setGeocoding(false);alert("Error: "+e.message);}
+    setSaving(false);
+  };
+
+  const handleDeleteHome=async(id)=>{
+    await sb.from("canvass_homes").delete().eq("id",id);
+    setSelectedHome(null);
+    await loadHomes();
+  };
+
+  const prescreenLabel=(p)=>({yes:"✓ Interested",maybe:"Maybe",no:"Not Interested",no_answer:"No Answer"})[p]||"";
+  const prescreenColor=(p)=>({yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8"})[p]||"#94a3b8";
+
+  if(mapError) return(
+    <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
+      <div style={{fontSize:40,marginBottom:16}}>🗺️</div>
+      <div style={{fontSize:16,fontWeight:700,color:"#ef4444",marginBottom:8}}>Map Error</div>
+      <div style={{fontSize:13,color:"#94a3b8",textAlign:"center"}}>{mapError}</div>
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",position:"relative"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#faf6f0",borderBottom:"1.5px solid #c8b8a2"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:800,color:"#1a2456"}}>Canvass Map</div>
+          <div style={{display:"flex",gap:10,marginTop:4}}>
+            {[["yes","#10b981","Yes"],["maybe","#f59e0b","Maybe"],["no","#ef4444","No"],["no_answer","#94a3b8","N/A"]].map(([k,c,l])=>(
+              <div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:c}}/>
+                <span style={{fontSize:10,color:"#64748b"}}>{l}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button onClick={()=>setShowAddForm(true)}
+          style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:13}}>
+          + Add Home
+        </button>
+      </div>
+
+      {/* Map */}
+      {!mapLoaded?(
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",background:"#f5ede0"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:12}}>🗺️</div>
+            <div style={{fontSize:14,color:"#6b2d4e",fontWeight:600}}>Loading map...</div>
+          </div>
+        </div>
+      ):(
+        <div ref={mapRef} style={{flex:1,width:"100%"}}/>
+      )}
+
+      {/* Selected home popup */}
+      {selectedHome&&(
+        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"#faf6f0",borderRadius:"20px 20px 0 0",padding:"20px 20px 32px",boxShadow:"0 -8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #c8b8a2",zIndex:1000}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:800,color:"#1a2456",marginBottom:4}}>{selectedHome.address}</div>
+              {selectedHome.prescreen&&(
+                <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:prescreenColor(selectedHome.prescreen),color:"#fff"}}>
+                  {prescreenLabel(selectedHome.prescreen)}
+                </span>
+              )}
+            </div>
+            <button onClick={()=>setSelectedHome(null)} style={{background:"none",border:"none",fontSize:20,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+          </div>
+          {[["Owner",selectedHome.owner_name],["Phone",selectedHome.phone],["Notes",selectedHome.notes]].map(([l,v])=>v?(
+            <div key={l} style={{marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:1}}>{l}</div>
+              <div style={{fontSize:13,color:"#1a2456"}}>{v}</div>
+            </div>
+          ):null)}
+          <button onClick={()=>handleDeleteHome(selectedHome.id)}
+            style={{marginTop:8,width:"100%",padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
+            Delete Pin
+          </button>
+        </div>
+      )}
+
+      {/* Add Home form */}
+      {showAddForm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setShowAddForm(false)}>
+          <div style={{background:"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#1a2456"}}>Add Home</div>
+              <button onClick={()=>setShowAddForm(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            {[["address","Address *","text","123 Main St, City, TX"],["ownerName","Owner Name","text","John Smith"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
+              <div key={k} style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+                <input type={t} placeholder={p} value={addForm[k]}
+                  onChange={e=>{const v=e.target.value;setAddForm(f=>({...f,[k]:v}));}}
+                  style={inputStyle}/>
+              </div>
+            ))}
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Prescreen</label>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[["yes","Interested","#10b981"],["maybe","Maybe","#f59e0b"],["no","Not Interested","#ef4444"],["no_answer","No Answer","#94a3b8"]].map(([v,l,c])=>(
+                  <button key={v} onClick={()=>setAddForm(f=>({...f,prescreen:f.prescreen===v?"":v}))}
+                    style={{flex:1,minWidth:80,padding:"8px 4px",borderRadius:8,border:`2px solid ${addForm.prescreen===v?c:"#e2e8f0"}`,background:addForm.prescreen===v?c:"#fff",color:addForm.prescreen===v?"#fff":"#64748b",fontWeight:700,cursor:"pointer",fontSize:11}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{marginBottom:22}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
+              <textarea placeholder="Any notes..." value={addForm.notes}
+                onChange={e=>{const v=e.target.value;setAddForm(f=>({...f,notes:v}));}}
+                rows={3} style={{...inputStyle,resize:"vertical"}}/>
+            </div>
+            <button onClick={handleAddHome} disabled={!addForm.address.trim()||saving}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:addForm.address.trim()?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:addForm.address.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:addForm.address.trim()?"pointer":"default",fontSize:15}}>
+              {geocoding?"Finding address...":saving?"Saving...":"Add to Map"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────
 function App() {
   const [user,setUser]=useState(null);
@@ -3356,7 +3594,8 @@ function App() {
   const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
-    ["leadgen","Leads"],
+    ...(isOwner?[["leadgen","Leads"]]:[]),
+    ...(isOwner?[["canvass","Canvass"]]:[]),
     ["stats","Stats"],
     ["team","Team"]
   ];
@@ -3465,10 +3704,13 @@ function App() {
         )}
         {tab==="leadgen"&&(
           <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
-            <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20}}>🚀</div>
+            <div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#1a2456,#6b2d4e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,marginBottom:20}}>🚀</div>
             <div style={{fontSize:22,fontWeight:800,color:"#0f172a",marginBottom:8}}>Leads</div>
             <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
           </div>
+        )}
+        {tab==="canvass"&&isOwner&&(
+          <CanvassTab gmapsKey="${GMAPS_KEY}"/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
