@@ -2581,22 +2581,21 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         </div>
         {lead.appointment && (()=>{
           try {
-            // Format: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
-            const MMAP = {Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"};
-            const dashIdx = lead.appointment.indexOf(' - ');
-            if (dashIdx === -1) return null;
-            const datePart = lead.appointment.substring(0, dashIdx).trim();
-            const afterDash = lead.appointment.substring(dashIdx + 3);
-            // "5:00 PM to 6:30 PM" → "5:00-6:30 PM" style or just start time
-            const timeParts = afterDash.split(' to ');
-            const startTime = timeParts[0].trim(); // "5:00 PM"
-            // Parse "Jun 15, 2026" → remove comma, split by space
-            const dp = datePart.replace(',','').split(' '); // ["Jun","15","2026"]
-            const month = MMAP[dp[0]];
-            const day = String(parseInt(dp[1])).padStart(2,'0');
-            if (!month || !day) return null;
+            const MMAP = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"};
+            const raw = lead.appointment;
+            const dashIdx = raw.indexOf(' - ');
+            if (dashIdx === -1) return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{raw}</div>;
+            const datePart = raw.substring(0, dashIdx).trim();
+            const afterDash = raw.substring(dashIdx + 3).trim();
+            const startTime = afterDash.indexOf(' to ') > -1 ? afterDash.substring(0, afterDash.indexOf(' to ')).trim() : afterDash;
+            const cleaned = datePart.replace(/,/g,'');
+            const dp = cleaned.split(' ');
+            const month = MMAP[dp[0]] || dp[0];
+            const day = dp[1] ? String(parseInt(dp[1])).padStart(2,'0') : '??';
             return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{month}/{day} @ {startTime}</div>;
-          } catch(e) { return null; }
+          } catch(e) {
+            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{lead.appointment}</div>;
+          }
         })()}
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
