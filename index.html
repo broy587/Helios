@@ -3596,11 +3596,11 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     markersRef.current=[];
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
-      // Filter by viewing scope — if allowedOwnerIds set, only show homes by those owners
-      // If added_by is null, assume created by current user
+      // Filter by viewing scope
       if(allowedOwnerIds){
         const homeOwner = home.added_by || (currentUser&&currentUser.id);
-        if(homeOwner&&!allowedOwnerIds.has(homeOwner)) return;
+        console.log("Home check:",home.address,"owner:",homeOwner,"allowed:",allowedOwnerIds,"size:",allowedOwnerIds.size,"has:",allowedOwnerIds.has(homeOwner));
+        if(!allowedOwnerIds.has(homeOwner)) return;
       }
       const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
