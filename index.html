@@ -2583,15 +2583,20 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
           try {
             const MMAP = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"};
             const raw = lead.appointment;
+            // Handle both formats:
+            // Old: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
+            // New: same, just parse correctly either way
             const dashIdx = raw.indexOf(' - ');
             if (dashIdx === -1) return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{raw}</div>;
             const datePart = raw.substring(0, dashIdx).trim();
             const afterDash = raw.substring(dashIdx + 3).trim();
             const startTime = afterDash.indexOf(' to ') > -1 ? afterDash.substring(0, afterDash.indexOf(' to ')).trim() : afterDash;
-            const cleaned = datePart.replace(/,/g,'');
-            const dp = cleaned.split(' ');
-            const month = MMAP[dp[0]] || dp[0];
+            // Parse "Jun 15, 2026" or "Jun 15, 2026"
+            const cleaned = datePart.replace(/,/g,'').trim();
+            const dp = cleaned.split(/\s+/);
+            const month = MMAP[dp[0]] || String(Object.keys(MMAP).indexOf(dp[0])+1).padStart(2,'0');
             const day = dp[1] ? String(parseInt(dp[1])).padStart(2,'0') : '??';
+            if (month === "00" || day === "NaN") return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{raw}</div>;
             return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{month}/{day} @ {startTime}</div>;
           } catch(e) {
             return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{lead.appointment}</div>;
