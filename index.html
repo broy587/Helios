@@ -3151,8 +3151,17 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Notes</div>
         {/* Saved note display */}
         {home.notes&&(
-          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"10px 14px",marginBottom:8,fontSize:13,color:"rgba(255,255,255,0.85)",lineHeight:1.5,borderLeft:"3px solid #6b2d4e"}}>
-            {home.notes}
+          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"10px 14px",marginBottom:8,borderLeft:"3px solid #6b2d4e"}}>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:6}}>{home.notes}</div>
+            <button onMouseDown={async e=>{
+              e.preventDefault();
+              if(home.id) await sb.from("canvass_homes").update({notes:null,updated_at:new Date().toISOString()}).eq("id",home.id);
+              home.notes=null;
+              if(onSaveNote) onSaveNote({...home,notes:null},"");
+            }}
+              style={{background:"none",border:"none",color:"rgba(255,68,68,0.7)",fontSize:11,cursor:"pointer",padding:0,fontWeight:600}}>
+              ✕ Delete note
+            </button>
           </div>
         )}
         {/* Add/edit note input */}
@@ -4054,15 +4063,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           }}
           onSaveNote={async(home,note)=>{
             if(!home.id) return;
-            // Update or insert note
-            const exists = homes.some(h=>h.id===home.id);
-            if(exists){
-              await sb.from("canvass_homes").update({notes:note,updated_at:new Date().toISOString()}).eq("id",home.id);
-            }
-            // Reload all homes from DB so state is fresh
+            const noteVal = note||null;
+            await sb.from("canvass_homes").update({notes:noteVal,updated_at:new Date().toISOString()}).eq("id",home.id);
+            // Reload homes fresh from DB
             const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
             if(data){setHomes(data);homesRef.current=data;}
-            setSelectedHome(h=>({...h,id:home.id,notes:note,_isTemp:false,_isPipelineLead:false}));
+            setSelectedHome(h=>({...h,id:home.id,notes:noteVal,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
           leads={leads}
