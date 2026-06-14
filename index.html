@@ -3040,6 +3040,12 @@ function CanvassTab({gmapsKey}) {
   const [addForm, setAddForm] = React.useState({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
   const [geocoding, setGeocoding] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [satellite, setSatellite] = React.useState(false);
+  const [searchVal, setSearchVal] = React.useState("");
+  const [suggestions, setSuggestions] = React.useState([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const autocompleteRef = React.useRef(null);
+  const searchDebounceRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const mapInstanceRef = React.useRef(null);
   const markersRef = React.useRef([]);
@@ -3082,6 +3088,61 @@ function CanvassTab({gmapsKey}) {
       });
     }catch(e){setMapError("Map init failed: "+e.message);}
   },[mapLoaded]);
+
+  // Init Places Autocomplete service
+  React.useEffect(()=>{
+    if(!mapLoaded||!window.google||!window.google.maps.places)return;
+    autocompleteRef.current = new window.google.maps.places.AutocompleteService();
+  },[mapLoaded]);
+
+  const handleSearchInput = (val) => {
+    setSearchVal(val);
+    if(!val.trim()){setSuggestions([]);setShowSuggestions(false);return;}
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(()=>{
+      if(!autocompleteRef.current)return;
+      autocompleteRef.current.getPlacePredictions(
+        {input:val, types:["address"]},
+        (predictions, status)=>{
+          if(status===window.google.maps.places.PlacesServiceStatus.OK&&predictions){
+            setSuggestions(predictions.slice(0,6));
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        }
+      );
+    },300);
+  };
+
+  const handleSelectSuggestion = async (suggestion) => {
+    setSearchVal(suggestion.description);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    // Geocode the selected address and pan map
+    const coords = await geocodeAddress(suggestion.description);
+    if(coords&&mapInstanceRef.current){
+      mapInstanceRef.current.panTo(coords);
+      mapInstanceRef.current.setZoom(18);
+      // Add a temporary search marker
+      if(window._searchMarker) window._searchMarker.setMap(null);
+      window._searchMarker = new window.google.maps.Marker({
+        position:coords,
+        map:mapInstanceRef.current,
+        icon:{
+          path:window.google.maps.SymbolPath.CIRCLE,
+          scale:14,
+          fillColor:"#6b2d4e",
+          fillOpacity:0.9,
+          strokeColor:"#fff",
+          strokeWeight:3,
+        },
+        title:suggestion.description,
+        animation:window.google.maps.Animation.DROP,
+      });
+    }
+  };
 
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google)return;
@@ -3167,22 +3228,58 @@ function CanvassTab({gmapsKey}) {
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",position:"relative"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"#faf6f0",borderBottom:"1.5px solid #c8b8a2"}}>
-        <div>
-          <div style={{fontSize:16,fontWeight:800,color:"#1a2456"}}>Canvass Map</div>
-          <div style={{display:"flex",gap:10,marginTop:4}}>
-            {[["yes","#10b981","Yes"],["maybe","#f59e0b","Maybe"],["no","#ef4444","No"],["no_answer","#94a3b8","N/A"]].map(([k,c,l])=>(
-              <div key={k} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:c}}/>
-                <span style={{fontSize:10,color:"#64748b"}}>{l}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{fontSize:16,fontWeight:800,color:"#1a2456"}}>Canvass Map</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>{
+            if(!mapInstanceRef.current)return;
+            const cur=mapInstanceRef.current.getMapTypeId();
+            mapInstanceRef.current.setMapTypeId(cur==="roadmap"?"satellite":"roadmap");
+            setSatellite(s=>!s);
+          }}
+            style={{background:"none",border:`1.5px solid #c8b8a2`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#1a2456",display:"flex",alignItems:"center",gap:6}}>
+            {satellite?"🗺️ Map":"🛰️ Satellite"}
+          </button>
+          <button onClick={()=>setShowAddForm(true)}
+            style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:13}}>
+            + Add Home
+          </button>
         </div>
-        <button onClick={()=>setShowAddForm(true)}
-          style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:13}}>
-          + Add Home
-        </button>
       </div>
+
+      {/* Search bar */}
+      {mapLoaded && (
+        <div style={{padding:"10px 16px",background:"#faf6f0",borderBottom:"1.5px solid #c8b8a2",position:"relative",zIndex:500}}>
+          <div style={{position:"relative"}}>
+            <input
+              type="text"
+              placeholder="Search address..."
+              value={searchVal}
+              onChange={e=>handleSearchInput(e.target.value)}
+              onFocus={()=>{if(suggestions.length>0)setShowSuggestions(true);}}
+              onBlur={()=>setTimeout(()=>setShowSuggestions(false),200)}
+              style={{...inputStyle,paddingLeft:36,background:"#fff",border:"1.5px solid #c8b8a2"}}
+            />
+            <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:16,pointerEvents:"none"}}>🔍</span>
+            {searchVal && (
+              <button onClick={()=>{setSearchVal("");setSuggestions([]);setShowSuggestions(false);if(window._searchMarker)window._searchMarker.setMap(null);}}
+                style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16}}>✕</button>
+            )}
+          </div>
+          {showSuggestions && suggestions.length>0 && (
+            <div style={{position:"absolute",left:16,right:16,top:"100%",background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",border:"1.5px solid #c8b8a2",overflow:"hidden",zIndex:600}}>
+              {suggestions.map((s,i)=>(
+                <div key={s.place_id} onMouseDown={()=>handleSelectSuggestion(s)}
+                  style={{padding:"11px 14px",borderBottom:i<suggestions.length-1?"1px solid #f1f5f9":"none",cursor:"pointer",fontSize:13,color:"#1a2456",display:"flex",alignItems:"center",gap:10}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#faf6f0"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  <span style={{fontSize:16,flexShrink:0}}>📍</span>
+                  <span>{s.description}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Map */}
       {!mapLoaded?(
