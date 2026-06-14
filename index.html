@@ -3196,6 +3196,25 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
   );
 }
 
+
+// Lead stage emojis for canvass filter (distinct from disposition emojis)
+const STAGE_EMOJIS = {
+  "Lead: Need Bill/Appointment": "📋",
+  "AC / Scheduled":              "📅",
+  "No Show / No Contact":        "👻",
+  "No Show / Contact":           "📵",
+  "Stale / No Reschedule":       "🧊",
+  "No Close / No Offer":         "🚪",
+  "No Close / Offer Given":      "💬",
+  "Failed Credit":               "❌",
+  "VC / SRA":                    "🤝",
+  "CAP":                         "📝",
+  "Permitting":                  "🏛️",
+  "Install Scheduled":           "🔧",
+  "Install":                     "⚙️",
+  "PTO / REP":                   "🌞",
+  "ARC / Cancels":               "🔴",
+};
 // ── Canvass Tab ───────────────────────────────────────────────────────
 function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
   const [mapLoaded, setMapLoaded] = React.useState(false);
@@ -3210,6 +3229,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
   const [showBuildings, setShowBuildings] = React.useState(true);
   const [locating, setLocating] = React.useState(false);
   const myLocationMarkerRef = React.useRef(null);
+  const [showFilter, setShowFilter] = React.useState(false);
+  const [activeFilters, setActiveFilters] = React.useState([]); // empty = show all
   const buildingMarkersRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
   const [searchVal, setSearchVal] = React.useState("");
@@ -3281,10 +3302,46 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
   React.useEffect(()=>{
     if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
     const listener = window.google.maps.event.addListener(
-      mapInstanceRef.current, "idle", ()=>{ if(showBuildings) fetchBuildings(); }
+      mapInstanceRef.current, "idle", ()=>{ if(showBuildings&&activeFilters.length===0) fetchBuildings(); }
     );
     return ()=>window.google.maps.event.removeListener(listener);
-  },[mapLoaded, showBuildings]); // homes excluded — prevents bubble flicker
+  },[mapLoaded, showBuildings, activeFilters]);
+
+  // Apply filters to markers whenever activeFilters changes
+  React.useEffect(()=>{
+    if(!mapInstanceRef.current||!window.google) return;
+    const hasFilter = activeFilters.length > 0;
+
+    // Filter disposition markers (canvass homes)
+    markersRef.current.forEach(m=>{
+      const home = homes.find(h=>{
+        if(!h.lat||!h.lng) return false;
+        const pos=m.getPosition();
+        return pos&&Math.abs(pos.lat()-parseFloat(h.lat))<0.0003&&Math.abs(pos.lng()-parseFloat(h.lng))<0.0003;
+      });
+      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
+      const dispMatch = home&&home.prescreen&&activeFilters.includes("disp:"+home.prescreen);
+      m.setMap(dispMatch?mapInstanceRef.current:null);
+    });
+
+    // Filter pipeline lead markers
+    leadMarkersRef.current.forEach(m=>{
+      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
+      const pos=m.getPosition();
+      const lead = leads&&leads.find(l=>{
+        if(!l.address) return false;
+        return m.getTitle()===l.name||m.getTitle()===l.address;
+      });
+      const stageMatch = lead&&activeFilters.includes("stage:"+lead.stage);
+      const dispMatch = activeFilters.includes("disp:lead"); // lead disposition
+      m.setMap(stageMatch||dispMatch?mapInstanceRef.current:null);
+    });
+
+    // Hide/show OSM building bubbles based on filter
+    buildingMarkersRef.current.forEach(m=>{
+      m.setMap(hasFilter?null:mapInstanceRef.current);
+    });
+  },[activeFilters, homes, leads, mapLoaded]); // homes excluded — prevents bubble flicker
 
   // Init Places Autocomplete service
   React.useEffect(()=>{
@@ -3655,10 +3712,58 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
             <span style={{fontSize:20}}>{locating?"⏳":"➤"}</span>
           </button>
 
+          {/* Filter */}
+          <button onClick={()=>setShowFilter(f=>!f)}
+            style={{...btnStyle,background:activeFilters.length>0?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:activeFilters.length>0?"2px solid #6b2d4e":"none",position:"relative"}}
+            title="Filter">
+            <span style={{fontSize:20}}>🔍</span>
+            {activeFilters.length>0&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#6b2d4e",fontSize:9,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilters.length}</div>}
+          </button>
           {/* Add home */}
           <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
             <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
           </button>
+        </div>
+      )}
+
+      {/* Filter Panel */}
+      {showFilter && (
+        <div style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:260,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Filter Map</div>
+            {activeFilters.length>0&&(
+              <button onClick={()=>setActiveFilters([])} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear All</button>
+            )}
+          </div>
+
+          {/* Dispositions */}
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Dispositions</div>
+          {DISPOSITIONS.map(d=>{
+            const isOn = activeFilters.includes("disp:"+d.key);
+            return (
+              <div key={d.key} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="disp:"+d.key):[...f,"disp:"+d.key])}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
+                <div style={{width:28,height:28,borderRadius:"50%",background:isOn?d.color:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{d.icon}</div>
+                <span style={{fontSize:13,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400}}>{d.label}</span>
+                {isOn&&<span style={{marginLeft:"auto",color:d.color,fontSize:14}}>✓</span>}
+              </div>
+            );
+          })}
+
+          {/* Lead Stages */}
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:14}}>Lead Stages</div>
+          {STAGES.map(s=>{
+            const isOn = activeFilters.includes("stage:"+s);
+            const emoji = STAGE_EMOJIS[s]||"📌";
+            return (
+              <div key={s} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="stage:"+s):[...f,"stage:"+s])}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
+                <span style={{fontSize:16,width:28,textAlign:"center"}}>{emoji}</span>
+                <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{s}</span>
+                {isOn&&<span style={{color:"#10b981",fontSize:14}}>✓</span>}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -3732,14 +3837,39 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
               const pos=mk.getPosition();
               return pos&&Math.abs(pos.lat()-parseFloat(home.lat||0))<0.0003&&Math.abs(pos.lng()-parseFloat(home.lng||0))<0.0003;
             });
-            if(m&&window.google){
+            if(window.google){
+              // Hide any OSM building bubble at this location
+              const osmMarker = buildingMarkersRef.current.find(mk=>{
+                const pos=mk.getPosition();
+                return pos&&Math.abs(pos.lat()-parseFloat(home.lat||0))<0.0003&&Math.abs(pos.lng()-parseFloat(home.lng||0))<0.0003;
+              });
               if(isClearing){
-                // Restore to plain clear bubble
-                m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:11,fillColor:"rgba(255,255,255,0.85)",fillOpacity:0.85,strokeColor:"#1a2456",strokeWeight:2});
-                m.setLabel({text:"",fontSize:"14px"});
+                // Show OSM bubble again when clearing
+                if(osmMarker) osmMarker.setMap(mapInstanceRef.current);
+                if(m){
+                  m.setMap(null);
+                  // Remove from markersRef
+                  const idx = markersRef.current.indexOf(m);
+                  if(idx>-1) markersRef.current.splice(idx,1);
+                }
               } else {
-                m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#10b981",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5});
-                m.setLabel({text:dispEmojis[disp]||"⚡",fontSize:"14px"});
+                // Hide OSM bubble, update or create disposition marker
+                if(osmMarker) osmMarker.setMap(null);
+                if(m){
+                  m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp],fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5});
+                  m.setLabel({text:dispEmojis[disp],fontSize:"14px"});
+                } else if(mapInstanceRef.current&&home.lat&&home.lng){
+                  // Create new marker for this disposition
+                  const newM = new window.google.maps.Marker({
+                    position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
+                    map:mapInstanceRef.current,
+                    icon:{path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp],fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5},
+                    label:{text:dispEmojis[disp],fontSize:"14px"},
+                    zIndex:10,
+                  });
+                  newM.addListener("click",()=>setSelectedHome({...home,prescreen:disp}));
+                  markersRef.current.push(newM);
+                }
               }
             }
           }}
