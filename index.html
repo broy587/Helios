@@ -4335,9 +4335,15 @@ function App() {
                   </button>
                   {repDropOpen&&visibleReps.length>0&&(
                     <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                      {isOwner&&(
+                        <button onClick={()=>{setPipelineFilter("team");setRepDropOpen(false);}}
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",borderBottom:`2px solid ${dark?"#334155":"#ede3d6"}`,background:pipelineSubTab==="team"?"#f0edf5":dark?"#1e293b":"#fff",color:pipelineSubTab==="team"?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"left"}}>
+                          👥 View All
+                        </button>
+                      )}
                       {visibleReps.map(r=>(
                         <button key={r.id} onClick={()=>{setPipelineFilter(`rep:${r.id}`);setRepDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":dark?"#1e293b":"#fff",color:activeRepId===r.id?"#f97316":dark?"#e2e8f0":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#f0edf5":dark?"#1e293b":"#fff",color:activeRepId===r.id?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
                           {r.name}
                         </button>
                       ))}
