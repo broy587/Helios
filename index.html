@@ -2438,6 +2438,10 @@ function LeadModal({open,onClose,onSave,initial}) {
         ))}
         <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Pulled</label>
+          <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+            style={{background:"none",border:"none",fontSize:12,fontWeight:600,color:"#6b2d4e",cursor:"pointer",textDecoration:"underline",padding:0}}>
+            Smart Meter Texas
+          </button>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:12,color:form.usageInput==="No"?"#ef4444":"#94a3b8",fontWeight:form.usageInput==="No"?700:400}}>No</span>
             <div onClick={()=>setForm(f=>({...f,usageInput:f.usageInput==="Yes"?"No":"Yes"}))}
