@@ -3040,7 +3040,7 @@ function CanvassTab({gmapsKey}) {
   const [addForm, setAddForm] = React.useState({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
   const [geocoding, setGeocoding] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [satellite, setSatellite] = React.useState(false);
+  const [satellite, setSatellite] = React.useState(()=>localStorage.getItem("canvass_satellite")!=="false");
   const [showBuildings, setShowBuildings] = React.useState(true);
   const [locating, setLocating] = React.useState(false);
   const buildingMarkersRef = React.useRef([]);
@@ -3083,10 +3083,11 @@ function CanvassTab({gmapsKey}) {
   React.useEffect(()=>{
     if(!mapLoaded||!mapRef.current||mapInstanceRef.current)return;
     try{
+      const savedSat = localStorage.getItem("canvass_satellite")!=="false";
       const map = new window.google.maps.Map(mapRef.current,{
         center:{lat:32.7767,lng:-96.7970},
         zoom:12,
-        mapTypeId:"roadmap",
+        mapTypeId:savedSat?"satellite":"roadmap",
         streetViewControl:false,
         mapTypeControl:false,
       });
@@ -3353,8 +3354,9 @@ function CanvassTab({gmapsKey}) {
           <button onClick={()=>{
             if(!mapInstanceRef.current)return;
             const cur=mapInstanceRef.current.getMapTypeId();
-            mapInstanceRef.current.setMapTypeId(cur==="roadmap"?"satellite":"roadmap");
-            setSatellite(s=>!s);
+            const next=cur==="roadmap"?"satellite":"roadmap";
+            mapInstanceRef.current.setMapTypeId(next);
+            setSatellite(s=>{localStorage.setItem("canvass_satellite",!s);return !s;});
           }}
             style={{background:"none",border:`1.5px solid #c8b8a2`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#1a2456",display:"flex",alignItems:"center",gap:6}}>
             {satellite?"🗺️ Map":"🛰️ Satellite"}
