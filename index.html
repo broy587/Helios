@@ -2194,7 +2194,7 @@ function EmailButton({email}) {
   );
 }
 
-function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate}) {
+function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass}) {
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -2239,6 +2239,12 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
               </div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+              {lead.address&&onViewInCanvass&&(
+                <button onClick={()=>onViewInCanvass(lead)}
+                  style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #c8b8a2",background:"none",color:"#1a2456",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                  🗺️ Map
+                </button>
+              )}
               <button onClick={()=>onEdit(lead)}
                 style={{padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                 Edit
@@ -3435,6 +3441,35 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   React.useEffect(()=>{ loadHomes(); },[]);
   // Keep homesRef in sync with homes state
   React.useEffect(()=>{ homesRef.current=homes; },[homes]);
+
+  // Jump to lead from pipeline "View in Canvass"
+  React.useEffect(()=>{
+    if(!mapLoaded||!window._canvassJumpLead) return;
+    const lead = window._canvassJumpLead;
+    window._canvassJumpLead = null;
+    if(!lead.address) return;
+    geocodeAddress(lead.address).then(coords=>{
+      if(!coords) return;
+      if(mapInstanceRef.current){
+        mapInstanceRef.current.panTo(coords);
+        mapInstanceRef.current.setZoom(18);
+      }
+      // Find existing canvass home or create temp popup
+      const saved = homesRef.current.find(h=>
+        h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
+      );
+      if(saved){
+        setSelectedHome(saved);
+      } else {
+        setSelectedHome({
+          id:null,_isPipelineLead:true,_leadId:lead.id,
+          address:lead.address,owner_name:lead.name||"",
+          phone:lead.phone||"",notes:lead.notes||"",
+          prescreen:"lead",lat:coords.lat,lng:coords.lng
+        });
+      }
+    });
+  },[mapLoaded]);
 
   const loadHomes=async()=>{
     try{
@@ -4672,7 +4707,14 @@ function App() {
           onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
           repProfiles={repProfiles} onTransfer={handleTransfer}
-          onUpdate={updated=>setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l))}/>
+          onUpdate={updated=>setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l))}
+          onViewInCanvass={lead=>{
+            setDetailId(null);
+            setTab("canvass");
+            setTimeout(()=>{
+              window._canvassJumpLead=lead;
+            },100);
+          }}/>
       )}
 
       <HamburgerDrawer
