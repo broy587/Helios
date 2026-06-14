@@ -3098,10 +3098,6 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
             const isActive = home.prescreen===d.key;
             return (
               <div key={d.key} onClick={()=>{
-                if(home._isTemp||home._isPipelineLead){
-                  if(d.key==="lead") onCreateLead(home,null);
-                  return;
-                }
                 onDisposition(home, d.key);
                 if(d.key==="lead") onCreateLead(home, null);
               }}
@@ -3368,12 +3364,13 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
           map:mapInstanceRef.current,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
-            scale:12,
+            scale:14,
             fillColor:"#10b981",
             fillOpacity:0.9,
             strokeColor:"#fff",
             strokeWeight:2.5,
           },
+          label:{text:"⚡",fontSize:"14px"},
           title:lead.name||lead.address,
           zIndex:10,
         });
@@ -3703,19 +3700,36 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
           onClose={()=>setSelectedHome(null)}
           onDelete={handleDeleteHome}
           onDisposition={async(home,disp)=>{
-            await sb.from("canvass_homes").update({prescreen:disp,updated_at:new Date().toISOString()}).eq("id",home.id);
-            setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
-            setSelectedHome(h=>({...h,prescreen:disp}));
-            // Update the marker icon live
             const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
             const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-            const m=markersRef.current.find((_,i)=>{
-              const pos=markersRef.current[i].getPosition();
-              return pos&&Math.abs(pos.lat()-parseFloat(home.lat))<0.0002&&Math.abs(pos.lng()-parseFloat(home.lng))<0.0002;
+            let savedId = home.id;
+            if(home._isTemp||home._isPipelineLead||!home.id){
+              // Save new canvass pin first
+              const {data} = await sb.from("canvass_homes").insert({
+                address:home.address,lat:home.lat,lng:home.lng,
+                owner_name:home.owner_name||null,phone:home.phone||null,
+                notes:home.notes||null,prescreen:disp,
+                updated_at:new Date().toISOString()
+              }).select().single();
+              if(data){
+                savedId=data.id;
+                setHomes(hs=>[...hs,{...data}]);
+                setSelectedHome(h=>({...h,id:data.id,_isTemp:false,_isPipelineLead:false,prescreen:disp}));
+              }
+            } else {
+              await sb.from("canvass_homes").update({prescreen:disp,updated_at:new Date().toISOString()}).eq("id",home.id);
+              setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
+              setSelectedHome(h=>({...h,prescreen:disp}));
+            }
+            // Update marker live — find closest marker
+            const allMarkers=[...markersRef.current,...leadMarkersRef.current];
+            const m=allMarkers.find(mk=>{
+              const pos=mk.getPosition();
+              return pos&&Math.abs(pos.lat()-parseFloat(home.lat||0))<0.0003&&Math.abs(pos.lng()-parseFloat(home.lng||0))<0.0003;
             });
             if(m&&window.google){
-              m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#fff",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2});
-              m.setLabel({text:dispEmojis[disp]||"",fontSize:"14px"});
+              m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#10b981",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5});
+              m.setLabel({text:dispEmojis[disp]||"⚡",fontSize:"14px"});
             }
           }}
           onSaveNote={async(home,note)=>{
