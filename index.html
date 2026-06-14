@@ -3533,9 +3533,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // Place pipeline lead markers on map
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google||!leads) return;
-    // Clear old lead markers
+    // Immediately clear ALL lead markers
     leadMarkersRef.current.forEach(m=>m.setMap(null));
     leadMarkersRef.current=[];
+    if(leads.length===0) return; // nothing to show
     // Only geocode leads that have an address but no canvass pin yet
     const leadsWithAddress = leads.filter(l=>l.address&&l.address.trim());
     leadsWithAddress.forEach(async(lead)=>{
