@@ -3214,9 +3214,21 @@ function App() {
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],history:newHistory,updated_at:new Date().toISOString()};
-    if(modal.lead&&modal.lead.id){await sb.from("leads").update(payload).eq("id",modal.lead.id);}
-    else{await sb.from("leads").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
+    // Split payload — save bill_photos separately only if changed (they're huge)
+    const existingPhotos = modal.lead?.bill_photos || [];
+    const newPhotos = form.billPhotos || [];
+    const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
+
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],history:newHistory,updated_at:new Date().toISOString()};
+
+    if(modal.lead&&modal.lead.id){
+      // Save main fields first (fast — no photos)
+      await sb.from("leads").update(payload).eq("id",modal.lead.id);
+      // Only save photos if they changed
+      if(photosChanged) await sb.from("leads").update({bill_photos:newPhotos}).eq("id",modal.lead.id);
+    } else {
+      await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});
+    }
     setModal({open:false,lead:null});
     await loadData(user,profile);
   };
