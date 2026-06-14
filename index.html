@@ -3069,9 +3069,10 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
 
   const saveNote = async() => {
     if(!note.trim()) return;
+    console.log("saveNote called, home:", home.id, "isTemp:", home._isTemp, "note:", note);
     setNoteSaved(false);
     if(!home.id||home._isTemp||home._isPipelineLead){
-      // No saved pin yet — create one with the note
+      console.log("Creating new canvass_homes record...");
       const {data,error} = await sb.from("canvass_homes").insert({
         address:home.address,
         lat:home.lat||null,
@@ -3082,10 +3083,12 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         prescreen:home.prescreen||null,
         updated_at:new Date().toISOString()
       }).select().single();
+      console.log("Insert result:", data, "error:", error);
       if(data) {
         if(onSaveNote) await onSaveNote(data, note.trim());
       }
     } else {
+      console.log("Updating existing home:", home.id);
       await onSaveNote(home, note.trim());
     }
     setNote("");
@@ -3158,8 +3161,9 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
             placeholder={home.notes?"Edit note...":"Add a note..."}
             rows={2}
             style={{flex:1,background:"none",border:"none",outline:"none",color:"#fff",fontSize:13,resize:"none",fontFamily:"inherit",lineHeight:1.5}}/>
-          <button onClick={saveNote}
-            style={{background:"none",border:"none",color:noteSaved?"#10b981":"#3b82f6",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0,padding:0}}>
+          <button onMouseDown={e=>{e.preventDefault();saveNote();}}
+            onClick={saveNote}
+            style={{background:noteSaved?"#10b981":"#3b82f6",border:"none",borderRadius:8,padding:"6px 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>
             {noteSaved?"✓ Saved":"Save"}
           </button>
         </div>
