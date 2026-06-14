@@ -3098,8 +3098,10 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
             const isActive = home.prescreen===d.key;
             return (
               <div key={d.key} onClick={()=>{
-                onDisposition(home, d.key);
-                if(d.key==="lead") onCreateLead(home, null);
+                // Toggle off if already active
+                const newDisp = home.prescreen===d.key ? "" : d.key;
+                onDisposition(home, newDisp);
+                if(d.key==="lead" && newDisp==="lead") onCreateLead(home, null);
               }}
                 style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}}>
                 <div style={{
@@ -3282,7 +3284,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
       mapInstanceRef.current, "idle", ()=>{ if(showBuildings) fetchBuildings(); }
     );
     return ()=>window.google.maps.event.removeListener(listener);
-  },[mapLoaded, showBuildings, homes]);
+  },[mapLoaded, showBuildings]); // homes excluded — prevents bubble flicker
 
   // Init Places Autocomplete service
   React.useEffect(()=>{
@@ -3399,7 +3401,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
     markersRef.current=[];
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
-      const dispEmojis={lead:"⚡",nh:"🏠",cb:"📞",nn:"⏰",nq:"🚫"};
+      const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
       const disp = home.prescreen||"";
       const emoji = dispEmojis[disp];
@@ -3491,12 +3493,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
           map:mapInstanceRef.current,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
-            scale:8,
-            fillColor:"rgba(255,255,255,0.8)",
-            fillOpacity:alreadyPinned?0:0.85,
-            strokeColor:alreadyPinned?"transparent":"#1a2456",
+            scale:9,
+            fillColor:"rgba(255,255,255,0.85)",
+            fillOpacity:0.85,
+            strokeColor:"#1a2456",
             strokeWeight:2,
-            strokeOpacity:alreadyPinned?0:0.9,
+            strokeOpacity:0.8,
           },
           zIndex:1,
           clickable:true,
@@ -3703,33 +3705,42 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
             const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
             const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
             let savedId = home.id;
+            const isClearing = !disp; // toggling off
             if(home._isTemp||home._isPipelineLead||!home.id){
-              // Save new canvass pin first
-              const {data} = await sb.from("canvass_homes").insert({
-                address:home.address,lat:home.lat,lng:home.lng,
-                owner_name:home.owner_name||null,phone:home.phone||null,
-                notes:home.notes||null,prescreen:disp,
-                updated_at:new Date().toISOString()
-              }).select().single();
-              if(data){
-                savedId=data.id;
-                setHomes(hs=>[...hs,{...data}]);
-                setSelectedHome(h=>({...h,id:data.id,_isTemp:false,_isPipelineLead:false,prescreen:disp}));
+              if(!isClearing){
+                // Save new canvass pin first
+                const {data} = await sb.from("canvass_homes").insert({
+                  address:home.address,lat:home.lat,lng:home.lng,
+                  owner_name:home.owner_name||null,phone:home.phone||null,
+                  notes:home.notes||null,prescreen:disp||null,
+                  updated_at:new Date().toISOString()
+                }).select().single();
+                if(data){
+                  savedId=data.id;
+                  setHomes(hs=>[...hs,{...data}]);
+                  setSelectedHome(h=>({...h,id:data.id,_isTemp:false,_isPipelineLead:false,prescreen:disp}));
+                }
               }
             } else {
-              await sb.from("canvass_homes").update({prescreen:disp,updated_at:new Date().toISOString()}).eq("id",home.id);
+              await sb.from("canvass_homes").update({prescreen:disp||null,updated_at:new Date().toISOString()}).eq("id",home.id);
               setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
               setSelectedHome(h=>({...h,prescreen:disp}));
             }
-            // Update marker live — find closest marker
+            // Update marker live
             const allMarkers=[...markersRef.current,...leadMarkersRef.current];
             const m=allMarkers.find(mk=>{
               const pos=mk.getPosition();
               return pos&&Math.abs(pos.lat()-parseFloat(home.lat||0))<0.0003&&Math.abs(pos.lng()-parseFloat(home.lng||0))<0.0003;
             });
             if(m&&window.google){
-              m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#10b981",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5});
-              m.setLabel({text:dispEmojis[disp]||"⚡",fontSize:"14px"});
+              if(isClearing){
+                // Restore to plain clear bubble
+                m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:11,fillColor:"rgba(255,255,255,0.85)",fillOpacity:0.85,strokeColor:"#1a2456",strokeWeight:2});
+                m.setLabel({text:"",fontSize:"14px"});
+              } else {
+                m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#10b981",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2.5});
+                m.setLabel({text:dispEmojis[disp]||"⚡",fontSize:"14px"});
+              }
             }
           }}
           onSaveNote={async(home,note)=>{
