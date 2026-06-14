@@ -3041,6 +3041,9 @@ function CanvassTab({gmapsKey}) {
   const [geocoding, setGeocoding] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [satellite, setSatellite] = React.useState(false);
+  const [showBuildings, setShowBuildings] = React.useState(false);
+  const buildingMarkersRef = React.useRef([]);
+  const lastBuildingFetchRef = React.useRef(null);
   const [searchVal, setSearchVal] = React.useState("");
   const [suggestions, setSuggestions] = React.useState([]);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
@@ -3088,6 +3091,15 @@ function CanvassTab({gmapsKey}) {
       });
     }catch(e){setMapError("Map init failed: "+e.message);}
   },[mapLoaded]);
+
+  // Fetch buildings when map idles (stops moving) if buildings are enabled
+  React.useEffect(()=>{
+    if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
+    const listener = window.google.maps.event.addListener(
+      mapInstanceRef.current, "idle", ()=>{ if(showBuildings) fetchBuildings(); }
+    );
+    return ()=>window.google.maps.event.removeListener(listener);
+  },[mapLoaded, showBuildings, homes]);
 
   // Init Places Autocomplete service
   React.useEffect(()=>{
@@ -3179,6 +3191,76 @@ function CanvassTab({gmapsKey}) {
     return null;
   };
 
+  // Fetch buildings from OpenStreetMap Overpass API
+  const fetchBuildings = async () => {
+    if(!mapInstanceRef.current||!window.google) return;
+    const bounds = mapInstanceRef.current.getBounds();
+    if(!bounds) return;
+    const zoom = mapInstanceRef.current.getZoom();
+    // Only fetch at zoom 15+ to avoid too many results
+    if(zoom < 15) {
+      // Clear building markers if zoomed out
+      buildingMarkersRef.current.forEach(m=>m.setMap(null));
+      buildingMarkersRef.current=[];
+      return;
+    }
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const bbox = `${sw.lat()},${sw.lng()},${ne.lat()},${ne.lng()}`;
+    // Debounce — don't fetch if same area
+    if(lastBuildingFetchRef.current===bbox) return;
+    lastBuildingFetchRef.current=bbox;
+    try {
+      const query = `[out:json][timeout:10];(way["building"](${bbox});node["building"](${bbox}););out center 500;`;
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      // Clear old building markers
+      buildingMarkersRef.current.forEach(m=>m.setMap(null));
+      buildingMarkersRef.current=[];
+      (data.elements||[]).forEach(el=>{
+        const lat = el.lat || el.center?.lat;
+        const lng = el.lon || el.center?.lon;
+        if(!lat||!lng) return;
+        // Check if this location already has a manual pin
+        const alreadyPinned = homes.some(h=>
+          h.lat&&h.lng&&
+          Math.abs(parseFloat(h.lat)-lat)<0.0003&&
+          Math.abs(parseFloat(h.lng)-lng)<0.0003
+        );
+        const marker = new window.google.maps.Marker({
+          position:{lat,lng},
+          map:mapInstanceRef.current,
+          icon:{
+            path:window.google.maps.SymbolPath.CIRCLE,
+            scale:7,
+            fillColor:alreadyPinned?"transparent":"rgba(255,255,255,0.6)",
+            fillOpacity:alreadyPinned?0:0.7,
+            strokeColor:alreadyPinned?"transparent":"#1a2456",
+            strokeWeight:1.5,
+            strokeOpacity:0.6,
+          },
+          zIndex:1,
+          clickable:!alreadyPinned,
+        });
+        if(!alreadyPinned){
+          marker.addListener("click",()=>{
+            // Pre-fill add form with approximate location
+            setAddForm(f=>({...f,address:""}));
+            setShowAddForm(true);
+            // Reverse geocode to get address
+            const geocoder=new window.google.maps.Geocoder();
+            geocoder.geocode({location:{lat,lng}},(results,status)=>{
+              if(status==="OK"&&results[0]){
+                setAddForm(f=>({...f,address:results[0].formatted_address}));
+              }
+            });
+          });
+        }
+        buildingMarkersRef.current.push(marker);
+      });
+    } catch(e) { console.error("Overpass error:",e); }
+  };
+
   const handleAddHome=async()=>{
     if(!addForm.address.trim())return;
     setSaving(true);setGeocoding(true);
@@ -3238,6 +3320,15 @@ function CanvassTab({gmapsKey}) {
           }}
             style={{background:"none",border:`1.5px solid #c8b8a2`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#1a2456",display:"flex",alignItems:"center",gap:6}}>
             {satellite?"🗺️ Map":"🛰️ Satellite"}
+          </button>
+          <button onClick={()=>{
+            const next=!showBuildings;
+            setShowBuildings(next);
+            if(!next){buildingMarkersRef.current.forEach(m=>m.setMap(null));buildingMarkersRef.current=[];}
+            else fetchBuildings();
+          }}
+            style={{background:showBuildings?"#1a2456":"none",border:`1.5px solid ${showBuildings?"#1a2456":"#c8b8a2"}`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:showBuildings?"#fff":"#1a2456"}}>
+            🏠 Homes
           </button>
           <button onClick={()=>setShowAddForm(true)}
             style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:13}}>
