@@ -3059,9 +3059,11 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
   };
 
   // Check if a lead already exists for this address
-  const linkedLead = leads && home.address
-    ? leads.find(l=>l.address&&l.address.toLowerCase().includes(home.address.split(",")[0].toLowerCase()))
-    : null;
+  const linkedLead = home._isPipelineLead
+    ? leads&&leads.find(l=>l.id===home._leadId)
+    : leads && home.address
+      ? leads.find(l=>l.address&&l.address.toLowerCase().includes(home.address.split(",")[0].toLowerCase().trim()))
+      : null;
 
   const saveNote = async() => {
     await onSaveNote(home, note);
@@ -3185,6 +3187,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead}) {
   const mapRef = React.useRef(null);
   const mapInstanceRef = React.useRef(null);
   const markersRef = React.useRef([]);
+  const leadMarkersRef = React.useRef([]);
 
   const PRESCREEN_COLORS = {yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8","":" #1a2456"};
 
@@ -3304,6 +3307,59 @@ function CanvassTab({gmapsKey, leads, onCreateLead}) {
       });
     }
   };
+
+  // Place pipeline lead markers on map
+  React.useEffect(()=>{
+    if(!mapInstanceRef.current||!window.google||!leads) return;
+    // Clear old lead markers
+    leadMarkersRef.current.forEach(m=>m.setMap(null));
+    leadMarkersRef.current=[];
+    // Only geocode leads that have an address but no canvass pin yet
+    const leadsWithAddress = leads.filter(l=>l.address&&l.address.trim());
+    leadsWithAddress.forEach(async(lead)=>{
+      // Check if there's already a canvass pin for this address
+      const alreadyPinned = homes.some(h=>
+        h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
+      );
+      if(alreadyPinned) return;
+      // Geocode the lead address
+      try {
+        const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(lead.address)}&key=${gmapsKey}`);
+        const data = await res.json();
+        if(!data.results||!data.results[0]) return;
+        const loc = data.results[0].geometry.location;
+        const marker = new window.google.maps.Marker({
+          position:{lat:loc.lat,lng:loc.lng},
+          map:mapInstanceRef.current,
+          icon:{
+            path:window.google.maps.SymbolPath.CIRCLE,
+            scale:12,
+            fillColor:"#10b981",
+            fillOpacity:0.9,
+            strokeColor:"#fff",
+            strokeWeight:2.5,
+          },
+          title:lead.name||lead.address,
+          zIndex:10,
+        });
+        marker.addListener("click",()=>{
+          setSelectedHome({
+            id:null,
+            _isPipelineLead:true,
+            _leadId:lead.id,
+            address:lead.address||"",
+            owner_name:lead.name||"",
+            phone:lead.phone||"",
+            notes:lead.notes||"",
+            prescreen:"lead",
+            lat:loc.lat,
+            lng:loc.lng,
+          });
+        });
+        leadMarkersRef.current.push(marker);
+      } catch(e){ console.error("Lead geocode error:",e); }
+    });
+  },[leads, homes, mapLoaded]);
 
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google)return;
