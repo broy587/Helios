@@ -2579,6 +2579,16 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
         </div>
+        {lead.appointment && (()=>{
+          try {
+            const parts = lead.appointment.split(' - ');
+            const d = new Date(parts[0]);
+            const timePart = parts[1] ? parts[1].split(' to ')[0].trim() : '';
+            // Convert "5:00 PM" to "5:00 PM" keeping AM/PM
+            const formatted = `${d.getMonth()+1}/${d.getDate()} @ ${timePart}`;
+            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{formatted}</div>;
+          } catch(e) { return null; }
+        })()}
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
             {lead.soft_solid && <span style={{fontSize:10,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"1px 7px"}}>{lead.soft_solid}</span>}
