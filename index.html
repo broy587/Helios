@@ -4532,8 +4532,8 @@ function App() {
                 else if(f.startsWith("team:")){
                   const tid=f.replace("team:","");
                   const membersList=teamMembers&&teamMembers[tid]?teamMembers[tid]:[];
-                  console.log("Team filter:",tid,"members:",membersList.length,teamMembers);
-                  if(membersList.length===0) return; // no members = no leads
+                  console.log("Team filter tid:",tid,"members:",membersList.length,"teamMembers keys:",Object.keys(teamMembers||{}));
+                  if(membersList.length===0){console.log("No members - skipping");return;}
                   const memberIds=membersList.map(m=>m.user_id);
                   leads.filter(l=>memberIds.includes(l.owner_id)).forEach(l=>allowed.add(l.id));
                 } else if(f.startsWith("rep:")){
@@ -4541,7 +4541,9 @@ function App() {
                   leads.filter(l=>l.owner_id===rid).forEach(l=>allowed.add(l.id));
                 }
               });
-              return leads.filter(l=>allowed.has(l.id));
+              const result = leads.filter(l=>allowed.has(l.id));
+              console.log("Canvass leads result:",result.length,"filters:",filters,"allowed size:",allowed.size);
+              return result;
             })()}
             canvassLeadFilter={canvassLeadFilter}
             setCanvassLeadFilter={setCanvassLeadFilter}
