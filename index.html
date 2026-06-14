@@ -3392,6 +3392,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const [showFilter, setShowFilter] = React.useState(false);
   const [activeFilters, setActiveFilters] = React.useState([]); // empty = show all
   const buildingMarkersRef = React.useRef([]);
+  const homesRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
   const [searchVal, setSearchVal] = React.useState("");
   const [suggestions, setSuggestions] = React.useState([]);
@@ -3422,11 +3423,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[]);
 
   React.useEffect(()=>{ loadHomes(); },[]);
+  // Keep homesRef in sync with homes state
+  React.useEffect(()=>{ homesRef.current=homes; },[homes]);
 
   const loadHomes=async()=>{
     try{
       const {data}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
       setHomes(data||[]);
+      homesRef.current=data||[];
     }catch(e){console.error("Canvass load error:",e);}
   };
 
@@ -3731,16 +3735,13 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           clickable:true,
         });
         marker.addListener("click",()=>{
-          if(alreadyPinned){
-            // Show existing saved home popup
-            const savedHome=homes.find(h=>h.lat&&h.lng&&Math.abs(parseFloat(h.lat)-lat)<0.0003&&Math.abs(parseFloat(h.lng)-lng)<0.0003);
-            if(savedHome){setSelectedHome(savedHome);return;}
-          }
+          // Always check current homes (via ref to avoid stale closure)
+          const savedHome=homesRef.current.find(h=>h.lat&&h.lng&&Math.abs(parseFloat(h.lat)-lat)<0.0003&&Math.abs(parseFloat(h.lng)-lng)<0.0003);
+          if(savedHome){setSelectedHome(savedHome);return;}
           // Reverse geocode then show popup for new home
           const geocoder=new window.google.maps.Geocoder();
           geocoder.geocode({location:{lat,lng}},(results,status)=>{
             const addr=status==="OK"&&results[0]?results[0].formatted_address:`${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-            // Show a temp home object in popup
             setSelectedHome({id:null,address:addr,owner_name:"",phone:"",notes:"",prescreen:"",lat,lng,_isTemp:true});
           });
         });
@@ -4060,7 +4061,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             }
             // Reload all homes from DB so state is fresh
             const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
-            if(data) setHomes(data);
+            if(data){setHomes(data);homesRef.current=data;}
             setSelectedHome(h=>({...h,id:home.id,notes:note,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
