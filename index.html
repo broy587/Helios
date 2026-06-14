@@ -3374,6 +3374,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const mapInstanceRef = React.useRef(null);
   const markersRef = React.useRef([]);
   const leadMarkersRef = React.useRef([]);
+  const leadGenRef = React.useRef(0); // cancel stale geocoding
 
   const PRESCREEN_COLORS = {yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8","":" #1a2456"};
 
@@ -3533,10 +3534,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // Place pipeline lead markers on map
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google||!leads) return;
-    // Immediately clear ALL lead markers
+    // Increment generation — any in-flight geocoding from previous render will be stale
+    const gen = ++leadGenRef.current;
+    // Immediately clear ALL lead markers from map
     leadMarkersRef.current.forEach(m=>m.setMap(null));
     leadMarkersRef.current=[];
-    if(leads.length===0) return; // nothing to show
+    if(!leads||leads.length===0) return; // nothing to place
     // Only geocode leads that have an address but no canvass pin yet
     const leadsWithAddress = leads.filter(l=>l.address&&l.address.trim());
     leadsWithAddress.forEach(async(lead)=>{
@@ -3551,6 +3554,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         const data = await res.json();
         if(!data.results||!data.results[0]) return;
         const loc = data.results[0].geometry.location;
+        // Stale check — if filter changed since we started geocoding, discard
+        if(gen!==leadGenRef.current) return;
         const marker = new window.google.maps.Marker({
           position:{lat:loc.lat,lng:loc.lng},
           map:mapInstanceRef.current,
