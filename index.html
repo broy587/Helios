@@ -3636,7 +3636,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       marker.addListener("click",()=>setSelectedHome(home));
       markersRef.current.push(marker);
     });
-  },[homes,mapLoaded]);
+  },[homes,mapLoaded,allowedOwnerIds]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
