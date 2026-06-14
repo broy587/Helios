@@ -4380,7 +4380,18 @@ function App() {
           </div>
         )}
         {tab==="canvass"&&isOwner&&(
-          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home)=>{setTab("pipeline");setTimeout(()=>setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}}),100);}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))}/>
+          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home, existingLead)=>{
+  setTab("pipeline");
+  setTimeout(()=>{
+    if(existingLead){
+      // Open existing lead in detail view
+      setDetailId(existingLead.id);
+    } else {
+      // Open add lead form pre-filled from canvass
+      setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}});
+    }
+  },100);
+}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))}/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
