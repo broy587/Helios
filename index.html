@@ -4530,8 +4530,11 @@ function App() {
                 if(f==="mine") leads.filter(l=>l.owner_id===user.id).forEach(l=>allowed.add(l.id));
                 else if(f.startsWith("team:")){
                   const tid=f.replace("team:","");
-                  const members=(teamMembers[tid]||[]).map(m=>m.user_id);
-                  leads.filter(l=>members.includes(l.owner_id)).forEach(l=>allowed.add(l.id));
+                  const membersList=teamMembers&&teamMembers[tid]?teamMembers[tid]:[];
+                  console.log("Team filter:",tid,"members:",membersList.length,teamMembers);
+                  if(membersList.length===0) return; // no members = no leads
+                  const memberIds=membersList.map(m=>m.user_id);
+                  leads.filter(l=>memberIds.includes(l.owner_id)).forEach(l=>allowed.add(l.id));
                 } else if(f.startsWith("rep:")){
                   const rid=f.replace("rep:","");
                   leads.filter(l=>l.owner_id===rid).forEach(l=>allowed.add(l.id));
