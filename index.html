@@ -3340,7 +3340,7 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, ca
 }
 
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles}) {
+function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds}) {
   const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
   const isManager = myProfile&&myProfile.role==="manager";
   const isPrivileged = isOwner||isManager;
@@ -3596,6 +3596,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     markersRef.current=[];
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
+      // Filter by viewing scope — if allowedOwnerIds set, only show homes by those owners
+      if(allowedOwnerIds&&home.added_by&&!allowedOwnerIds.has(home.added_by))return;
       const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
       const disp = home.prescreen||"";
@@ -4556,7 +4558,22 @@ function App() {
             isOwner={isOwner}
             teams={teams}
             teamMembers={teamMembers}
-            profiles={profiles} onCreateLead={(home, existingLead)=>{
+            profiles={profiles}
+            allowedOwnerIds={(()=>{
+              const filters=Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
+              if(filters.includes("all")) return null; // null = show all
+              const ids=new Set();
+              filters.forEach(f=>{
+                if(f==="mine") ids.add(user.id);
+                else if(f.startsWith("team:")){
+                  const tid=f.replace("team:","");
+                  (teamMembers[tid]||[]).forEach(m=>ids.add(m.user_id));
+                } else if(f.startsWith("rep:")){
+                  ids.add(f.replace("rep:",""));
+                }
+              });
+              return ids;
+            })()} onCreateLead={(home, existingLead)=>{
   setTab("pipeline");
   setTimeout(()=>{
     if(existingLead){
