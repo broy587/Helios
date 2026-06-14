@@ -3035,12 +3035,12 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
 const DISPOSITIONS = [
   {key:"lead", label:"LEAD", color:"#10b981", icon:"⚡"},
   {key:"nh",   label:"NH",   color:"#3b82f6", icon:"🏠"},
-  {key:"cb",   label:"CB",   color:"#f59e0b", icon:"📞"},
+  {key:"cb",   label:"CB",   color:"#f59e0b", icon:"↩️"},
   {key:"nn",   label:"NN",   color:"#f97316", icon:"⏰"},
   {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
 ];
 
-function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreateLead, leads}) {
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreateLead, leads, onStageChange}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
 
@@ -3129,6 +3129,32 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         </div>
       </div>
 
+      {/* Lead Stage section */}
+      {linkedLead && (
+        <div style={{padding:"0 20px 12px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Lead Stage</div>
+          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:8}}>Current stage in pipeline</div>
+            <select value={linkedLead.stage||""} onChange={async e=>{
+              const newStage=e.target.value;
+              const entry={ts:formatTs(),changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
+              await sb.from("leads").update({stage:newStage,history:[entry,...(linkedLead.history||[])],updated_at:new Date().toISOString()}).eq("id",linkedLead.id);
+              // Update local leads array via callback
+              if(onStageChange) onStageChange(linkedLead.id, newStage, entry);
+            }}
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}>
+              {STAGES.map(s=><option key={s} value={s} style={{background:"#1e293b",color:"#fff"}}>{s}</option>)}
+            </select>
+            {[["Name",linkedLead.name],["Phone",linkedLead.phone],["Address",linkedLead.address]].map(([l,v])=>v?(
+              <div key={l} style={{marginTop:8}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>{l}</div>
+                <div style={{fontSize:13,color:"#fff"}}>{v}</div>
+              </div>
+            ):null)}
+          </div>
+        </div>
+      )}
+
       {/* Property info */}
       <div style={{padding:"0 20px 12px"}}>
         <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Property Details</div>
@@ -3164,7 +3190,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
 }
 
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey, leads, onCreateLead}) {
+function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -3367,17 +3393,33 @@ function CanvassTab({gmapsKey, leads, onCreateLead}) {
     markersRef.current=[];
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
+      const dispEmojis={lead:"⚡",nh:"🏠",cb:"📞",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-      const color=dispColors[home.prescreen||""]||"rgba(255,255,255,0.7)";
-      const marker=new window.google.maps.Marker({
+      const disp = home.prescreen||"";
+      const emoji = dispEmojis[disp];
+      const color = dispColors[disp]||"rgba(255,255,255,0.7)";
+      const marker = emoji ? new window.google.maps.Marker({
+        position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
+        map:mapInstanceRef.current,
+        label:{text:emoji, fontSize:"14px"},
+        icon:{
+          path:window.google.maps.SymbolPath.CIRCLE,
+          scale:14,
+          fillColor:color,
+          fillOpacity:0.9,
+          strokeColor:"#fff",
+          strokeWeight:2,
+        },
+        title:home.address,
+      }) : new window.google.maps.Marker({
         position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
         map:mapInstanceRef.current,
         icon:{
           path:window.google.maps.SymbolPath.CIRCLE,
           scale:11,
-          fillColor:color,
+          fillColor:"rgba(255,255,255,0.85)",
           fillOpacity:0.85,
-          strokeColor:"#fff",
+          strokeColor:"#1a2456",
           strokeWeight:2,
         },
         title:home.address,
@@ -3663,6 +3705,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead}) {
           }}
           onCreateLead={onCreateLead}
           leads={leads}
+          onStageChange={(leadId, newStage, entry)=>{
+            // Update the leads array in App via parent callback
+            if(onStageChange) onStageChange(leadId, newStage, entry);
+          }}
         />
       )}
 
@@ -4153,7 +4199,7 @@ function App() {
           </div>
         )}
         {tab==="canvass"&&isOwner&&(
-          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home)=>{setTab("pipeline");setTimeout(()=>setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}}),100);}}/>
+          <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" leads={leads} onCreateLead={(home)=>{setTab("pipeline");setTimeout(()=>setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}}),100);}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))}/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
