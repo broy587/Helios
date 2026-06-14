@@ -3043,6 +3043,7 @@ function CanvassTab({gmapsKey}) {
   const [satellite, setSatellite] = React.useState(()=>localStorage.getItem("canvass_satellite")!=="false");
   const [showBuildings, setShowBuildings] = React.useState(true);
   const [locating, setLocating] = React.useState(false);
+  const myLocationMarkerRef = React.useRef(null);
   const buildingMarkersRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
   const [searchVal, setSearchVal] = React.useState("");
@@ -3096,8 +3097,11 @@ function CanvassTab({gmapsKey}) {
       if(navigator.geolocation){
         navigator.geolocation.getCurrentPosition(
           (pos)=>{
-            map.panTo({lat:pos.coords.latitude,lng:pos.coords.longitude});
-            map.setZoom(16);
+            const coords={lat:pos.coords.latitude,lng:pos.coords.longitude};
+            map.panTo(coords);
+            map.setZoom(18);
+            // Place location marker after a short delay so map is ready
+            setTimeout(()=>placeMyLocationMarker(coords), 500);
           },
           ()=>{}, // silently fail
           {enableHighAccuracy:true,timeout:6000}
@@ -3280,6 +3284,27 @@ function CanvassTab({gmapsKey}) {
     } catch(e) { console.error("Overpass error:",e); }
   };
 
+  const placeMyLocationMarker = (coords) => {
+    if(!mapInstanceRef.current||!window.google) return;
+    if(myLocationMarkerRef.current) myLocationMarkerRef.current.setMap(null);
+    // Outer pulse circle
+    myLocationMarkerRef.current = new window.google.maps.Marker({
+      position: coords,
+      map: mapInstanceRef.current,
+      icon: {
+        path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+        fillColor: "#1a2456",
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 2,
+        scale: 1.8,
+        anchor: new window.google.maps.Point(12, 22),
+      },
+      title: "Your Location",
+      zIndex: 999,
+    });
+  };
+
   const goToMyLocation = () => {
     if(!navigator.geolocation){alert("Location not available on this device.");return;}
     setLocating(true);
@@ -3288,11 +3313,12 @@ function CanvassTab({gmapsKey}) {
         const coords={lat:pos.coords.latitude,lng:pos.coords.longitude};
         if(mapInstanceRef.current){
           mapInstanceRef.current.panTo(coords);
-          mapInstanceRef.current.setZoom(16);
+          mapInstanceRef.current.setZoom(18);
         }
+        placeMyLocationMarker(coords);
         setLocating(false);
       },
-      (err)=>{
+      ()=>{
         setLocating(false);
         alert("Could not get your location. Make sure location access is allowed.");
       },
@@ -3426,7 +3452,7 @@ function CanvassTab({gmapsKey}) {
           {/* My Location button */}
           <button onClick={goToMyLocation}
             style={{position:"absolute",bottom:24,right:12,width:44,height:44,borderRadius:"50%",background:"#fff",border:"none",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,zIndex:100}}>
-            {locating?"⏳":"📍"}
+            {locating?"⏳":"➤"}
           </button>
         </div>
       )}
