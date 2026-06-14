@@ -2636,7 +2636,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass}) {
   const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
