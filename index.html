@@ -3044,6 +3044,20 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
 
+  const [saving, setSaving] = React.useState(false);
+
+  const saveToMap = async() => {
+    if(!home._isTemp) return;
+    setSaving(true);
+    const {data} = await sb.from("canvass_homes").insert({
+      address:home.address, lat:home.lat, lng:home.lng,
+      prescreen:home.prescreen||null, notes:note||null,
+      updated_at:new Date().toISOString()
+    }).select().single();
+    if(data) { onClose(); }
+    setSaving(false);
+  };
+
   // Check if a lead already exists for this address
   const linkedLead = leads && home.address
     ? leads.find(l=>l.address&&l.address.toLowerCase().includes(home.address.split(",")[0].toLowerCase()))
@@ -3056,7 +3070,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
   };
 
   return (
-    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(18,18,28,0.97)",borderRadius:"20px 20px 0 0",maxHeight:"75vh",overflowY:"auto",zIndex:1000,boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(18,18,28,0.97)",borderRadius:"20px 20px 0 0",maxHeight:"75vh",overflowY:"auto",zIndex:5000,boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
       {/* Header */}
       <div style={{padding:"20px 20px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div style={{flex:1,minWidth:0}}>
@@ -3080,8 +3094,13 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
           const isActive = home.prescreen===d.key;
           return (
             <div key={d.key} onClick={()=>{
-              onDisposition(home, d.key);
-              if(d.key==="lead") onCreateLead(home, null);
+              if(home._isTemp){
+                // For temp homes, mark disposition and open lead directly
+                if(d.key==="lead") onCreateLead(home, null);
+              } else {
+                onDisposition(home, d.key);
+                if(d.key==="lead") onCreateLead(home, null);
+              }
             }}
               style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}}>
               <div style={{width:52,height:52,borderRadius:"50%",background:isActive?d.color:"rgba(255,255,255,0.08)",border:`2px solid ${isActive?d.color:"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,transition:"all 0.15s"}}>
@@ -3124,12 +3143,19 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         </div>
       </div>
 
-      {/* Delete */}
+      {/* Delete / Save */}
       <div style={{padding:"0 20px 32px"}}>
-        <button onClick={()=>onDelete(home.id)}
-          style={{width:"100%",padding:"10px 0",borderRadius:10,border:"1px solid rgba(239,68,68,0.3)",background:"transparent",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
-          Remove Pin
-        </button>
+        {home._isTemp ? (
+          <button onClick={saveToMap} disabled={saving}
+            style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>
+            {saving?"Saving...":"+ Save Pin to Map"}
+          </button>
+        ) : (
+          <button onClick={()=>onDelete(home.id)}
+            style={{width:"100%",padding:"10px 0",borderRadius:10,border:"1px solid rgba(239,68,68,0.3)",background:"transparent",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
+            Remove Pin
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3371,20 +3397,20 @@ function CanvassTab({gmapsKey, leads, onCreateLead}) {
           zIndex:1,
           clickable:true,
         });
-        if(!alreadyPinned){
-          marker.addListener("click",()=>{
-            // Pre-fill add form with approximate location
-            setAddForm(f=>({...f,address:""}));
-            setShowAddForm(true);
-            // Reverse geocode to get address
-            const geocoder=new window.google.maps.Geocoder();
-            geocoder.geocode({location:{lat,lng}},(results,status)=>{
-              if(status==="OK"&&results[0]){
-                setAddForm(f=>({...f,address:results[0].formatted_address}));
-              }
-            });
+        marker.addListener("click",()=>{
+          if(alreadyPinned){
+            // Show existing saved home popup
+            const savedHome=homes.find(h=>h.lat&&h.lng&&Math.abs(parseFloat(h.lat)-lat)<0.0003&&Math.abs(parseFloat(h.lng)-lng)<0.0003);
+            if(savedHome){setSelectedHome(savedHome);return;}
+          }
+          // Reverse geocode then show popup for new home
+          const geocoder=new window.google.maps.Geocoder();
+          geocoder.geocode({location:{lat,lng}},(results,status)=>{
+            const addr=status==="OK"&&results[0]?results[0].formatted_address:`${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            // Show a temp home object in popup
+            setSelectedHome({id:null,address:addr,owner_name:"",phone:"",notes:"",prescreen:"",lat,lng,_isTemp:true});
           });
-        }
+        });
         buildingMarkersRef.current.push(marker);
       });
     } catch(e) { console.error("Overpass error:",e); }
