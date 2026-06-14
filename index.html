@@ -2760,7 +2760,8 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads}) {
           onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
           repProfiles={[]} onTransfer={()=>{}}
-          onUpdate={updated=>onLeadView(updated,"update")}/>
+          onUpdate={updated=>onLeadView(updated,"update")}
+          onViewInCanvass={onViewInCanvass}/>
       )}
     </div>
   );
@@ -4603,7 +4604,8 @@ function App() {
               </div>
             )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
-              onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}/>
+              onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
+            onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");setTimeout(()=>{window._canvassJumpLead=lead;},100);}}/>
           </>
         )}
         {tab==="recruits"&&(
