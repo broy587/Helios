@@ -2223,7 +2223,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
-            <div>
+            <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
@@ -2238,7 +2238,13 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 {lead.confirmed && <span style={{fontSize:11,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
               </div>
             </div>
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+              <button onClick={()=>onEdit(lead)}
+                style={{padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                Edit
+              </button>
+              <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+            </div>
           </div>
           {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["📊 Smart Meter Texas",null]].map(([label,value])=>value||label==="ESIID"||label==="Meter #"||label==="📊 Smart Meter Texas"?(
             <div key={label} style={{marginBottom:12}}>
@@ -2344,12 +2350,9 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
             </div>
           )}
           {!confirmDelete&&!showTransfer && (
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
-              <button onClick={()=>setShowTransfer(true)} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:14}}>Transfer to Another Rep</button>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:14}}>Delete</button>
-                <button onClick={()=>onEdit(lead)} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Edit Lead</button>
-              </div>
+            <div style={{display:"flex",gap:10,marginTop:6}}>
+              <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
+              <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
             </div>
           )}
         </div>
