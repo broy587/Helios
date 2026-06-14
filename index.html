@@ -3081,6 +3081,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         phone:home.phone||null,
         notes:note.trim(),
         prescreen:home.prescreen||null,
+        added_by:currentUser?.id||null,
         updated_at:new Date().toISOString()
       }).select().single();
       console.log("Insert result:", data, "error:", error);
@@ -4006,6 +4007,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
                   address:home.address,lat:home.lat,lng:home.lng,
                   owner_name:home.owner_name||null,phone:home.phone||null,
                   notes:home.notes||null,prescreen:disp||null,
+                  added_by:currentUser?.id||null,
                   updated_at:new Date().toISOString()
                 }).select().single();
                 if(data){
