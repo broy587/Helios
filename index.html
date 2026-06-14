@@ -278,7 +278,7 @@ const TIME_SLOTS = [
 const emptyForm = {
   name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",knewSolar:"",closerInside:"",
-  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:""
+  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",acChecklist:[]
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -1526,17 +1526,6 @@ function RecruitModal({open,onClose,onSave,initial}) {
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
-        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Pulled</label>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:form.usageInput==="No"?"#ef4444":"#94a3b8",fontWeight:form.usageInput==="No"?700:400}}>No</span>
-            <div onClick={()=>setForm(f=>({...f,usageInput:f.usageInput==="Yes"?"No":"Yes"}))}
-              style={{width:44,height:24,borderRadius:99,background:form.usageInput==="Yes"?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-              <div style={{position:"absolute",top:3,left:form.usageInput==="Yes"?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
-            </div>
-            <span style={{fontSize:12,color:form.usageInput==="Yes"?"#10b981":"#94a3b8",fontWeight:form.usageInput==="Yes"?700:400}}>Yes</span>
-          </div>
-        </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Notes about this recruit..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
@@ -2100,6 +2089,71 @@ function UsagePulledToggle({leadId, initialValue, onUpdate}) {
   );
 }
 
+
+// ── AC Checklist ──────────────────────────────────────────────────────
+const AC_CHECKLIST_ITEMS = [
+  "Contact Info",
+  "Prescreened",
+  "Bill Acquired",
+  "Transitioned Inside",
+  "Same Day or Next Day Apt",
+  "Homeowner Asked Questions",
+  "Homeowner Had Objections",
+  "Named Drop In Pitch",
+  "At Least 2 Take Aways",
+  "Clear Expectations Set",
+];
+
+function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
+  const dark = useDark();
+  const [checked, setChecked] = React.useState(initialChecked||[]);
+  const [saving, setSaving] = React.useState(false);
+  const score = checked.length;
+
+  const toggle = async (item) => {
+    const next = checked.includes(item)
+      ? checked.filter(i=>i!==item)
+      : [...checked, item];
+    setChecked(next);
+    if (leadId) {
+      setSaving(true);
+      await sb.from("leads").update({ac_checklist:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+      setSaving(false);
+      if (onUpdate) onUpdate(next);
+    }
+  };
+
+  const scoreColor = score>=8?"#10b981":score>=5?"#f59e0b":"#ef4444";
+
+  return (
+    <div style={{marginBottom:16,background:dark?"#0f172a":"#fef9ee",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#f0d080"}`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC Checklist</div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
+          <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
+            {score}/10
+          </div>
+        </div>
+      </div>
+      {AC_CHECKLIST_ITEMS.map((item,i)=>{
+        const isChecked = checked.includes(item);
+        return (
+          <div key={item} onClick={()=>toggle(item)}
+            style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px",cursor:"pointer",borderBottom:i<AC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#f5e8b0"}`:"none"}}>
+            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#c8b8a2"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+              {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+            </div>
+            <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400,textDecoration:isChecked?"none":"none",transition:"all 0.15s"}}>
+              {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function EmailButton({email}) {
   const [showOptions, setShowOptions] = useState(false);
 
@@ -2257,6 +2311,11 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
             </div>
           )}
           <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
+          <ACChecklist
+            leadId={lead.id}
+            initialChecked={lead.ac_checklist||[]}
+            onUpdate={next=>onUpdate&&onUpdate({...lead,ac_checklist:next})}
+          />
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
           )}
@@ -2444,6 +2503,12 @@ function LeadModal({open,onClose,onSave,initial}) {
           </div>
         </div>
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
+
+        {/* AC Checklist */}
+        <ACChecklist
+          initialChecked={form.acChecklist||[]}
+          onUpdate={next=>setForm(f=>({...f,acChecklist:next}))}
+        />
 
         {/* ARC / Cancel toggle */}
         <div style={{marginBottom:18,background:form.isArc?"#f5e8ed":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.isArc?"#fca5a5":"#e2e8f0"}`}}>
@@ -3032,7 +3097,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -3060,7 +3125,7 @@ function App() {
         setTeamGoals(goalsGrouped);
       } else {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -3126,7 +3191,7 @@ function App() {
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_photos:form.billPhotos||[],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],history:newHistory,updated_at:new Date().toISOString()};
     if(modal.lead&&modal.lead.id){await sb.from("leads").update(payload).eq("id",modal.lead.id);}
     else{await sb.from("leads").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,lead:null});
@@ -3370,7 +3435,7 @@ function App() {
       </div>
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[]}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
