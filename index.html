@@ -3215,6 +3215,130 @@ const STAGE_EMOJIS = {
   "PTO / REP":                   "🌞",
   "ARC / Cancels":               "🔴",
 };
+
+// ── Canvass View Picker ───────────────────────────────────────────────
+function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, canvassLeadFilter, setCanvassLeadFilter}) {
+  const [open, setOpen] = React.useState(false);
+  const [showTeams, setShowTeams] = React.useState(false);
+  const [showReps, setShowReps] = React.useState(false);
+  const [teamSearch, setTeamSearch] = React.useState("");
+  const [repSearch, setRepSearch] = React.useState("");
+
+  // canvassLeadFilter is now an array for multi-select
+  const filters = Array.isArray(canvassLeadFilter) ? canvassLeadFilter : [canvassLeadFilter||"mine"];
+  const toggle = (key) => {
+    if(key==="mine"||key==="all"){
+      setCanvassLeadFilter([key]);
+    } else {
+      const cur = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
+      const withoutSpecial = cur.filter(k=>k!=="mine"&&k!=="all");
+      if(withoutSpecial.includes(key)){
+        const next = withoutSpecial.filter(k=>k!==key);
+        setCanvassLeadFilter(next.length?next:["mine"]);
+      } else {
+        setCanvassLeadFilter([...withoutSpecial, key]);
+      }
+    }
+  };
+
+  const label = ()=>{
+    if(filters.includes("all")) return "All Reps";
+    if(filters.length===1&&filters[0]==="mine") return "My Leads";
+    if(filters.length===1&&filters[0].startsWith("team:")){
+      const t=visibleTeams.find(t=>"team:"+t.id===filters[0]);
+      return t?t.name:"Team";
+    }
+    if(filters.length===1&&filters[0].startsWith("rep:")){
+      const p=repProfiles.find(p=>"rep:"+p.id===filters[0]);
+      return p?p.name:"Rep";
+    }
+    return `${filters.length} selected`;
+  };
+
+  const filteredTeams = visibleTeams.filter(t=>t.name.toLowerCase().includes(teamSearch.toLowerCase()));
+  const filteredReps = repProfiles.filter(p=>(p.name||"").toLowerCase().includes(repSearch.toLowerCase()));
+
+  const Row = ({fkey, icon, label: lbl}) => {
+    const on = filters.includes(fkey);
+    return(
+      <div onClick={()=>toggle(fkey)}
+        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",background:on?"rgba(107,45,78,0.3)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+        <span style={{fontSize:15}}>{icon}</span>
+        <span style={{flex:1,fontSize:13,color:on?"#fff":"rgba(255,255,255,0.6)",fontWeight:on?700:400}}>{lbl}</span>
+        <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${on?"#6b2d4e":"rgba(255,255,255,0.2)"}`,background:on?"#6b2d4e":"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {on&&<span style={{color:"#fff",fontSize:11,fontWeight:800}}>✓</span>}
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <div style={{position:"absolute",bottom:80,right:12,zIndex:400}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{background:"rgba(18,18,28,0.92)",border:`1.5px solid ${filters.length>1||!filters.includes("mine")?"#6b2d4e":"rgba(255,255,255,0.2)"}`,borderRadius:20,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,backdropFilter:"blur(8px)",boxShadow:"0 2px 12px rgba(0,0,0,0.4)"}}>
+        <span>👁</span>
+        <span>{label()}</span>
+        <span style={{fontSize:10,opacity:0.6}}>{open?"▲":"▼"}</span>
+      </button>
+
+      {open&&(
+        <div style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,background:"rgba(18,18,28,0.97)",borderRadius:14,width:260,maxHeight:400,overflowY:"auto",boxShadow:"0 -8px 30px rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.1)"}}>
+          <div style={{padding:"12px 14px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:12,fontWeight:800,color:"#fff"}}>Viewing Leads</span>
+            <button onClick={()=>{setCanvassLeadFilter(["mine"]);setOpen(false);}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:11,cursor:"pointer"}}>Reset</button>
+          </div>
+
+          <Row fkey="mine" icon="👤" label="My Leads"/>
+          {isOwner&&<Row fkey="all" icon="🌐" label="All Reps"/>}
+
+          {isPrivileged&&visibleTeams.length>0&&(
+            <div>
+              <div onClick={()=>setShowTeams(s=>!s)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",background:"rgba(255,255,255,0.03)"}}>
+                <span style={{fontSize:15}}>👥</span>
+                <span style={{flex:1,fontSize:13,color:"rgba(255,255,255,0.7)",fontWeight:600}}>Teams</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>{showTeams?"▲":"▼"}</span>
+              </div>
+              {showTeams&&(
+                <div>
+                  <div style={{padding:"8px 12px"}}>
+                    <input value={teamSearch} onChange={e=>setTeamSearch(e.target.value)}
+                      placeholder="Search teams..."
+                      style={{width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.07)",color:"#fff",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  {filteredTeams.map(t=><Row key={t.id} fkey={"team:"+t.id} icon="👥" label={t.name}/>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isPrivileged&&repProfiles.length>0&&(
+            <div>
+              <div onClick={()=>setShowReps(s=>!s)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",background:"rgba(255,255,255,0.03)"}}>
+                <span style={{fontSize:15}}>🧑</span>
+                <span style={{flex:1,fontSize:13,color:"rgba(255,255,255,0.7)",fontWeight:600}}>Reps</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>{showReps?"▲":"▼"}</span>
+              </div>
+              {showReps&&(
+                <div>
+                  <div style={{padding:"8px 12px"}}>
+                    <input value={repSearch} onChange={e=>setRepSearch(e.target.value)}
+                      placeholder="Search reps..."
+                      style={{width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.07)",color:"#fff",fontSize:12,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  {filteredReps.map(p=><Row key={p.id} fkey={"rep:"+p.id} icon="🧑" label={p.name||p.email}/>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {open&&<div style={{position:"fixed",inset:0,zIndex:-1}} onClick={()=>setOpen(false)}/>}
+    </div>
+  );
+}
+
 // ── Canvass Tab ───────────────────────────────────────────────────────
 function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles}) {
   const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
@@ -3734,88 +3858,49 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         </div>
       )}
 
-      {/* Filter Panel */}
+      {/* View Scope Button — separate from filter */}
+      {mapLoaded && (
+        <CanvassViewPicker
+          isOwner={isOwner}
+          isPrivileged={isPrivileged}
+          visibleTeams={visibleTeams}
+          repProfiles={repProfiles}
+          canvassLeadFilter={canvassLeadFilter}
+          setCanvassLeadFilter={setCanvassLeadFilter}
+        />
+      )}
+
+      {/* Filter Panel — dispositions & lead stages only */}
       {showFilter && (
-        <div style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:260,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
+        <div style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:240,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Filter Map</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Filter Pins</div>
             {activeFilters.length>0&&(
-              <button onClick={()=>setActiveFilters([])} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear All</button>
+              <button onClick={()=>setActiveFilters([])} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
             )}
           </div>
-
-          {/* Lead Scope */}
-          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Viewing Leads</div>
-          <div style={{marginBottom:14}}>
-            {/* Mine — always available */}
-            {[{key:"mine",label:"My Leads",icon:"👤"}].map(opt=>(
-              <div key={opt.key} onClick={()=>setCanvassLeadFilter(opt.key)}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===opt.key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===opt.key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
-                <span style={{fontSize:14}}>{opt.icon}</span>
-                <span style={{fontSize:13,color:canvassLeadFilter===opt.key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===opt.key?700:400,flex:1}}>{opt.label}</span>
-                {canvassLeadFilter===opt.key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
-              </div>
-            ))}
-            {/* Teams — managers and owner */}
-            {isPrivileged&&visibleTeams.map(t=>{
-              const key="team:"+t.id;
-              return(
-                <div key={key} onClick={()=>setCanvassLeadFilter(key)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
-                  <span style={{fontSize:14}}>👥</span>
-                  <span style={{fontSize:13,color:canvassLeadFilter===key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===key?700:400,flex:1}}>{t.name}</span>
-                  {canvassLeadFilter===key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
-                </div>
-              );
-            })}
-            {/* Individual reps — managers and owner */}
-            {isPrivileged&&repProfiles.map(p=>{
-              const key="rep:"+p.id;
-              return(
-                <div key={key} onClick={()=>setCanvassLeadFilter(key)}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter===key?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter===key?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
-                  <span style={{fontSize:14}}>🧑</span>
-                  <span style={{fontSize:13,color:canvassLeadFilter===key?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter===key?700:400,flex:1}}>{p.name}</span>
-                  {canvassLeadFilter===key&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
-                </div>
-              );
-            })}
-            {/* All — owner only */}
-            {isOwner&&(
-              <div onClick={()=>setCanvassLeadFilter("all")}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:canvassLeadFilter==="all"?"rgba(255,255,255,0.12)":"transparent",border:`1px solid ${canvassLeadFilter==="all"?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.06)"}`}}>
-                <span style={{fontSize:14}}>🌐</span>
-                <span style={{fontSize:13,color:canvassLeadFilter==="all"?"#fff":"rgba(255,255,255,0.5)",fontWeight:canvassLeadFilter==="all"?700:400,flex:1}}>All Reps</span>
-                {canvassLeadFilter==="all"&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
-              </div>
-            )}
-          </div>
-
-          {/* Dispositions */}
           <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Dispositions</div>
           {DISPOSITIONS.map(d=>{
-            const isOn = activeFilters.includes("disp:"+d.key);
-            return (
+            const isOn=activeFilters.includes("disp:"+d.key);
+            return(
               <div key={d.key} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="disp:"+d.key):[...f,"disp:"+d.key])}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
-                <div style={{width:28,height:28,borderRadius:"50%",background:isOn?d.color:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{d.icon}</div>
-                <span style={{fontSize:13,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400}}>{d.label}</span>
-                {isOn&&<span style={{marginLeft:"auto",color:d.color,fontSize:14}}>✓</span>}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:isOn?d.color:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{d.icon}</div>
+                <span style={{fontSize:13,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{d.label}</span>
+                {isOn&&<span style={{color:d.color,fontSize:13}}>✓</span>}
               </div>
             );
           })}
-
-          {/* Lead Stages */}
-          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:14}}>Lead Stages</div>
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Lead Stages</div>
           {STAGES.map(s=>{
-            const isOn = activeFilters.includes("stage:"+s);
-            const emoji = STAGE_EMOJIS[s]||"📌";
-            return (
+            const isOn=activeFilters.includes("stage:"+s);
+            const emoji=STAGE_EMOJIS[s]||"📌";
+            return(
               <div key={s} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="stage:"+s):[...f,"stage:"+s])}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
-                <span style={{fontSize:16,width:28,textAlign:"center"}}>{emoji}</span>
+                style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
+                <span style={{fontSize:14,width:26,textAlign:"center"}}>{emoji}</span>
                 <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{s}</span>
-                {isOn&&<span style={{color:"#10b981",fontSize:14}}>✓</span>}
+                {isOn&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
               </div>
             );
           })}
@@ -4005,7 +4090,7 @@ function App() {
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
-  const [canvassLeadFilter,setCanvassLeadFilter]=useState("mine"); // mine | team:id | rep:id | all
+  const [canvassLeadFilter,setCanvassLeadFilter]=useState(["mine"]); // mine | team:id | rep:id | all
   // Persist team tab selection
   const [teamTabSelected,setTeamTabSelected]=useState("all");
   // Persist stats tab selections
@@ -4438,18 +4523,21 @@ function App() {
         {tab==="canvass"&&isOwner&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
             leads={(()=>{
-              if(canvassLeadFilter==="mine") return leads.filter(l=>l.owner_id===user.id);
-              if(canvassLeadFilter==="all") return leads;
-              if(canvassLeadFilter.startsWith("team:")){
-                const tid=canvassLeadFilter.replace("team:","");
-                const members=(teamMembers[tid]||[]).map(m=>m.user_id);
-                return leads.filter(l=>members.includes(l.owner_id));
-              }
-              if(canvassLeadFilter.startsWith("rep:")){
-                const rid=canvassLeadFilter.replace("rep:","");
-                return leads.filter(l=>l.owner_id===rid);
-              }
-              return leads.filter(l=>l.owner_id===user.id);
+              const filters = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
+              if(filters.includes("all")) return leads;
+              const allowed = new Set();
+              filters.forEach(f=>{
+                if(f==="mine") leads.filter(l=>l.owner_id===user.id).forEach(l=>allowed.add(l.id));
+                else if(f.startsWith("team:")){
+                  const tid=f.replace("team:","");
+                  const members=(teamMembers[tid]||[]).map(m=>m.user_id);
+                  leads.filter(l=>members.includes(l.owner_id)).forEach(l=>allowed.add(l.id));
+                } else if(f.startsWith("rep:")){
+                  const rid=f.replace("rep:","");
+                  leads.filter(l=>l.owner_id===rid).forEach(l=>allowed.add(l.id));
+                }
+              });
+              return leads.filter(l=>allowed.has(l.id));
             })()}
             canvassLeadFilter={canvassLeadFilter}
             setCanvassLeadFilter={setCanvassLeadFilter}
