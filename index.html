@@ -3091,27 +3091,36 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
       </div>
 
       {/* Disposition buttons */}
-      <div style={{padding:"16px 20px",display:"flex",gap:10,justifyContent:"space-between"}}>
-        {DISPOSITIONS.map(d=>{
-          const isActive = home.prescreen===d.key;
-          return (
-            <div key={d.key} onClick={()=>{
-              if(home._isTemp){
-                // For temp homes, mark disposition and open lead directly
-                if(d.key==="lead") onCreateLead(home, null);
-              } else {
+      <div style={{padding:"12px 20px 4px"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Disposition</div>
+        <div style={{display:"flex",gap:8,justifyContent:"space-between"}}>
+          {DISPOSITIONS.map(d=>{
+            const isActive = home.prescreen===d.key;
+            return (
+              <div key={d.key} onClick={()=>{
+                if(home._isTemp||home._isPipelineLead){
+                  if(d.key==="lead") onCreateLead(home,null);
+                  return;
+                }
                 onDisposition(home, d.key);
                 if(d.key==="lead") onCreateLead(home, null);
-              }
-            }}
-              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}}>
-              <div style={{width:52,height:52,borderRadius:"50%",background:isActive?d.color:"rgba(255,255,255,0.08)",border:`2px solid ${isActive?d.color:"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,transition:"all 0.15s"}}>
-                {d.icon}
+              }}
+                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}}>
+                <div style={{
+                  width:54,height:54,borderRadius:"50%",
+                  background:isActive?d.color:"rgba(255,255,255,0.06)",
+                  border:`2.5px solid ${isActive?d.color:"rgba(255,255,255,0.12)"}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:22,transition:"all 0.2s",
+                  boxShadow:isActive?`0 0 14px ${d.color}88`:"none",
+                }}>
+                  {d.icon}
+                </div>
+                <span style={{fontSize:10,fontWeight:800,color:isActive?d.color:"rgba(255,255,255,0.35)",letterSpacing:"0.05em"}}>{d.label}</span>
               </div>
-              <span style={{fontSize:10,fontWeight:700,color:isActive?d.color:"rgba(255,255,255,0.4)"}}>{d.label}</span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Notes */}
@@ -3129,31 +3138,31 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         </div>
       </div>
 
-      {/* Lead Stage section */}
-      {linkedLead && (
-        <div style={{padding:"0 20px 12px"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Lead Stage</div>
+      {/* Lead Stage — shows right after dispositions if linked */}
+      <div style={{padding:"12px 20px 4px"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Lead Stage</div>
+        {linkedLead ? (
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:8}}>Current stage in pipeline</div>
             <select value={linkedLead.stage||""} onChange={async e=>{
               const newStage=e.target.value;
               const entry={ts:formatTs(),changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
               await sb.from("leads").update({stage:newStage,history:[entry,...(linkedLead.history||[])],updated_at:new Date().toISOString()}).eq("id",linkedLead.id);
-              // Update local leads array via callback
               if(onStageChange) onStageChange(linkedLead.id, newStage, entry);
             }}
-              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}>
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none",marginBottom:8}}>
               {STAGES.map(s=><option key={s} value={s} style={{background:"#1e293b",color:"#fff"}}>{s}</option>)}
             </select>
-            {[["Name",linkedLead.name],["Phone",linkedLead.phone],["Address",linkedLead.address]].map(([l,v])=>v?(
-              <div key={l} style={{marginTop:8}}>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>{l}</div>
-                <div style={{fontSize:13,color:"#fff"}}>{v}</div>
-              </div>
-            ):null)}
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>
+              {linkedLead.name&&<span style={{marginRight:10}}>👤 {linkedLead.name}</span>}
+              {linkedLead.phone&&<span>📱 {linkedLead.phone}</span>}
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>
+            No pipeline lead linked — tap ⚡ LEAD to create one
+          </div>
+        )}
+      </div>
 
       {/* Property info */}
       <div style={{padding:"0 20px 12px"}}>
@@ -3697,6 +3706,17 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange}) {
             await sb.from("canvass_homes").update({prescreen:disp,updated_at:new Date().toISOString()}).eq("id",home.id);
             setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
             setSelectedHome(h=>({...h,prescreen:disp}));
+            // Update the marker icon live
+            const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
+            const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
+            const m=markersRef.current.find((_,i)=>{
+              const pos=markersRef.current[i].getPosition();
+              return pos&&Math.abs(pos.lat()-parseFloat(home.lat))<0.0002&&Math.abs(pos.lng()-parseFloat(home.lng))<0.0002;
+            });
+            if(m&&window.google){
+              m.setIcon({path:window.google.maps.SymbolPath.CIRCLE,scale:14,fillColor:dispColors[disp]||"#fff",fillOpacity:0.9,strokeColor:"#fff",strokeWeight:2});
+              m.setLabel({text:dispEmojis[disp]||"",fontSize:"14px"});
+            }
           }}
           onSaveNote={async(home,note)=>{
             await sb.from("canvass_homes").update({notes:note,updated_at:new Date().toISOString()}).eq("id",home.id);
