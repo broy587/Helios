@@ -2423,7 +2423,16 @@ function LeadModal({open,onClose,onSave,initial}) {
         </div>
         {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+              {k==="esiid" && (
+                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
+                  target="_blank" rel="noreferrer"
+                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none"}}>
+                  🔍 Lookup
+                </a>
+              )}
+            </div>
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
           </div>
         ))}
