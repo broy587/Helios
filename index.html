@@ -2295,6 +2295,11 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 {label==="Email" && (
                   <EmailButton email={value}/>
                 )}
+                {label==="Appointment" && value && (
+                  <CalendarSyncButton lead={lead} onEventSaved={eventId=>{
+                    if(onUpdate) onUpdate({...lead,gcal_event_id:eventId});
+                  }}/>
+                )}
                 {label==="Address" && (
                   <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#fef3c7",border:"none",fontSize:15,flexShrink:0,cursor:"pointer"}}>📍</button>
@@ -2356,14 +2361,9 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
             </div>
           )}
           {!confirmDelete&&!showTransfer && (
-            <div style={{marginTop:6}}>
-              <CalendarButton lead={lead} onEventSaved={eventId=>{
-                if(onUpdate) onUpdate({...lead,gcal_event_id:eventId});
-              }}/>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
-                <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
-              </div>
+            <div style={{display:"flex",gap:10,marginTop:6}}>
+              <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
+              <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
             </div>
           )}
         </div>
@@ -4322,6 +4322,56 @@ const GCal = {
 };
 
 // ── Calendar Button Component ─────────────────────────────────────────
+
+function CalendarSyncButton({lead, onEventSaved}) {
+  const [status, setStatus] = React.useState("idle");
+  const [gsiLoaded, setGsiLoaded] = React.useState(!!window.google?.accounts?.oauth2);
+
+  React.useEffect(()=>{
+    if(gsiLoaded) return;
+    const check = setInterval(()=>{
+      if(window.google?.accounts?.oauth2){ setGsiLoaded(true); clearInterval(check); }
+    },300);
+    if(!document.getElementById("gsi-script")){
+      const s=document.createElement("script");
+      s.id="gsi-script";
+      s.src="https://accounts.google.com/gsi/client";
+      s.async=true;
+      document.head.appendChild(s);
+    }
+    return ()=>clearInterval(check);
+  },[]);
+
+  const handle = async(e) => {
+    e.stopPropagation();
+    if(!gsiLoaded) return;
+    setStatus("loading");
+    try {
+      let eventId = lead.gcal_event_id;
+      if(eventId){ await GCal.updateEvent(eventId, lead); }
+      else { const ev=await GCal.createEvent(lead); eventId=ev.id; }
+      await sb.from("leads").update({gcal_event_id:eventId,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      if(onEventSaved) onEventSaved(eventId);
+      setStatus("done");
+      setTimeout(()=>setStatus("idle"),2500);
+    } catch(e) {
+      console.error(e);
+      setStatus("error");
+      setTimeout(()=>setStatus("idle"),2500);
+    }
+  };
+
+  const emoji = status==="loading"?"⏳":status==="done"?"✅":status==="error"?"❌":lead.gcal_event_id?"🔄":"📅";
+  const title = lead.gcal_event_id?"Update calendar event":"Add to team calendar";
+
+  return (
+    <button onClick={handle} title={title} disabled={status==="loading"}
+      style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",border:"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      {emoji}
+    </button>
+  );
+}
+
 function CalendarButton({lead, onEventSaved}) {
   const [status, setStatus] = React.useState("idle"); // idle | loading | done | error
   const [gsiLoaded, setGsiLoaded] = React.useState(false);
