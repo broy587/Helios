@@ -104,6 +104,16 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
 const GCAL_CALENDAR_ID="c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com";
+// Team calendar map — add new teams here as they get calendars
+const TEAM_CALENDARS = {
+  "b1f166c3-661e-4e02-b839-3b9560c9237b": { // Helios
+    calendarId: "c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    name: "Helios Calendar"
+  },
+  // Add more teams here:
+  // "TEAM_ID": { calendarId: "...", embedUrl: "...", name: "Team Name Calendar" }
+};
 
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / In Contact",
@@ -2297,10 +2307,8 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 {label==="Email" && (
                   <EmailButton email={value}/>
                 )}
-                {label==="Appointment" && value && (
-                  <CalendarSyncButton lead={lead} onEventSaved={eventId=>{
-                    if(onUpdate) onUpdate({...lead,gcal_event_id:eventId});
-                  }}/>
+                {label==="Appointment" && value && repProfiles!==undefined && (
+                  <CalendarSyncButton lead={lead}/>
                 )}
                 {label==="Address" && (
                   <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
@@ -4192,12 +4200,19 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 // ── Calendar View ─────────────────────────────────────────────────────
 function CalendarView() {
   const dark = useDark();
-  const CALENDAR_EMBED = "https://calendar.google.com/calendar/embed?src=c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK";
+  // Find which team calendar to show based on user's team
+  const userTeamId = Object.keys(TEAM_CALENDARS).find(tid=>
+    // Passed via prop or detected from teamMembers in parent
+    TEAM_CALENDARS[tid]
+  ) || "b1f166c3-661e-4e02-b839-3b9560c9237b";
+  const teamCal = TEAM_CALENDARS[userTeamId] || TEAM_CALENDARS["b1f166c3-661e-4e02-b839-3b9560c9237b"];
+  const CALENDAR_EMBED = teamCal.embedUrl;
+  const CALENDAR_NAME = teamCal.name;
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
-        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>Helios Calendar</div>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{CALENDAR_NAME}</div>
         <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer"
           style={{fontSize:12,fontWeight:600,color:"#6b2d4e",textDecoration:"none",padding:"6px 12px",borderRadius:8,border:"1.5px solid #6b2d4e"}}>
           Open in Google ↗
@@ -4818,7 +4833,7 @@ function App() {
     ["recruits","Recruits"],
     ...(isOwner?[["leadgen","Leads"]]:[]),
     ["canvass","Canvass"],
-    ["calendar","Calendar"],
+    ...((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner?[["calendar","Calendar"]]:[[]]),
     ["stats","Stats"],
     ["team","Team"]
   ];
@@ -4939,7 +4954,7 @@ function App() {
             <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
           </div>
         )}
-        {tab==="calendar"&&(
+        {tab==="calendar"&&((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner)&&(
           <CalendarView/>
         )}
         {tab==="canvass"&&(
