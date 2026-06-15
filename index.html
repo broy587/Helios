@@ -4325,51 +4325,56 @@ const GCal = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead, onEventSaved}) {
-  const [status, setStatus] = React.useState("idle");
-  const [gsiLoaded, setGsiLoaded] = React.useState(!!window.google?.accounts?.oauth2);
-
-  React.useEffect(()=>{
-    if(gsiLoaded) return;
-    const check = setInterval(()=>{
-      if(window.google?.accounts?.oauth2){ setGsiLoaded(true); clearInterval(check); }
-    },300);
-    if(!document.getElementById("gsi-script")){
-      const s=document.createElement("script");
-      s.id="gsi-script";
-      s.src="https://accounts.google.com/gsi/client";
-      s.async=true;
-      document.head.appendChild(s);
+function CalendarSyncButton({lead}) {
+  const buildGCalUrl = () => {
+    // Parse appointment: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
+    let dates = "";
+    if(lead.appointment) {
+      try {
+        const dashIdx = lead.appointment.indexOf(" - ");
+        if(dashIdx > -1) {
+          const datePart = lead.appointment.substring(0, dashIdx).trim();
+          const afterDash = lead.appointment.substring(dashIdx + 3).trim();
+          const [startT, endT] = afterDash.split(" to ").map(t=>t.trim());
+          const toGCalDate = (date, time) => {
+            const d = new Date(`${date} ${time}`);
+            return d.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");
+          };
+          dates = `${toGCalDate(datePart, startT)}/${toGCalDate(datePart, endT||startT)}`;
+        }
+      } catch(e) {}
     }
-    return ()=>clearInterval(check);
-  },[]);
-
-  const handle = async(e) => {
-    e.stopPropagation();
-    if(!gsiLoaded) return;
-    setStatus("loading");
-    try {
-      let eventId = lead.gcal_event_id;
-      if(eventId){ await GCal.updateEvent(eventId, lead); }
-      else { const ev=await GCal.createEvent(lead); eventId=ev.id; }
-      await sb.from("leads").update({gcal_event_id:eventId,updated_at:new Date().toISOString()}).eq("id",lead.id);
-      if(onEventSaved) onEventSaved(eventId);
-      setStatus("done");
-      setTimeout(()=>setStatus("idle"),2500);
-    } catch(e) {
-      console.error(e);
-      setStatus("error");
-      setTimeout(()=>setStatus("idle"),2500);
-    }
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text: lead.name || "Lead Appointment",
+      location: lead.address || "",
+      details: [
+        lead.phone?`Phone: ${lead.phone}`:"",
+        lead.notes?`Notes: ${lead.notes}`:"",
+        `Stage: ${lead.stage||""}`,
+        `\nAdded from Pipeline Push`
+      ].filter(Boolean).join("\n"),
+      ...(dates ? {dates} : {}),
+      src: GCAL_CALENDAR_ID,
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
   };
 
-  const emoji = status==="loading"?"⏳":status==="done"?"✅":status==="error"?"❌":lead.gcal_event_id?"🔄":"📅";
-  const title = lead.gcal_event_id?"Update calendar event":"Add to team calendar";
+  const handleClick = (e) => {
+    e.stopPropagation();
+    const a = document.createElement("a");
+    a.href = buildGCalUrl();
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   return (
-    <button onClick={handle} title={title} disabled={status==="loading"}
+    <button onClick={handleClick} title="Add to team calendar"
       style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",border:"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-      {emoji}
+      📅
     </button>
   );
 }
