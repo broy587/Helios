@@ -4446,10 +4446,12 @@ function CalendarEventModal({lead, onClose}) {
       if(res.status===403||res.status===404){setNoAccess(true);setLoadingSlots(false);return;}
       const data = await res.json();
       // Filter for open slots — events titled "Open Slot" or "Available"
+      console.log("All events fetched:", (data.items||[]).map(e=>e.summary));
       const open = (data.items||[]).filter(e=>
-        e.summary&&(e.summary.toLowerCase().includes("open slot")||e.summary.toLowerCase().includes("available")||e.summary.toLowerCase().includes("open slots"))
+        e.summary&&e.summary.toLowerCase().includes("open slot")
         &&!e.description?.includes("BOOKED:")
       );
+      console.log("Open slots found:", open.length);
       setSlots(open);
     } catch(e){console.error(e);}
     setLoadingSlots(false);
