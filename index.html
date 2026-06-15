@@ -3318,7 +3318,7 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, ca
   };
 
   return(
-    <div style={{position:"absolute",bottom:80,right:12,zIndex:400}}>
+    <div style={{position:"absolute",top:12,right:12,zIndex:400}}>
       <button onClick={()=>setOpen(o=>!o)}
         style={{background:"rgba(18,18,28,0.92)",border:`1.5px solid ${filters.length>1||!filters.includes("mine")?"#6b2d4e":"rgba(255,255,255,0.2)"}`,borderRadius:20,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6,backdropFilter:"blur(8px)",boxShadow:"0 2px 12px rgba(0,0,0,0.4)"}}>
         <span>👁</span>
@@ -3327,7 +3327,7 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, ca
       </button>
 
       {open&&(
-        <div style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,background:"rgba(18,18,28,0.97)",borderRadius:14,width:260,maxHeight:400,overflowY:"auto",boxShadow:"0 -8px 30px rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.1)"}}>
+        <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"rgba(18,18,28,0.97)",borderRadius:14,width:260,maxHeight:400,overflowY:"auto",boxShadow:"0 -8px 30px rgba(0,0,0,0.5)",border:"1px solid rgba(255,255,255,0.1)"}}>
           <div style={{padding:"12px 14px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:12,fontWeight:800,color:"#fff"}}>Viewing Leads</span>
             <button onClick={()=>{setCanvassLeadFilter(["mine"]);setOpen(false);}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:11,cursor:"pointer"}}>Reset</button>
