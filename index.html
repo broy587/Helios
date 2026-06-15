@@ -2437,7 +2437,13 @@ function LeadModal({open,onClose,onSave,initial}) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
           <input type="email" placeholder="email@example.com" value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={inputStyle}/>
         </div>
-        <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
+            {form.appointment&&<CalendarSyncButton lead={{...form,id:modal.lead?.id,gcal_event_id:modal.lead?.gcal_event_id}} onUpdate={updated=>{if(updated.appointment===null)setForm(f=>({...f,appointment:""}));}}/>}
+          </div>
+          <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
+        </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
           <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={inputStyle}/>
