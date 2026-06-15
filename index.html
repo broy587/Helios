@@ -2307,8 +2307,10 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 {label==="Email" && (
                   <EmailButton email={value}/>
                 )}
-                {label==="Appointment" && value && repProfiles!==undefined && (
-                  <CalendarSyncButton lead={lead} onSwitchToCalendar={onSwitchToCalendar} onUpdate={updated=>{ if(onUpdate) onUpdate({...lead,...updated}); }}/>
+                {label==="Appointment" && repProfiles!==undefined && (
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}}/>
+                  </div>
                 )}
                 {label==="Address" && (
                   <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
@@ -2317,6 +2319,20 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
               </div>
             </div>
           ):null)}
+          {/* Appointment booking — always visible in view mode */}
+          {repProfiles!==undefined&&!lead.appointment&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Appointment</div>
+              <div style={{display:"flex",gap:8}}>
+                <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot"/>
+                <PersonalApptButton label="↩️ Personal CB" onSelect={async(val)=>{
+                  await sb.from("leads").update({appointment:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                  if(onUpdate) onUpdate({...lead,appointment:val});
+                }}/>
+              </div>
+            </div>
+          )}
+
           {lead.notes && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
