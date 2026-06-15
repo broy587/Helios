@@ -4411,28 +4411,31 @@ const GCal = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead}) {
+function CalendarSyncButton({lead, onUpdate}) {
   const [showModal, setShowModal] = React.useState(false);
+  const isBooked = !!lead.gcal_event_id;
   return (
     <>
-      <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title="Add to Helios calendar"
-        style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",border:"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        📅
+      <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title={isBooked?"Manage calendar booking":"Book a slot"}
+        style={{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        {isBooked?"✅":"📅"}
       </button>
-      {showModal&&<CalendarEventModal lead={lead} onClose={()=>setShowModal(false)}/>}
+      {showModal&&<CalendarEventModal lead={lead} onClose={()=>setShowModal(false)} onUpdate={onUpdate}/>}
     </>
   );
 }
 
 function CalendarEventModal({lead, onClose}) {
   const dark = useDark();
-  const [view, setView] = React.useState("calendar"); // calendar | slots | confirm
+  const isBooked = !!lead.gcal_event_id;
+  const [view, setView] = React.useState(isBooked?"manage":"calendar"); // manage | calendar | slots | confirm
   const [selectedDay, setSelectedDay] = React.useState(null);
   const [slots, setSlots] = React.useState([]);
   const [selectedSlot, setSelectedSlot] = React.useState(null);
   const [loadingSlots, setLoadingSlots] = React.useState(false);
   const [booking, setBooking] = React.useState(false);
   const [done, setDone] = React.useState(false);
+  const [doneMsg, setDoneMsg] = React.useState("");
   const [noAccess, setNoAccess] = React.useState(false);
   const [calMonth, setCalMonth] = React.useState(new Date());
 
@@ -4480,6 +4483,22 @@ function CalendarEventModal({lead, onClose}) {
     await fetchSlotsForDay(day);
   };
 
+  const handleRemoveBooking = async() => {
+    try {
+      const token = await GCal.signIn();
+      // Restore event to "Open Slot"
+      await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
+        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+         body:JSON.stringify({summary:"Open Slot",description:"",colorId:"9"})}
+      );
+      // Clear from lead
+      await sb.from("leads").update({gcal_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      setDoneMsg("removed");
+      setDone(true);
+    } catch(e){console.error(e);}
+  };
+
   const handleBookSlot = async() => {
     if(!selectedSlot) return;
     setBooking(true);
@@ -4506,6 +4525,7 @@ function CalendarEventModal({lead, onClose}) {
         stage:"AC / Scheduled",
         updated_at:new Date().toISOString()
       }).eq("id",lead.id);
+      setDoneMsg("booked");
       setDone(true);
     } catch(e){console.error(e);}
     setBooking(false);
@@ -4520,15 +4540,34 @@ function CalendarEventModal({lead, onClose}) {
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            {view!=="calendar"&&!done&&!noAccess&&(
+            {view!=="calendar"&&view!=="manage"&&!done&&!noAccess&&(
               <button onClick={()=>setView("calendar")} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:18,padding:0}}>←</button>
             )}
             <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>
-              {done?"Appointment Booked!":noAccess?"No Calendar Access":view==="calendar"?"Pick a Day":view==="slots"?`Available Slots`:"Confirm Booking"}
+              {done?(doneMsg==="removed"?"Booking Removed":"Appointment Booked!"):noAccess?"No Calendar Access":view==="manage"?"Manage Booking":view==="calendar"?"Pick a Day":view==="slots"?"Available Slots":"Confirm Booking"}
             </div>
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
         </div>
+
+        {/* Manage existing booking */}
+        {!done&&!noAccess&&view==="manage"&&(
+          <div>
+            <div style={{background:dark?"#0f172a":"#fff",borderRadius:12,padding:"16px",marginBottom:16,border:"1.5px solid #10b981"}}>
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:4}}>Currently booked</div>
+              <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#1a2456"}}>{lead.name}</div>
+              {lead.appointment&&<div style={{fontSize:13,color:"#10b981",marginTop:4}}>{lead.appointment}</div>}
+            </div>
+            <button onClick={()=>setView("calendar")}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:10}}>
+              📅 Change Appointment
+            </button>
+            <button onClick={handleRemoveBooking}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"1.5px solid #fee2e2",background:"transparent",color:"#ef4444",fontWeight:600,fontSize:15,cursor:"pointer"}}>
+              🗑️ Remove from Calendar
+            </button>
+          </div>
+        )}
 
         {/* No access */}
         {noAccess&&(
@@ -4542,9 +4581,11 @@ function CalendarEventModal({lead, onClose}) {
         {/* Done */}
         {done&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:48,marginBottom:12}}>✅</div>
-            <div style={{fontSize:16,fontWeight:700,color:"#10b981",marginBottom:8}}>Slot booked for {lead.name}!</div>
-            <div style={{fontSize:13,color:"#94a3b8"}}>Lead moved to AC / Scheduled and added to Helios Calendar.</div>
+            <div style={{fontSize:48,marginBottom:12}}>{doneMsg==="removed"?"🗑️":"✅"}</div>
+            <div style={{fontSize:16,fontWeight:700,color:doneMsg==="removed"?"#ef4444":"#10b981",marginBottom:8}}>
+              {doneMsg==="removed"?"Booking removed!":"Slot booked for "+lead.name+"!"}
+            </div>
+            <div style={{fontSize:13,color:"#94a3b8"}}>{doneMsg==="removed"?"Calendar event deleted.":"Lead moved to AC / Scheduled and added to Helios Calendar."}</div>
           </div>
         )}
 
