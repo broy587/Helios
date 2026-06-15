@@ -4200,6 +4200,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 // ── Calendar View ─────────────────────────────────────────────────────
 function CalendarView() {
   const dark = useDark();
+  const [calKey, setCalKey] = React.useState(0);
   // Find which team calendar to show based on user's team
   const userTeamId = Object.keys(TEAM_CALENDARS).find(tid=>
     // Passed via prop or detected from teamMembers in parent
@@ -4213,17 +4214,23 @@ function CalendarView() {
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
         <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{CALENDAR_NAME}</div>
-        <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer"
-          style={{fontSize:12,fontWeight:600,color:"#6b2d4e",textDecoration:"none",padding:"6px 12px",borderRadius:8,border:"1.5px solid #6b2d4e"}}>
-          Open in Google ↗
-        </a>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
+            style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:14,color:dark?"#94a3b8":"#6b2d4e"}}>
+            🔄
+          </button>
+          <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer"
+            style={{fontSize:12,fontWeight:600,color:"#6b2d4e",textDecoration:"none",padding:"6px 12px",borderRadius:8,border:"1.5px solid #6b2d4e"}}>
+            Open in Google ↗
+          </a>
+        </div>
       </div>
       <iframe
         src={CALENDAR_EMBED}
         style={{flex:1,border:"none",width:"100%"}}
         frameBorder="0"
         scrolling="no"
-        title="Helios Calendar"
+        title="Helios Calendar" key={calKey}
       />
     </div>
   );
