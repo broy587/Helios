@@ -3446,17 +3446,19 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
   // Watch for jump requests from pipeline
   React.useEffect(()=>{
+    if(!mapLoaded) return;
     const checkJump = () => {
-      if(window._canvassJumpLead && mapLoaded && mapInstanceRef.current) {
+      if(window._canvassJumpLead){
         const lead = window._canvassJumpLead;
         window._canvassJumpLead = null;
         setJumpLead(lead);
       }
     };
+    // Check immediately and after short delay
     checkJump();
-    // Also poll briefly in case map wasn't ready yet
-    const t = setTimeout(checkJump, 500);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(checkJump, 200);
+    const t2 = setTimeout(checkJump, 600);
+    return ()=>{clearTimeout(t1);clearTimeout(t2);};
   },[mapLoaded]);
 
   // Execute jump when jumpLead is set
@@ -3505,17 +3507,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         mapTypeControl:false,
       });
       mapInstanceRef.current=map;
-      // Auto-zoom to user location on load
-      if(navigator.geolocation){
+      // Auto-zoom to user location on load — skip if a jump is pending
+      if(navigator.geolocation && !window._canvassJumpLead){
         navigator.geolocation.getCurrentPosition(
           (pos)=>{
+            // Double-check no jump came in while we were waiting
+            if(window._canvassJumpLead) return;
             const coords={lat:pos.coords.latitude,lng:pos.coords.longitude};
             map.panTo(coords);
             map.setZoom(18);
-            // Place location marker after a short delay so map is ready
             setTimeout(()=>placeMyLocationMarker(coords), 500);
           },
-          ()=>{}, // silently fail
+          ()=>{},
           {enableHighAccuracy:true,timeout:6000}
         );
       }
