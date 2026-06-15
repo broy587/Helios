@@ -4416,14 +4416,20 @@ const GCal = {
 
 function CalendarSyncButton({lead, onUpdate}) {
   const [showModal, setShowModal] = React.useState(false);
-  const isBooked = !!lead.gcal_event_id;
+  const [localLead, setLocalLead] = React.useState(lead);
+  React.useEffect(()=>setLocalLead(lead),[lead]);
+  const isBooked = !!localLead.gcal_event_id;
+  const handleUpdate = (updated) => {
+    setLocalLead(l=>({...l,...updated}));
+    if(onUpdate) onUpdate(updated);
+  };
   return (
     <>
       <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title={isBooked?"Manage calendar booking":"Book a slot"}
         style={{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         {isBooked?"✅":"📅"}
       </button>
-      {showModal&&<CalendarEventModal lead={lead} onClose={()=>setShowModal(false)} onUpdate={onUpdate}/>}
+      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate}/>}
     </>
   );
 }
@@ -4501,6 +4507,7 @@ function CalendarEventModal({lead, onClose}) {
         appointment:null,
         updated_at:new Date().toISOString()
       }).eq("id",lead.id);
+      if(onUpdate) onUpdate({gcal_event_id:null,appointment:null});
       setDoneMsg("removed");
       setDone(true);
     } catch(e){console.error(e);alert("Error removing: "+e.message);}
@@ -4532,6 +4539,7 @@ function CalendarEventModal({lead, onClose}) {
         stage:"AC / Scheduled",
         updated_at:new Date().toISOString()
       }).eq("id",lead.id);
+      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:"AC / Scheduled"});
       setDoneMsg("booked");
       setDone(true);
     } catch(e){console.error(e);}
