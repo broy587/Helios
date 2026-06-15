@@ -2440,7 +2440,7 @@ function LeadModal({open,onClose,onSave,initial}) {
         <div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            {form.appointment&&<CalendarSyncButton lead={{...form,id:modal.lead?.id,gcal_event_id:modal.lead?.gcal_event_id}} onUpdate={updated=>{if(updated.appointment===null)setForm(f=>({...f,appointment:""}));}}/>}
+            {form.appointment&&<CalendarSyncButton lead={{...form}} onUpdate={updated=>{if(updated.appointment===null)setForm(f=>({...f,appointment:""}));}}/>}
           </div>
           <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
         </div>
