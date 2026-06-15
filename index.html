@@ -2437,12 +2437,25 @@ function LeadModal({open,onClose,onSave,initial}) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
           <input type="email" placeholder="email@example.com" value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={inputStyle}/>
         </div>
-        <div>
+        <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            {form.appointment&&<CalendarSyncButton lead={{...form}} onUpdate={updated=>{if(updated.appointment===null)setForm(f=>({...f,appointment:""}));}}/>}
+            <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+              if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:""}));
+              else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||""}));
+            }}/>
           </div>
-          <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
+          {form.appointment ? (
+            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span>{form.appointment}</span>
+              <button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ) : (
+            <div style={{padding:"10px 12px",borderRadius:8,background:"#f8fafc",border:"1.5px solid #e2e8f0",fontSize:13,color:"#94a3b8",textAlign:"center",cursor:"pointer"}}
+              onClick={()=>document.querySelector("[title='Book a slot']")?.click()}>
+              Tap 📅 to book a slot from the Helios Calendar
+            </div>
+          )}
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
