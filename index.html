@@ -4597,7 +4597,7 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
       await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-         body:JSON.stringify({summary:"Open Slot",description:"",colorId:"9"})}
+         body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
       );
       // Clear gcal_event_id AND appointment from lead, revert stage
       await sb.from("leads").update({
@@ -4622,7 +4622,7 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
           await fetch(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
             {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"9"})}
+             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
           );
         } catch(e){ console.error("Error restoring old slot:",e); }
       }
