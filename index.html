@@ -4270,9 +4270,15 @@ const GCal = {
   },
 
   async signIn() {
+    // Wait for GSI to be ready
+    await new Promise(res=>{
+      if(window.google?.accounts?.oauth2){res();return;}
+      const check=setInterval(()=>{if(window.google?.accounts?.oauth2){clearInterval(check);res();}},200);
+      setTimeout(()=>{clearInterval(check);res();},5000);
+    });
     return new Promise((resolve, reject) => {
       if(!window.google?.accounts?.oauth2) {
-        reject(new Error("Google API not loaded"));
+        reject(new Error("Google Sign-In not available. Please refresh."));
         return;
       }
       if(this.isSignedIn()) { resolve(this._accessToken); return; }
