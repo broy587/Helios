@@ -3443,19 +3443,31 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // Keep homesRef in sync with homes state
   React.useEffect(()=>{ homesRef.current=homes; },[homes]);
 
-  // Jump to lead from pipeline "View in Canvass"
+  // Watch for jump requests from pipeline
   React.useEffect(()=>{
-    if(!mapLoaded||!window._canvassJumpLead) return;
-    const lead = window._canvassJumpLead;
-    window._canvassJumpLead = null;
+    const checkJump = () => {
+      if(window._canvassJumpLead && mapLoaded && mapInstanceRef.current) {
+        const lead = window._canvassJumpLead;
+        window._canvassJumpLead = null;
+        setJumpLead(lead);
+      }
+    };
+    checkJump();
+    // Also poll briefly in case map wasn't ready yet
+    const t = setTimeout(checkJump, 500);
+    return () => clearTimeout(t);
+  },[mapLoaded]);
+
+  // Execute jump when jumpLead is set
+  React.useEffect(()=>{
+    if(!jumpLead||!mapLoaded||!mapInstanceRef.current) return;
+    const lead = jumpLead;
+    setJumpLead(null);
     if(!lead.address) return;
     geocodeAddress(lead.address).then(coords=>{
       if(!coords) return;
-      if(mapInstanceRef.current){
-        mapInstanceRef.current.panTo(coords);
-        mapInstanceRef.current.setZoom(18);
-      }
-      // Find existing canvass home or create temp popup
+      mapInstanceRef.current.panTo(coords);
+      mapInstanceRef.current.setZoom(18);
       const saved = homesRef.current.find(h=>
         h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
       );
@@ -3470,7 +3482,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         });
       }
     });
-  },[mapLoaded]);
+  },[jumpLead,mapLoaded]);
 
   const loadHomes=async()=>{
     try{
@@ -4605,7 +4617,7 @@ function App() {
             )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
-            onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");setTimeout(()=>{window._canvassJumpLead=lead;},100);}}/>
+            onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
         )}
         {tab==="recruits"&&(
@@ -4713,9 +4725,7 @@ function App() {
           onViewInCanvass={lead=>{
             setDetailId(null);
             setTab("canvass");
-            setTimeout(()=>{
-              window._canvassJumpLead=lead;
-            },100);
+            window._canvassJumpLead=lead;
           }}/>
       )}
 
