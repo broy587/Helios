@@ -3421,6 +3421,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const markersRef = React.useRef([]);
   const leadMarkersRef = React.useRef([]);
   const leadGenRef = React.useRef(0); // cancel stale geocoding
+  const [jumpLead, setJumpLead] = React.useState(null);
 
   const PRESCREEN_COLORS = {yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8","":" #1a2456"};
 
