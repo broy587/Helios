@@ -2440,7 +2440,7 @@ function LeadModal({open,onClose,onSave,initial}) {
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            {form.appointment&&<button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
+            {form.appointment&&!form.gcal_event_id&&<button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
           </div>
           {form.appointment ? (
             <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46"}}>
@@ -4592,6 +4592,16 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
     setBooking(true);
     try {
       const token = await GCal.signIn();
+      // If lead already has a booked slot, restore it to "Open Slot" first
+      if(lead.gcal_event_id && lead.gcal_event_id !== selectedSlot.id) {
+        try {
+          await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"9"})}
+          );
+        } catch(e){ console.error("Error restoring old slot:",e); }
+      }
       // Update the event with lead info
       const updatedEvent = {
         summary: `AC - ${lead.name||"Lead"}`,
