@@ -3469,6 +3469,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     if(!lead.address) return;
     geocodeAddress(lead.address).then(coords=>{
       if(!coords) return;
+      // Cancel any pending auto-locate
+      window._autoLocateId = null;
       mapInstanceRef.current.panTo(coords);
       mapInstanceRef.current.setZoom(18);
       const saved = homesRef.current.find(h=>
@@ -3507,12 +3509,15 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         mapTypeControl:false,
       });
       mapInstanceRef.current=map;
-      // Auto-zoom to user location on load — skip if a jump is pending
-      if(navigator.geolocation && !window._canvassJumpLead){
+      // Auto-zoom to user location — only if no jump is pending
+      // Use a flag so the async callback can be cancelled
+      if(navigator.geolocation){
+        const autoLocateId = Symbol();
+        window._autoLocateId = autoLocateId;
         navigator.geolocation.getCurrentPosition(
           (pos)=>{
-            // Double-check no jump came in while we were waiting
-            if(window._canvassJumpLead) return;
+            // Cancel if a jump came in or another locate started
+            if(window._canvassJumpLead || window._autoLocateId !== autoLocateId) return;
             const coords={lat:pos.coords.latitude,lng:pos.coords.longitude};
             map.panTo(coords);
             map.setZoom(18);
