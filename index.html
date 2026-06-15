@@ -104,7 +104,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const OWNER_ID = "626f99de-f299-479c-8c18-d34817698bd0";
 
 const STAGES = [
-  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / In Contact",
   "Stale / No Reschedule",
   "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
@@ -114,7 +114,7 @@ const STAGE_COLORS = {
   "Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "AC / Scheduled":{bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
   "No Show / No Contact":{bg:"#fee2e2",border:"#ef4444",badge:"#7f1d1d"},
-  "No Show / Contact":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
+  "No Show / In Contact":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "Stale / No Reschedule":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / No Offer":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / Offer Given":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
@@ -132,7 +132,7 @@ function getStageColor(stage) {
 }
 
 const STAGE_PROGRESSION = [
-  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / Contact",
+  "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / In Contact",
   "Stale / No Reschedule",
   "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
@@ -2356,9 +2356,14 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
             </div>
           )}
           {!confirmDelete&&!showTransfer && (
-            <div style={{display:"flex",gap:10,marginTop:6}}>
-              <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
-              <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
+            <div style={{marginTop:6}}>
+              <CalendarButton lead={lead} onEventSaved={eventId=>{
+                if(onUpdate) onUpdate({...lead,gcal_event_id:eventId});
+              }}/>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
+                <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
+              </div>
             </div>
           )}
         </div>
@@ -3247,7 +3252,7 @@ const STAGE_EMOJIS = {
   "Lead: Need Bill/Appointment": "📋",
   "AC / Scheduled":              "📅",
   "No Show / No Contact":        "👻",
-  "No Show / Contact":           "📲",
+  "No Show / In Contact":           "📲",
   "Stale / No Reschedule":       "🧊",
   "No Close / No Offer":         "🚪",
   "No Close / Offer Given":      "💬",
@@ -4180,6 +4185,207 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   );
 }
 
+
+// ── Google Calendar Integration ───────────────────────────────────────
+const GCal = {
+  _tokenClient: null,
+  _accessToken: null,
+  _tokenExpiry: null,
+
+  isSignedIn() {
+    return this._accessToken && Date.now() < this._tokenExpiry;
+  },
+
+  async signIn() {
+    return new Promise((resolve, reject) => {
+      if(!window.google?.accounts?.oauth2) {
+        reject(new Error("Google API not loaded"));
+        return;
+      }
+      if(this.isSignedIn()) { resolve(this._accessToken); return; }
+      if(!this._tokenClient) {
+        this._tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: GCAL_CLIENT_ID,
+          scope: "https://www.googleapis.com/auth/calendar.events",
+          callback: (resp) => {
+            if(resp.error) { reject(resp); return; }
+            this._accessToken = resp.access_token;
+            this._tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+            resolve(resp.access_token);
+          },
+        });
+      }
+      this._tokenClient.requestAccessToken();
+    });
+  },
+
+  parseAppointment(apptStr) {
+    // Format: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
+    if(!apptStr) return null;
+    try {
+      const dashIdx = apptStr.indexOf(" - ");
+      if(dashIdx === -1) return null;
+      const datePart = apptStr.substring(0, dashIdx).trim();
+      const afterDash = apptStr.substring(dashIdx + 3).trim();
+      const [startTime, endTime] = afterDash.split(" to ").map(t => t.trim());
+      const parseDateTime = (date, time) => {
+        const d = new Date(`${date} ${time}`);
+        return d.toISOString();
+      };
+      return {
+        start: parseDateTime(datePart, startTime),
+        end: parseDateTime(datePart, endTime || startTime),
+      };
+    } catch(e) { return null; }
+  },
+
+  async createEvent(lead) {
+    const token = await this.signIn();
+    const times = this.parseAppointment(lead.appointment);
+    const event = {
+      summary: lead.name || "Lead Appointment",
+      location: lead.address || "",
+      description: [
+        lead.phone ? `Phone: ${lead.phone}` : "",
+        lead.email ? `Email: ${lead.email}` : "",
+        lead.utility ? `Utility: ${lead.utility}` : "",
+        lead.notes ? `Notes: ${lead.notes}` : "",
+        `Stage: ${lead.stage || ""}`,
+        `Pipeline Push Lead`,
+      ].filter(Boolean).join("\n"),
+      start: times
+        ? { dateTime: times.start, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+      end: times
+        ? { dateTime: times.end, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+      colorId: "2", // sage green
+    };
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(event),
+      }
+    );
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
+  async updateEvent(eventId, lead) {
+    const token = await this.signIn();
+    const times = this.parseAppointment(lead.appointment);
+    const event = {
+      summary: lead.name || "Lead Appointment",
+      location: lead.address || "",
+      description: [
+        lead.phone ? `Phone: ${lead.phone}` : "",
+        lead.email ? `Email: ${lead.email}` : "",
+        lead.notes ? `Notes: ${lead.notes}` : "",
+        `Stage: ${lead.stage || ""}`,
+        `Pipeline Push Lead`,
+      ].filter(Boolean).join("\n"),
+      start: times
+        ? { dateTime: times.start, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+      end: times
+        ? { dateTime: times.end, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+    };
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${eventId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(event),
+      }
+    );
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
+  async deleteEvent(eventId) {
+    const token = await this.signIn();
+    await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${eventId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+    );
+  },
+};
+
+// ── Calendar Button Component ─────────────────────────────────────────
+function CalendarButton({lead, onEventSaved}) {
+  const [status, setStatus] = React.useState("idle"); // idle | loading | done | error
+  const [gsiLoaded, setGsiLoaded] = React.useState(false);
+  const hasEvent = lead.gcal_event_id;
+
+  React.useEffect(()=>{
+    const check = setInterval(()=>{
+      if(window.google?.accounts?.oauth2){
+        setGsiLoaded(true);
+        clearInterval(check);
+      }
+    },300);
+    // Load GSI script if not already there
+    if(!document.getElementById("gsi-script")){
+      const s=document.createElement("script");
+      s.id="gsi-script";
+      s.src="https://accounts.google.com/gsi/client";
+      s.async=true;
+      document.head.appendChild(s);
+    }
+    return ()=>clearInterval(check);
+  },[]);
+
+  const handleClick = async() => {
+    if(!gsiLoaded){ alert("Google Sign-In loading, try again in a moment."); return; }
+    setStatus("loading");
+    try {
+      let eventId = lead.gcal_event_id;
+      if(eventId) {
+        await GCal.updateEvent(eventId, lead);
+      } else {
+        const event = await GCal.createEvent(lead);
+        eventId = event.id;
+      }
+      // Save event ID to lead
+      await sb.from("leads").update({gcal_event_id:eventId,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      if(onEventSaved) onEventSaved(eventId);
+      setStatus("done");
+      setTimeout(()=>setStatus("idle"),3000);
+    } catch(e) {
+      console.error("Calendar error:",e);
+      setStatus("error");
+      setTimeout(()=>setStatus("idle"),3000);
+    }
+  };
+
+  const label = status==="loading"?"Syncing..."
+    :status==="done"?`✓ ${hasEvent?"Updated":"Added"}!`
+    :status==="error"?"Error — retry"
+    :hasEvent?"Update Calendar":"Add to Calendar";
+
+  const color = status==="done"?"#10b981"
+    :status==="error"?"#ef4444"
+    :hasEvent?"#3b82f6":"#1a2456";
+
+  return (
+    <button onClick={handleClick} disabled={status==="loading"}
+      style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:`1.5px solid ${color}`,background:"#fff",color:color,fontWeight:700,fontSize:13,cursor:status==="loading"?"default":"pointer",width:"100%",justifyContent:"center",marginBottom:8}}>
+      <span>📅</span>
+      {label}
+    </button>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────
 function App() {
   const [user,setUser]=useState(null);
@@ -4288,7 +4494,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,gcal_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -4316,7 +4522,7 @@ function App() {
         setTeamGoals(goalsGrouped);
       } else {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,gcal_event_id,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
