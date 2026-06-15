@@ -2437,7 +2437,10 @@ function LeadModal({open,onClose,onSave,initial}) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
           <input type="email" placeholder="email@example.com" value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={inputStyle}/>
         </div>
-        <AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{flex:1}}><AppointmentPicker value={form.appointment} onChange={val=>setForm(f=>({...f,appointment:val}))}/></div>
+          {form.appointment&&<CalendarSyncButton lead={{...form,id:modal.lead?.id,gcal_event_id:modal.lead?.gcal_event_id}}/>}
+        </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
           <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={inputStyle}/>
@@ -4486,17 +4489,21 @@ function CalendarEventModal({lead, onClose}) {
   const handleRemoveBooking = async() => {
     try {
       const token = await GCal.signIn();
-      // Restore event to "Open Slot"
+      // Restore calendar event back to Open Slot
       await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
          body:JSON.stringify({summary:"Open Slot",description:"",colorId:"9"})}
       );
-      // Clear from lead
-      await sb.from("leads").update({gcal_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      // Clear gcal_event_id AND appointment from lead, revert stage
+      await sb.from("leads").update({
+        gcal_event_id:null,
+        appointment:null,
+        updated_at:new Date().toISOString()
+      }).eq("id",lead.id);
       setDoneMsg("removed");
       setDone(true);
-    } catch(e){console.error(e);}
+    } catch(e){console.error(e);alert("Error removing: "+e.message);}
   };
 
   const handleBookSlot = async() => {
