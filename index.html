@@ -2438,22 +2438,23 @@ function LeadModal({open,onClose,onSave,initial}) {
           <input type="email" placeholder="email@example.com" value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={inputStyle}/>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-              if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:""}));
-              else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||""}));
-            }}/>
+            {form.appointment&&<button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
           </div>
           {form.appointment ? (
-            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span>{form.appointment}</span>
-              <button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>✕</button>
+            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46"}}>
+              {form.appointment}
             </div>
           ) : (
-            <div style={{padding:"10px 12px",borderRadius:8,background:"#f8fafc",border:"1.5px solid #e2e8f0",fontSize:13,color:"#94a3b8",textAlign:"center",cursor:"pointer"}}
-              onClick={()=>document.querySelector("[title='Book a slot']")?.click()}>
-              Tap 📅 to book a slot from the Helios Calendar
+            <div style={{display:"flex",gap:8}}>
+              {/* Book Closer Slot */}
+              <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+                if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:""}));
+                else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||""}));
+              }} label="📅 Book Closer Slot"/>
+              {/* Personal Callback */}
+              <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val}))} label="↩️ Personal CB"/>
             </div>
           )}
         </div>
@@ -4430,7 +4431,7 @@ const GCal = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead, onUpdate}) {
+function CalendarSyncButton({lead, onUpdate, label}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
   React.useEffect(()=>setLocalLead(lead),[lead]);
@@ -4442,10 +4443,67 @@ function CalendarSyncButton({lead, onUpdate}) {
   return (
     <>
       <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title={isBooked?"Manage calendar booking":"Book a slot"}
-        style={{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        {isBooked?"✅":"📅"}
+        style={label?{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #1a2456",background:"#f0f4ff",color:"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        {label||(isBooked?"✅":"📅")}
       </button>
       {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate}/>}
+    </>
+  );
+}
+
+// Personal Appointment / Callback picker
+function PersonalApptButton({onSelect, label}) {
+  const [show, setShow] = React.useState(false);
+  const [date, setDate] = React.useState("");
+  const [time, setTime] = React.useState("");
+  const dark = useDark();
+  const iStyle = {width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+
+  const handleConfirm = () => {
+    if(!date) return;
+    const d = new Date(date);
+    const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const dateStr = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    let apptStr = dateStr;
+    if(time){
+      const [h,m] = time.split(":").map(Number);
+      const ampm = h>=12?"PM":"AM";
+      const h12 = h%12||12;
+      const timeStr = `${h12}:${String(m).padStart(2,"0")} ${ampm}`;
+      apptStr = `${dateStr} - ${timeStr} to ${h12+1}:${String(m).padStart(2,"0")} ${ampm}`;
+    }
+    onSelect(apptStr);
+    setShow(false);
+  };
+
+  return (
+    <>
+      <button onClick={()=>setShow(true)}
+        style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+        {label||"↩️ Personal CB"}
+      </button>
+      {show&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShow(false)}>
+          <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>↩️ Personal Callback</div>
+              <button onClick={()=>setShow(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={iStyle}/>
+            </div>
+            <div style={{marginBottom:22}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time (optional)</label>
+              <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={iStyle}/>
+            </div>
+            <button onClick={handleConfirm} disabled={!date}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:date?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:date?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:date?"pointer":"default"}}>
+              Set Callback
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
