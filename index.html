@@ -2308,7 +2308,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                   <EmailButton email={value}/>
                 )}
                 {label==="Appointment" && value && repProfiles!==undefined && (
-                  <CalendarSyncButton lead={lead} onSwitchToCalendar={onSwitchToCalendar}/>
+                  <CalendarSyncButton lead={lead} onSwitchToCalendar={onSwitchToCalendar} onUpdate={updated=>{ if(onUpdate) onUpdate({...lead,...updated}); }}/>
                 )}
                 {label==="Address" && (
                   <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
@@ -4508,7 +4508,7 @@ function PersonalApptButton({onSelect, label}) {
   );
 }
 
-function CalendarEventModal({lead, onClose}) {
+function CalendarEventModal({lead, onClose, onUpdate}) {
   const dark = useDark();
   const isBooked = !!lead.gcal_event_id;
   const [view, setView] = React.useState(isBooked?"manage":"calendar"); // manage | calendar | slots | confirm
