@@ -4411,70 +4411,86 @@ function CalendarSyncButton({lead}) {
 
 function CalendarEventModal({lead, onClose}) {
   const dark = useDark();
-  const parseAppt = () => {
-    if(!lead.appointment) return {date:"",startTime:"",endTime:""};
-    try {
-      const dashIdx = lead.appointment.indexOf(" - ");
-      if(dashIdx===-1) return {date:"",startTime:"",endTime:""};
-      const datePart = lead.appointment.substring(0,dashIdx).trim();
-      const afterDash = lead.appointment.substring(dashIdx+3).trim();
-      const [startT,endT] = afterDash.split(" to ").map(t=>t.trim());
-      const d = new Date(datePart);
-      const dateStr = d.toISOString().split("T")[0];
-      const to24 = (t) => {
-        if(!t) return "";
-        const parts = t.split(" ");
-        const ampm = parts[1];
-        let [h,m] = parts[0].split(":").map(Number);
-        if(ampm==="PM"&&h!==12) h+=12;
-        if(ampm==="AM"&&h===12) h=0;
-        return `${String(h).padStart(2,"0")}:${String(m||0).padStart(2,"0")}`;
-      };
-      return {date:dateStr,startTime:to24(startT),endTime:to24(endT)};
-    } catch(e) {return {date:"",startTime:"",endTime:""};}
-  };
-  const parsed = parseAppt();
-  const [title,setTitle] = React.useState(lead.name||"Lead Appointment");
-  const [date,setDate] = React.useState(parsed.date);
-  const [startTime,setStartTime] = React.useState(parsed.startTime);
-  const [endTime,setEndTime] = React.useState(parsed.endTime);
-  const [notes,setNotes] = React.useState([lead.phone?`Phone: ${lead.phone}`:"",lead.address?`Address: ${lead.address}`:"",lead.notes?`Notes: ${lead.notes}`:""].filter(Boolean).join("\n"));
-  const [status,setStatus] = React.useState("idle");
-  const [gsiReady,setGsiReady] = React.useState(!!window.google?.accounts?.oauth2);
+  const [view, setView] = React.useState("calendar"); // calendar | slots | confirm
+  const [selectedDay, setSelectedDay] = React.useState(null);
+  const [slots, setSlots] = React.useState([]);
+  const [selectedSlot, setSelectedSlot] = React.useState(null);
+  const [loadingSlots, setLoadingSlots] = React.useState(false);
+  const [booking, setBooking] = React.useState(false);
+  const [done, setDone] = React.useState(false);
+  const [noAccess, setNoAccess] = React.useState(false);
+  const [calMonth, setCalMonth] = React.useState(new Date());
 
-  React.useEffect(()=>{
-    if(gsiReady) return;
-    const check=setInterval(()=>{if(window.google?.accounts?.oauth2){setGsiReady(true);clearInterval(check);}},300);
-    if(!document.getElementById("gsi-script")){
-      const s=document.createElement("script");s.id="gsi-script";s.src="https://accounts.google.com/gsi/client";s.async=true;document.head.appendChild(s);
-    }
-    return()=>clearInterval(check);
-  },[]);
+  // Calendar grid helpers
+  const today = new Date(); today.setHours(0,0,0,0);
+  const monthStart = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
+  const monthEnd = new Date(calMonth.getFullYear(), calMonth.getMonth()+1, 0);
+  const startPad = monthStart.getDay();
+  const days = [];
+  for(let i=0;i<startPad;i++) days.push(null);
+  for(let d=1;d<=monthEnd.getDate();d++) days.push(new Date(calMonth.getFullYear(),calMonth.getMonth(),d));
 
-  const handleSave = async() => {
-    if(!date||!startTime) return;
-    setStatus("loading");
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  const fetchSlotsForDay = async(day) => {
+    setLoadingSlots(true);
+    setSlots([]);
     try {
-      const startISO = new Date(`${date}T${startTime}:00`).toISOString();
-      const endISO = endTime ? new Date(`${date}T${endTime}:00`).toISOString() : new Date(new Date(`${date}T${startTime}:00`).getTime()+60*60*1000).toISOString();
-      const event = {
-        summary:title,location:lead.address||"",description:notes,
-        start:{dateTime:startISO,timeZone:"America/Chicago"},
-        end:{dateTime:endISO,timeZone:"America/Chicago"},
-        colorId:"2",
-      };
       const token = await GCal.signIn();
+      const dayStart = new Date(day); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
       const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`,
-        {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(event)}
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
+        {headers:{Authorization:`Bearer ${token}`}}
       );
-      if(res.status===403||res.status===404){setStatus("noaccess");return;}
-      if(!res.ok) throw new Error(await res.text());
+      if(res.status===403||res.status===404){setNoAccess(true);setLoadingSlots(false);return;}
       const data = await res.json();
-      await sb.from("leads").update({gcal_event_id:data.id,updated_at:new Date().toISOString()}).eq("id",lead.id);
-      setStatus("done");
-      setTimeout(()=>onClose(),1500);
-    } catch(e){console.error(e);setStatus("error");}
+      // Filter for open slots — events titled "Open Slot" or "Available"
+      const open = (data.items||[]).filter(e=>
+        e.summary&&(e.summary.toLowerCase().includes("open slot")||e.summary.toLowerCase().includes("available"))
+        &&!e.description?.includes("BOOKED:")
+      );
+      setSlots(open);
+    } catch(e){console.error(e);}
+    setLoadingSlots(false);
+  };
+
+  const handleDayClick = async(day) => {
+    if(!day||day<today) return;
+    setSelectedDay(day);
+    setView("slots");
+    await fetchSlotsForDay(day);
+  };
+
+  const handleBookSlot = async() => {
+    if(!selectedSlot) return;
+    setBooking(true);
+    try {
+      const token = await GCal.signIn();
+      // Update the event with lead info
+      const updatedEvent = {
+        summary: `AC - ${lead.name||"Lead"}`,
+        description: `BOOKED:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        colorId: "11", // tomato red = booked
+      };
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
+        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
+      );
+      if(!res.ok) throw new Error(await res.text());
+      // Save appointment to lead
+      const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
+      const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
+      const apptStr = `${startTime.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} - ${startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} to ${endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
+      await sb.from("leads").update({
+        appointment:apptStr,
+        gcal_event_id:selectedSlot.id,
+        stage:"AC / Scheduled",
+        updated_at:new Date().toISOString()
+      }).eq("id",lead.id);
+      setDone(true);
+    } catch(e){console.error(e);}
+    setBooking(false);
   };
 
   const iStyle={width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
@@ -4482,52 +4498,134 @@ function CalendarEventModal({lead, onClose}) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>📅 Add to Helios Calendar</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {view!=="calendar"&&!done&&!noAccess&&(
+              <button onClick={()=>setView("calendar")} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:18,padding:0}}>←</button>
+            )}
+            <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>
+              {done?"Appointment Booked!":noAccess?"No Calendar Access":view==="calendar"?"Pick a Day":view==="slots"?`Available Slots`:"Confirm Booking"}
+            </div>
+          </div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
         </div>
-        {status==="noaccess"?(
+
+        {/* No access */}
+        {noAccess&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{fontSize:40,marginBottom:12}}>🔒</div>
-            <div style={{fontSize:16,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No Calendar Access</div>
-            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>You don't have access to the Helios calendar yet.</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:12}}>You don't have access to the Helios calendar.</div>
             <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600,background:"#f5ede0",padding:"12px",borderRadius:10}}>Request access from your manager to be added to the Helios Google Calendar.</div>
           </div>
-        ):status==="done"?(
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:40,marginBottom:12}}>✅</div>
-            <div style={{fontSize:16,fontWeight:700,color:"#10b981"}}>Added to Helios Calendar!</div>
-          </div>
-        ):(
-          <>
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Title</label>
-              <input value={title} onChange={e=>setTitle(e.target.value)} style={iStyle}/>
-            </div>
-            <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
-              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={iStyle}/>
-            </div>
-            <div style={{display:"flex",gap:10,marginBottom:14}}>
-              <div style={{flex:1}}>
-                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Start</label>
-                <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={iStyle}/>
-              </div>
-              <div style={{flex:1}}>
-                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>End</label>
-                <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} style={iStyle}/>
-              </div>
-            </div>
-            <div style={{marginBottom:20}}>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
-              <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} style={{...iStyle,resize:"vertical"}}/>
-            </div>
-            <button onClick={handleSave} disabled={!date||!startTime||status==="loading"}
-              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:date&&startTime?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:date&&startTime?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:date&&startTime?"pointer":"default"}}>
-              {status==="loading"?"Saving to Calendar...":status==="error"?"Error — Try Again":"Save to Helios Calendar"}
-            </button>
-          </>
         )}
+
+        {/* Done */}
+        {done&&(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:48,marginBottom:12}}>✅</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#10b981",marginBottom:8}}>Slot booked for {lead.name}!</div>
+            <div style={{fontSize:13,color:"#94a3b8"}}>Lead moved to AC / Scheduled and added to Helios Calendar.</div>
+          </div>
+        )}
+
+        {/* Calendar picker */}
+        {!done&&!noAccess&&view==="calendar"&&(
+          <div>
+            {/* Month nav */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <button onClick={()=>setCalMonth(m=>new Date(m.getFullYear(),m.getMonth()-1,1))}
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b2d4e",padding:"4px 8px"}}>‹</button>
+              <div style={{fontWeight:700,color:dark?"#f1f5f9":"#1a2456"}}>{MONTHS[calMonth.getMonth()]} {calMonth.getFullYear()}</div>
+              <button onClick={()=>setCalMonth(m=>new Date(m.getFullYear(),m.getMonth()+1,1))}
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b2d4e",padding:"4px 8px"}}>›</button>
+            </div>
+            {/* Day headers */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:8}}>
+              {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=>(
+                <div key={d} style={{textAlign:"center",fontSize:11,fontWeight:600,color:"#94a3b8",padding:"4px 0"}}>{d}</div>
+              ))}
+            </div>
+            {/* Days grid */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+              {days.map((day,i)=>{
+                if(!day) return <div key={i}/>;
+                const isPast = day < today;
+                const isToday = day.getTime()===today.getTime();
+                return(
+                  <button key={i} onClick={()=>handleDayClick(day)} disabled={isPast}
+                    style={{aspectRatio:"1",borderRadius:8,border:"none",background:isToday?"#1a2456":isPast?"transparent":"#f0edf5",color:isPast?"#c8b8a2":isToday?"#fff":"#1a2456",fontWeight:isToday?700:400,cursor:isPast?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {day.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{marginTop:16,fontSize:12,color:"#94a3b8",textAlign:"center"}}>Tap a day to see available closing slots</div>
+          </div>
+        )}
+
+        {/* Slots list */}
+        {!done&&!noAccess&&view==="slots"&&(
+          <div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>
+              {selectedDay?.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}
+            </div>
+            {loadingSlots?(
+              <div style={{textAlign:"center",padding:20,color:"#94a3b8"}}>Loading slots...</div>
+            ):slots.length===0?(
+              <div style={{textAlign:"center",padding:20}}>
+                <div style={{fontSize:32,marginBottom:8}}>📭</div>
+                <div style={{fontSize:14,color:"#94a3b8"}}>No open slots on this day.</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Ask your manager to add slots to the Helios calendar.</div>
+              </div>
+            ):(
+              slots.map(slot=>{
+                const start = new Date(slot.start.dateTime||slot.start.date);
+                const end = new Date(slot.end.dateTime||slot.end.date);
+                const timeStr = `${start.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} – ${end.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
+                return(
+                  <div key={slot.id} onClick={()=>{setSelectedSlot(slot);setView("confirm");}}
+                    style={{padding:"14px 16px",borderRadius:12,border:"1.5px solid #c8b8a2",background:dark?"#0f172a":"#fff",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div>
+                      <div style={{fontWeight:700,color:dark?"#f1f5f9":"#1a2456",fontSize:14}}>{timeStr}</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{slot.summary}</div>
+                    </div>
+                    <div style={{color:"#10b981",fontWeight:700,fontSize:13}}>Open ›</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Confirm */}
+        {!done&&!noAccess&&view==="confirm"&&selectedSlot&&(()=>{
+          const start = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
+          const end = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
+          const timeStr = `${start.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} – ${end.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
+          return(
+            <div>
+              <div style={{background:dark?"#0f172a":"#fff",borderRadius:12,padding:"16px",marginBottom:20,border:"1.5px solid #c8b8a2"}}>
+                <div style={{fontSize:13,color:"#94a3b8",marginBottom:4}}>Booking slot for</div>
+                <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:4}}>{lead.name||"Lead"}</div>
+                <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600}}>{start.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
+                <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600}}>{timeStr}</div>
+              </div>
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:16,textAlign:"center"}}>This will book the slot and move the lead to AC / Scheduled.</div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setView("slots")}
+                  style={{flex:1,padding:"12px 0",borderRadius:10,border:"1.5px solid #c8b8a2",background:"transparent",color:dark?"#94a3b8":"#475569",fontWeight:600,cursor:"pointer",fontSize:15}}>
+                  Cancel
+                </button>
+                <button onClick={handleBookSlot} disabled={booking}
+                  style={{flex:2,padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:15}}>
+                  {booking?"Booking...":"Yes, Book It"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
