@@ -4335,14 +4335,18 @@ const GCal = {
           client_id: GCAL_CLIENT_ID,
           scope: "https://www.googleapis.com/auth/calendar.events",
           callback: (resp) => {
-            if(resp.error) { reject(resp); return; }
+            if(resp.error) { reject(new Error(resp.error_description||resp.error)); return; }
             this._accessToken = resp.access_token;
             this._tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
             resolve(resp.access_token);
           },
+          error_callback: (err) => {
+            reject(new Error(err.message||"Sign-in failed"));
+          },
         });
       }
-      this._tokenClient.requestAccessToken();
+      // Use select_account to let user pick their account
+      this._tokenClient.requestAccessToken({prompt: "select_account"});
     });
   },
 
@@ -4646,7 +4650,10 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
       if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:"AC / Scheduled"});
       setDoneMsg("booked");
       setDone(true);
-    } catch(e){console.error(e);}
+    } catch(e){
+      console.error("Booking error:",e);
+      alert("Booking failed: " + (e.message||"Unknown error. Please try again."));
+    }
     setBooking(false);
   };
 
