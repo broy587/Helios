@@ -2206,7 +2206,7 @@ function EmailButton({email}) {
   );
 }
 
-function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass}) {
+function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -2308,7 +2308,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                   <EmailButton email={value}/>
                 )}
                 {label==="Appointment" && value && repProfiles!==undefined && (
-                  <CalendarSyncButton lead={lead}/>
+                  <CalendarSyncButton lead={lead} onSwitchToCalendar={onSwitchToCalendar}/>
                 )}
                 {label==="Address" && (
                   <button onClick={()=>window.open(`https://maps.google.com/?q=${encodeURIComponent(value)}`,"_blank","noopener")}
@@ -2651,7 +2651,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar}) {
   const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
@@ -2776,7 +2776,8 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
           repProfiles={[]} onTransfer={()=>{}}
           onUpdate={updated=>onLeadView(updated,"update")}
-          onViewInCanvass={onViewInCanvass}/>
+          onViewInCanvass={onViewInCanvass}
+          onSwitchToCalendar={onSwitchToCalendar}/>
       )}
     </div>
   );
@@ -4198,9 +4199,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
-function CalendarView() {
+function CalendarView({newEventUrl, onEventUrlUsed}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
+  const [iframeUrl, setIframeUrl] = React.useState(null);
+
+  // When a new event URL comes in, show it in the iframe
+  React.useEffect(()=>{
+    if(newEventUrl){
+      setIframeUrl(newEventUrl);
+      if(onEventUrlUsed) onEventUrlUsed();
+    }
+  },[newEventUrl]);
   // Find which team calendar to show based on user's team
   const userTeamId = Object.keys(TEAM_CALENDARS).find(tid=>
     // Passed via prop or detected from teamMembers in parent
@@ -4225,13 +4235,26 @@ function CalendarView() {
           </a>
         </div>
       </div>
-      <iframe
-        src={CALENDAR_EMBED}
-        style={{flex:1,border:"none",width:"100%"}}
-        frameBorder="0"
-        scrolling="no"
-        title="Helios Calendar" key={calKey}
-      />
+      {iframeUrl ? (
+        <div style={{flex:1,display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"8px 16px",background:dark?"#1e293b":"#ede3d6",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${dark?"#334155":"#c8b8a2"}`}}>
+            <span style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",fontWeight:600}}>Creating new event...</span>
+            <button onClick={()=>setIframeUrl(null)}
+              style={{marginLeft:"auto",background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:6,padding:"3px 10px",cursor:"pointer",fontSize:11,fontWeight:600,color:dark?"#94a3b8":"#6b2d4e"}}>
+              ← Back to Calendar
+            </button>
+          </div>
+          <iframe src={iframeUrl} style={{flex:1,border:"none",width:"100%"}} frameBorder="0" title="New Event"/>
+        </div>
+      ) : (
+        <iframe
+          src={CALENDAR_EMBED}
+          style={{flex:1,border:"none",width:"100%"}}
+          frameBorder="0"
+          scrolling="no"
+          title="Helios Calendar" key={calKey}
+        />
+      )}
     </div>
   );
 }
@@ -4374,58 +4397,142 @@ const GCal = {
 // ── Calendar Button Component ─────────────────────────────────────────
 
 function CalendarSyncButton({lead}) {
-  const buildGCalUrl = () => {
-    // Parse appointment: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
-    let dates = "";
-    if(lead.appointment) {
-      try {
-        const dashIdx = lead.appointment.indexOf(" - ");
-        if(dashIdx > -1) {
-          const datePart = lead.appointment.substring(0, dashIdx).trim();
-          const afterDash = lead.appointment.substring(dashIdx + 3).trim();
-          const [startT, endT] = afterDash.split(" to ").map(t=>t.trim());
-          const toGCalDate = (date, time) => {
-            const d = new Date(`${date} ${time}`);
-            return d.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");
-          };
-          dates = `${toGCalDate(datePart, startT)}/${toGCalDate(datePart, endT||startT)}`;
-        }
-      } catch(e) {}
-    }
-    const params = new URLSearchParams({
-      action: "TEMPLATE",
-      text: lead.name || "Lead Appointment",
-      location: lead.address || "",
-      details: [
-        lead.phone?`Phone: ${lead.phone}`:"",
-        lead.notes?`Notes: ${lead.notes}`:"",
-        `Stage: ${lead.stage||""}`,
-        `\nAdded from Pipeline Push`
-      ].filter(Boolean).join("\n"),
-      ...(dates ? {dates} : {}),
-      src: GCAL_CALENDAR_ID,
-    });
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
-  };
-
-  const handleClick = (e) => {
-    e.stopPropagation();
-    const a = document.createElement("a");
-    a.href = buildGCalUrl();
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
+  const [showModal, setShowModal] = React.useState(false);
   return (
-    <button onClick={handleClick} title="Add to team calendar"
-      style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",border:"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-      📅
-    </button>
+    <>
+      <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title="Add to Helios calendar"
+        style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",border:"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        📅
+      </button>
+      {showModal&&<CalendarEventModal lead={lead} onClose={()=>setShowModal(false)}/>}
+    </>
   );
 }
+
+function CalendarEventModal({lead, onClose}) {
+  const dark = useDark();
+  const parseAppt = () => {
+    if(!lead.appointment) return {date:"",startTime:"",endTime:""};
+    try {
+      const dashIdx = lead.appointment.indexOf(" - ");
+      if(dashIdx===-1) return {date:"",startTime:"",endTime:""};
+      const datePart = lead.appointment.substring(0,dashIdx).trim();
+      const afterDash = lead.appointment.substring(dashIdx+3).trim();
+      const [startT,endT] = afterDash.split(" to ").map(t=>t.trim());
+      const d = new Date(datePart);
+      const dateStr = d.toISOString().split("T")[0];
+      const to24 = (t) => {
+        if(!t) return "";
+        const parts = t.split(" ");
+        const ampm = parts[1];
+        let [h,m] = parts[0].split(":").map(Number);
+        if(ampm==="PM"&&h!==12) h+=12;
+        if(ampm==="AM"&&h===12) h=0;
+        return `${String(h).padStart(2,"0")}:${String(m||0).padStart(2,"0")}`;
+      };
+      return {date:dateStr,startTime:to24(startT),endTime:to24(endT)};
+    } catch(e) {return {date:"",startTime:"",endTime:""};}
+  };
+  const parsed = parseAppt();
+  const [title,setTitle] = React.useState(lead.name||"Lead Appointment");
+  const [date,setDate] = React.useState(parsed.date);
+  const [startTime,setStartTime] = React.useState(parsed.startTime);
+  const [endTime,setEndTime] = React.useState(parsed.endTime);
+  const [notes,setNotes] = React.useState([lead.phone?`Phone: ${lead.phone}`:"",lead.address?`Address: ${lead.address}`:"",lead.notes?`Notes: ${lead.notes}`:""].filter(Boolean).join("\n"));
+  const [status,setStatus] = React.useState("idle");
+  const [gsiReady,setGsiReady] = React.useState(!!window.google?.accounts?.oauth2);
+
+  React.useEffect(()=>{
+    if(gsiReady) return;
+    const check=setInterval(()=>{if(window.google?.accounts?.oauth2){setGsiReady(true);clearInterval(check);}},300);
+    if(!document.getElementById("gsi-script")){
+      const s=document.createElement("script");s.id="gsi-script";s.src="https://accounts.google.com/gsi/client";s.async=true;document.head.appendChild(s);
+    }
+    return()=>clearInterval(check);
+  },[]);
+
+  const handleSave = async() => {
+    if(!date||!startTime) return;
+    setStatus("loading");
+    try {
+      const startISO = new Date(`${date}T${startTime}:00`).toISOString();
+      const endISO = endTime ? new Date(`${date}T${endTime}:00`).toISOString() : new Date(new Date(`${date}T${startTime}:00`).getTime()+60*60*1000).toISOString();
+      const event = {
+        summary:title,location:lead.address||"",description:notes,
+        start:{dateTime:startISO,timeZone:"America/Chicago"},
+        end:{dateTime:endISO,timeZone:"America/Chicago"},
+        colorId:"2",
+      };
+      const token = await GCal.signIn();
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`,
+        {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(event)}
+      );
+      if(res.status===403||res.status===404){setStatus("noaccess");return;}
+      if(!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      await sb.from("leads").update({gcal_event_id:data.id,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      setStatus("done");
+      setTimeout(()=>onClose(),1500);
+    } catch(e){console.error(e);setStatus("error");}
+  };
+
+  const iStyle={width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>📅 Add to Helios Calendar</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+        </div>
+        {status==="noaccess"?(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🔒</div>
+            <div style={{fontSize:16,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No Calendar Access</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>You don't have access to the Helios calendar yet.</div>
+            <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600,background:"#f5ede0",padding:"12px",borderRadius:10}}>Request access from your manager to be added to the Helios Google Calendar.</div>
+          </div>
+        ):status==="done"?(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:40,marginBottom:12}}>✅</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#10b981"}}>Added to Helios Calendar!</div>
+          </div>
+        ):(
+          <>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Title</label>
+              <input value={title} onChange={e=>setTitle(e.target.value)} style={iStyle}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={iStyle}/>
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Start</label>
+                <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={iStyle}/>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>End</label>
+                <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} style={iStyle}/>
+              </div>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
+              <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} style={{...iStyle,resize:"vertical"}}/>
+            </div>
+            <button onClick={handleSave} disabled={!date||!startTime||status==="loading"}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:date&&startTime?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:date&&startTime?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:date&&startTime?"pointer":"default"}}>
+              {status==="loading"?"Saving to Calendar...":status==="error"?"Error — Try Again":"Save to Helios Calendar"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function CalendarButton({lead, onEventSaved}) {
   const [status, setStatus] = React.useState("idle"); // idle | loading | done | error
@@ -4510,7 +4617,8 @@ function App() {
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
-  const [canvassLeadFilter,setCanvassLeadFilter]=useState(["mine"]); // mine | team:id | rep:id | all
+  const [canvassLeadFilter,setCanvassLeadFilter]=useState(["mine"]);
+  const [calendarEventUrl,setCalendarEventUrl]=useState(null); // mine | team:id | rep:id | all
   // Persist team tab selection
   const [teamTabSelected,setTeamTabSelected]=useState("all");
   // Persist stats tab selections
@@ -4838,7 +4946,6 @@ function App() {
   const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
-    ...(isOwner?[["leadgen","Leads"]]:[]),
     ["canvass","Canvass"],
     ...((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner?[["calendar","Calendar"]]:[[]]),
     ["stats","Stats"],
@@ -4962,7 +5069,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner)&&(
-          <CalendarView/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
