@@ -4447,7 +4447,7 @@ function CalendarEventModal({lead, onClose}) {
       const data = await res.json();
       // Filter for open slots — events titled "Open Slot" or "Available"
       const open = (data.items||[]).filter(e=>
-        e.summary&&(e.summary.toLowerCase().includes("open slot")||e.summary.toLowerCase().includes("available"))
+        e.summary&&(e.summary.toLowerCase().includes("open slot")||e.summary.toLowerCase().includes("available")||e.summary.toLowerCase().includes("open slots"))
         &&!e.description?.includes("BOOKED:")
       );
       setSlots(open);
