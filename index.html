@@ -4445,19 +4445,19 @@ function CalendarEventModal({lead, onClose}) {
       const token = await GCal.signIn();
       const dayStart = new Date(day); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`,
-        {headers:{Authorization:`Bearer ${token}`}}
-      );
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+      console.log("Fetching URL:", url);
+      const res = await fetch(url, {headers:{Authorization:`Bearer ${token}`}});
+      console.log("Status:", res.status);
       if(res.status===403||res.status===404){setNoAccess(true);setLoadingSlots(false);return;}
       const data = await res.json();
-      // Filter for open slots — events titled "Open Slot" or "Available"
-      console.log("All events fetched:", (data.items||[]).map(e=>e.summary));
+      console.log("Items returned:", data.items?.length, data.error);
+      console.log("Summaries:", (data.items||[]).map(e=>e.summary));
       const open = (data.items||[]).filter(e=>
         e.summary&&e.summary.toLowerCase().includes("open slot")
         &&!e.description?.includes("BOOKED:")
       );
-      console.log("Open slots found:", open.length);
+      console.log("Open slots:", open.length);
       setSlots(open);
     } catch(e){console.error(e);}
     setLoadingSlots(false);
