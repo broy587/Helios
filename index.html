@@ -2206,7 +2206,10 @@ function EmailButton({email}) {
   );
 }
 
-function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
+  const [lead, setLead] = React.useState(leadProp);
+  React.useEffect(()=>setLead(leadProp),[leadProp?.id]);
+  const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...lead,...updated}); };
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -2309,7 +2312,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 )}
                 {label==="Appointment" && repProfiles!==undefined && (
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}}/>
+                    <CalendarSyncButton lead={lead} onUpdate={updated=>{handleUpdate({...lead,...updated});}}/>
                   </div>
                 )}
                 {label==="Address" && (
@@ -2327,7 +2330,7 @@ function DetailModal({lead,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpda
                 <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot"/>
                 <PersonalApptButton label="↩️ Personal CB" onSelect={async(val)=>{
                   await sb.from("leads").update({appointment:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  if(onUpdate) onUpdate({...lead,appointment:val});
+                  handleUpdate({...lead,appointment:val});
                 }}/>
               </div>
             </div>
@@ -4450,7 +4453,8 @@ const GCal = {
 function CalendarSyncButton({lead, onUpdate, label}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
-  React.useEffect(()=>setLocalLead(lead),[lead]);
+  // Sync when lead.gcal_event_id changes externally
+  React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.appointment]);
   const isBooked = !!localLead.gcal_event_id;
   const handleUpdate = (updated) => {
     setLocalLead(l=>({...l,...updated}));
