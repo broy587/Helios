@@ -2576,6 +2576,7 @@ function LeadModal({open,onClose,onSave,initial}) {
 
         {/* AC Checklist */}
         <ACChecklist
+          leadId={form.id||null}
           initialChecked={form.acChecklist||[]}
           onUpdate={next=>setForm(f=>({...f,acChecklist:next}))}
         />
