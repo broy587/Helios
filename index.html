@@ -281,7 +281,7 @@ const TIME_SLOTS = [
 const emptyForm = {
   name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",knewSolar:"",closerInside:"",
-  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",acChecklist:[]
+  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -1923,6 +1923,8 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
     {key:"closerInside",db:"closer_inside",label:"Did homeowner let closer inside?"},
     {key:"decisionMakers",db:"decision_makers",label:"Were all decision makers present?"}
   ];
+  const followUpAgreed = readOnly ? (localVals["follow_up_agreed"]!==undefined?localVals["follow_up_agreed"]:(lead?.follow_up_agreed||"")) : (form?.followUpAgreed||"");
+  const followUpDate = readOnly ? (localVals["follow_up_date"]!==undefined?localVals["follow_up_date"]:(lead?.follow_up_date||"")) : (form?.followUpDate||"");
   if (readOnly) {
     const getValue = (q) => localVals[q.db] !== undefined ? localVals[q.db] : (lead&&lead[q.db])||"";
     const toggle = async (q) => {
@@ -1954,6 +1956,37 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             </div>
           );
         })}
+        {/* Follow-up agreed toggle */}
+        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:followUpAgreed==="Yes"?10:0}}>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>Agreed to a follow up?</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+              <span style={{fontSize:11,color:followUpAgreed==="No"?"#ef4444":"#94a3b8",fontWeight:followUpAgreed==="No"?700:400}}>No</span>
+              <div onClick={async()=>{
+                const next=followUpAgreed==="Yes"?"No":"Yes";
+                setLocalVals(v=>({...v,follow_up_agreed:next}));
+                if(lead?.id) await sb.from("leads").update({follow_up_agreed:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                if(onUpdate) onUpdate({...lead,follow_up_agreed:next});
+              }} style={{width:40,height:22,borderRadius:99,background:followUpAgreed==="Yes"?"#10b981":followUpAgreed==="No"?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:followUpAgreed==="Yes"?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+              </div>
+              <span style={{fontSize:11,color:followUpAgreed==="Yes"?"#10b981":"#94a3b8",fontWeight:followUpAgreed==="Yes"?700:400}}>Yes</span>
+            </div>
+          </div>
+          {followUpAgreed==="Yes"&&(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:12,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
+              <input type="date" value={followUpDate}
+                onChange={async e=>{
+                  const val=e.target.value;
+                  setLocalVals(v=>({...v,follow_up_date:val}));
+                  if(lead?.id) await sb.from("leads").update({follow_up_date:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                  if(onUpdate) onUpdate({...lead,follow_up_date:val});
+                }}
+                style={{flex:1,padding:"6px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:13,outline:"none"}}/>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -1973,6 +2006,27 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             ))}
           </div>
         </div>
+      {/* Follow-up agreed */}
+      <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #e2e8f0"}}>
+        <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:8,lineHeight:1.4}}>Agreed to a follow up?</div>
+        <div style={{display:"flex",gap:10,marginBottom:followUpAgreed==="Yes"?10:0}}>
+          {["Yes","No"].map(opt=>(
+            <button key={opt} type="button" onClick={()=>setForm&&setForm(f=>({...f,followUpAgreed:f.followUpAgreed===opt?"":opt}))}
+              style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:followUpAgreed===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:followUpAgreed===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <span style={{width:13,height:13,borderRadius:"50%",border:`2px solid ${followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
+              {opt}
+            </button>
+          ))}
+        </div>
+        {followUpAgreed==="Yes"&&(
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>Date:</span>
+            <input type="date" value={followUpDate}
+              onChange={e=>setForm&&setForm(f=>({...f,followUpDate:e.target.value}))}
+              style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1a2456",fontSize:13,outline:"none"}}/>
+          </div>
+        )}
+      </div>
       ))}
     </div>
   );
@@ -4995,7 +5049,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,gcal_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -5023,7 +5077,7 @@ function App() {
         setTeamGoals(goalsGrouped);
       } else {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,gcal_event_id,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -5094,7 +5148,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     if(modal.lead&&modal.lead.id){
       // Save main fields first (fast — no photos)
@@ -5431,7 +5485,7 @@ function App() {
       </div>
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[]}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
