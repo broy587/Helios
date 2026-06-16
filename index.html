@@ -2626,7 +2626,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
     isDraggingRef.current=false;
     const x=e.touches[0].clientX, y=e.touches[0].clientY;
     startPos.current={x,y};
-    onDbg&&onDbg(`touchstart x=${Math.round(x)} y=${Math.round(y)}`);
+    onDbg&&onDbg(`TS:${Math.round(x)},${Math.round(y)} t=${Date.now()%10000}`);
     holdTimer.current=setTimeout(()=>{
       if(!moved.current){
         isDraggingRef.current=true;
