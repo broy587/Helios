@@ -2352,7 +2352,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
           <ACChecklist
             leadId={lead.id}
             initialChecked={lead.ac_checklist||[]}
-            onUpdate={next=>onUpdate&&onUpdate({...lead,ac_checklist:next})}
+            onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
@@ -2649,8 +2649,31 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     };
     const onMD=e=>{
       if(e.button!==0)return;
-      e.preventDefault();
-      onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
+      const startX=e.clientX, startY=e.clientY;
+      let moved=false;
+      const onMM=ev=>{
+        if(Math.abs(ev.clientX-startX)>5||Math.abs(ev.clientY-startY)>5) moved=true;
+      };
+      const onMU=()=>{
+        window.removeEventListener("mousemove",onMM);
+        window.removeEventListener("mouseup",onMU);
+        if(!moved) onView(lead);
+      };
+      const timer=setTimeout(()=>{
+        window.removeEventListener("mousemove",onMM);
+        window.removeEventListener("mouseup",onMU);
+        if(moved) onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
+        else onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
+      },200);
+      // If released quickly = click, if held = drag
+      const onMU2=()=>{
+        clearTimeout(timer);
+        window.removeEventListener("mousemove",onMM);
+        window.removeEventListener("mouseup",onMU2);
+        if(!moved) onView(lead);
+      };
+      window.addEventListener("mousemove",onMM);
+      window.addEventListener("mouseup",onMU2);
     };
 
     el.addEventListener("touchstart",onTS,{passive:true});
