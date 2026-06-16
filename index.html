@@ -1653,6 +1653,13 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   const [dragOver,setDragOver]=useState(null);
   const columnRefs=useRef({});
   const boardRef=useRef(null);
+  React.useEffect(()=>{
+    const el = boardRef.current;
+    if(!el) return;
+    const onTouch = (e) => { setDbgMsg(`board-touch:${e.touches[0]?.clientX|0},${e.touches[0]?.clientY|0}`); };
+    el.addEventListener("touchstart", onTouch, {passive:true});
+    return ()=>el.removeEventListener("touchstart", onTouch);
+  },[]);
   const scrollAnim=useRef(null);
 
   useEffect(()=>{ loadRecruits(); },[]);
@@ -2719,6 +2726,13 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
   const [showDropdown,setShowDropdown]=useState(false);
   const columnRefs=useRef({});
   const boardRef=useRef(null);
+  React.useEffect(()=>{
+    const el = boardRef.current;
+    if(!el) return;
+    const onTouch = (e) => { setDbgMsg(`board-touch:${e.touches[0]?.clientX|0},${e.touches[0]?.clientY|0}`); };
+    el.addEventListener("touchstart", onTouch, {passive:true});
+    return ()=>el.removeEventListener("touchstart", onTouch);
+  },[]);
   const scrollAnim=useRef(null);
   const draggingLead=leads.find(l=>l.id===dragId);
   const dropdownResults=search.length>0?leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v&&v.toLowerCase().includes(search.toLowerCase()))).slice(0,8):[];
@@ -2786,7 +2800,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         </div>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
-      <div style={{position:"absolute",top:50,left:0,right:0,zIndex:9999,background:"rgba(0,0,0,0.8)",color:"#0f0",fontSize:11,padding:4,display:dbgMsg?"block":"none"}}>{dbgMsg}</div><div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0"}}>
+      <div style={{position:"fixed",top:50,left:0,right:0,zIndex:9999,background:"rgba(0,0,0,0.8)",color:"#0f0",fontSize:11,padding:4,display:dbgMsg?"block":"none"}}>{dbgMsg}</div><div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
         {/* Main pipeline stages — no ARC */}
         {STAGES.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc),isOver=dragOver===stage;
