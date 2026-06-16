@@ -2692,10 +2692,13 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
           </div>
         )}
       </div>
-      <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+      <div
+        onTouchStart={e=>{e.preventDefault();handleTouchStart(e);}}
+        onTouchMove={e=>{e.preventDefault();handleTouchMove(e);}}
+        onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}
         onClick={e=>e.stopPropagation()}
-        style={{fontSize:18,color:"#c8b8a2",flexShrink:0,marginLeft:8,padding:"4px 4px",cursor:"grab",touchAction:"none",lineHeight:1}}>
+        style={{fontSize:18,color:"#c8b8a2",flexShrink:0,marginLeft:8,padding:"8px 6px",cursor:"grab",touchAction:"none",lineHeight:1,WebkitUserSelect:"none"}}>
         ⠿
       </div>
     </div>
