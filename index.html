@@ -4617,7 +4617,7 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
       const updatedEvent = {
         summary: `AC - ${lead.name||"Lead"}`,
         description: `BOOKED:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
-        colorId: "11", // tomato red = booked
+        colorId: "10", // basil green = booked
       };
       const res = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
