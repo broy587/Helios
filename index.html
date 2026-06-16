@@ -2625,55 +2625,59 @@ function LeadModal({open,onClose,onSave,initial}) {
 function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
   const dark=useDark();
   const colors=getStageColor(lead.stage);
-  const holdTimer=useRef(null);
-  const moved=useRef(false);
-  const startPos=useRef(null);
-  const handleTouchStart=e=>{
-    moved.current=false;
-    isDraggingRef.current=false;
-    const x=e.touches[0].clientX, y=e.touches[0].clientY;
-    startPos.current={x,y};
-    onDbg&&onDbg(`TS:${Math.round(x)},${Math.round(y)} t=${Date.now()%10000}`);
-    holdTimer.current=setTimeout(()=>{
-      if(!moved.current){
-        isDraggingRef.current=true;
-        onDbg&&onDbg(`DRAGGING id=${lead.id.slice(0,6)}`);
-        if(navigator.vibrate) navigator.vibrate(50);
-        onTouchDragStart({_x:x,_y:y,_isMobile:true},lead.id);
-      } else {
-        onDbg&&onDbg(`moved - cancelled`);
-      }
-    },600);
-  };
-  const handleTouchMove=e=>{
-    if(startPos.current){
-      const dx=Math.abs(e.touches[0].clientX-startPos.current.x);
-      const dy=Math.abs(e.touches[0].clientY-startPos.current.y);
-      if(dx>6||dy>6){
-        moved.current=true;
-        if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
-      }
-      // Only block scroll when actively dragging, otherwise let scroll happen
-      if(isDraggingRef.current){
-        e.preventDefault();
-      }
-      // else: don't preventDefault, browser will scroll normally
-    }
-  };
-  const handleTouchEnd=()=>{
-    isDraggingRef.current=false;
-    if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
-  };
-  const handleMouseDown=e=>{
-    if(e.button!==0)return;
-    e.preventDefault();
-    onTouchDragStart({_isMouse:true, _mouseEvent:e},lead.id);
-  };
+  const cardRef=React.useRef(null);
+  const state=React.useRef({moved:false,timer:null,startX:0,startY:0});
+
+  React.useEffect(()=>{
+    const el=cardRef.current;
+    if(!el) return;
+    const s=state.current;
+
+    const onTS=e=>{
+      s.moved=false;
+      s.startX=e.touches[0].clientX;
+      s.startY=e.touches[0].clientY;
+      onDbg&&onDbg(`TS ${Math.round(s.startX)},${Math.round(s.startY)}`);
+      s.timer=setTimeout(()=>{
+        if(!s.moved){
+          if(navigator.vibrate) navigator.vibrate(50);
+          onDbg&&onDbg("FIRE DRAG");
+          onTouchDragStart({_x:s.startX,_y:s.startY,_isMobile:true},lead.id);
+        }
+      },500);
+    };
+    const onTM=e=>{
+      const dx=Math.abs(e.touches[0].clientX-s.startX);
+      const dy=Math.abs(e.touches[0].clientY-s.startY);
+      if(dx>8||dy>8){s.moved=true;clearTimeout(s.timer);s.timer=null;}
+    };
+    const onTE=e=>{
+      clearTimeout(s.timer);s.timer=null;
+      if(!s.moved){onView(lead);}
+    };
+    const onMD=e=>{
+      if(e.button!==0)return;
+      e.preventDefault();
+      onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
+    };
+
+    el.addEventListener("touchstart",onTS,{passive:true});
+    el.addEventListener("touchmove",onTM,{passive:true});
+    el.addEventListener("touchend",onTE);
+    el.addEventListener("mousedown",onMD);
+    return()=>{
+      el.removeEventListener("touchstart",onTS);
+      el.removeEventListener("touchmove",onTM);
+      el.removeEventListener("touchend",onTE);
+      el.removeEventListener("mousedown",onMD);
+      clearTimeout(s.timer);
+    };
+  },[lead.id]);
+
+  const isDrag=isDragging;
   return (
-    <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-      onMouseDown={e=>{if(e.sourceCapabilities?.firesTouchEvents)return;handleMouseDown(e);}}
-      onClick={()=>{if(!moved.current)onView(lead);}}
-      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"none"}}>
+    <div ref={cardRef}
+      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDrag?0.3:lead.is_arc?0.65:1}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
