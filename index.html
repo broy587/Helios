@@ -2476,7 +2476,12 @@ function LeadModal({open,onClose,onSave,initial}) {
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+              {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save":"Add")}
+            </button>
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+          </div>
         </div>
         {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
