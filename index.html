@@ -2615,7 +2615,7 @@ function LeadModal({open,onClose,onSave,initial}) {
   );
 }
 
-function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
+function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
   const dark=useDark();
   const colors=getStageColor(lead.stage);
   const holdTimer=useRef(null);
@@ -2626,11 +2626,15 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     isDraggingRef.current=false;
     const x=e.touches[0].clientX, y=e.touches[0].clientY;
     startPos.current={x,y};
+    onDbg&&onDbg(`touchstart x=${Math.round(x)} y=${Math.round(y)}`);
     holdTimer.current=setTimeout(()=>{
       if(!moved.current){
         isDraggingRef.current=true;
+        onDbg&&onDbg(`DRAGGING id=${lead.id.slice(0,6)}`);
         if(navigator.vibrate) navigator.vibrate(50);
         onTouchDragStart({_x:x,_y:y,_isMobile:true},lead.id);
+      } else {
+        onDbg&&onDbg(`moved - cancelled`);
       }
     },600);
   };
@@ -2792,7 +2796,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {stageLeads.length===0?(
                   <div style={{textAlign:"center",color:isOver?colors.border:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10,fontWeight:isOver?700:400}}>Drop here</div>
                 ):stageLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id}/>
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id} onDbg={setDbgMsg}/>
                 ))}
               </div>
             </div>
