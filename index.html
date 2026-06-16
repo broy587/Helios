@@ -2624,13 +2624,15 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const handleTouchStart=e=>{
     moved.current=false;
     isDraggingRef.current=false;
-    startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    const x=e.touches[0].clientX, y=e.touches[0].clientY;
+    startPos.current={x,y};
     holdTimer.current=setTimeout(()=>{
       if(!moved.current){
         isDraggingRef.current=true;
-        onTouchDragStart(e,lead.id);
+        // Pass coords directly since touch event may have expired
+        onTouchDragStart({touches:[{clientX:x,clientY:y}]},lead.id);
       }
-    },500);
+    },400);
   };
   const handleTouchMove=e=>{
     if(startPos.current){
