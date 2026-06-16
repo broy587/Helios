@@ -2629,7 +2629,8 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     holdTimer.current=setTimeout(()=>{
       if(!moved.current){
         isDraggingRef.current=true;
-        onTouchDragStart({_x:x,_y:y},lead.id);
+        if(navigator.vibrate) navigator.vibrate(50);
+        onTouchDragStart({_x:x,_y:y,_isMobile:true},lead.id);
       }
     },600);
   };
@@ -2701,6 +2702,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
 
 function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar}) {
   const dark=useDark();
+  const [dbgMsg,setDbgMsg]=useState("");
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -2739,9 +2741,11 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
   };
 
   const handleTouchDragStart=(e,id)=>{
+    setDbgMsg(`drag: mouse=${e._isMouse} x=${e._x} y=${e._y} mob=${e._isMobile}`);
     if(e._isMouse) startDrag(id,e._mouseEvent.clientX,e._mouseEvent.clientY,true);
-    else if(e._x!==undefined) startDrag(id,e._x,e._y,false);
+    else if(e._isMobile||e._x!==undefined) startDrag(id,e._x,e._y,false);
     else if(e.touches&&e.touches[0]) startDrag(id,e.touches[0].clientX,e.touches[0].clientY,false);
+    else setDbgMsg("drag: NO COORDS FOUND");
   };
 
   const detailLead=(allLeads||leads).find(l=>l.id===detailId)||null;
@@ -2774,7 +2778,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         </div>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
-      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0"}}>
+      <div style={{position:"absolute",top:50,left:0,right:0,zIndex:9999,background:"rgba(0,0,0,0.8)",color:"#0f0",fontSize:11,padding:4,display:dbgMsg?"block":"none"}}>{dbgMsg}</div><div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0"}}>
         {/* Main pipeline stages — no ARC */}
         {STAGES.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc),isOver=dragOver===stage;
