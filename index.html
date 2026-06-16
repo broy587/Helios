@@ -2622,14 +2622,32 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const moved=useRef(false);
   const startPos=useRef(null);
   const handleTouchStart=e=>{
-    moved.current=false; startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
-    holdTimer.current=setTimeout(()=>{if(!moved.current)onTouchDragStart(e,lead.id);},500);
+    moved.current=false;
+    isDraggingRef.current=false;
+    startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    holdTimer.current=setTimeout(()=>{
+      if(!moved.current){
+        isDraggingRef.current=true;
+        onTouchDragStart(e,lead.id);
+      }
+    },500);
   };
   const handleTouchMove=e=>{
-    if(startPos.current){const dx=Math.abs(e.touches[0].clientX-startPos.current.x),dy=Math.abs(e.touches[0].clientY-startPos.current.y);
-      if(dx>10||dy>10){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
+    if(startPos.current){
+      const dx=Math.abs(e.touches[0].clientX-startPos.current.x);
+      const dy=Math.abs(e.touches[0].clientY-startPos.current.y);
+      if(dx>10||dy>10){
+        moved.current=true;
+        if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
+      }
+      // Only prevent scroll if drag is active
+      if(isDraggingRef.current) e.preventDefault();
+    }
   };
-  const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
+  const handleTouchEnd=()=>{
+    isDraggingRef.current=false;
+    if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
+  };
   const handleMouseDown=e=>{
     if(e.button!==0)return;
     e.preventDefault();
