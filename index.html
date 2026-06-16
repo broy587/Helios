@@ -3549,6 +3549,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         streetViewControl:false,
         mapTypeControl:false,
         fullscreenControl:false,
+        gestureHandling:"greedy",
       });
       mapInstanceRef.current=map;
       // Auto-zoom to user location — only if no jump is pending
