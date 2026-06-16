@@ -2945,7 +2945,8 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const handleSubmit = async () => {
     if(!message.trim()) return;
     setSending(true);
-    await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()});
+    const {data} = await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()}).select("*, profiles(name,email)").single();
+    if(data) setTickets(ts=>[data,...ts]);
     setSending(false); setSent(true); setMessage("");
     setTimeout(()=>setSent(false),3000);
   };
