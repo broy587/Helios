@@ -2573,7 +2573,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
   },[initial?.id,open]);
   if (!open) return null;
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
-  const handleSave=async()=>{setSaving(true);await onSave(form);setSaving(false);};
+  const handleSave=async(e)=>{if(e&&e.stopPropagation)e.stopPropagation();setSaving(true);await onSave(form);setSaving(false);};
   const handlePhoto=e=>{
     Array.from(e.target.files).forEach(file=>{
       const reader=new FileReader();
@@ -5296,8 +5296,10 @@ function App() {
     }
     setModal({open:false,lead:null});
     await loadData(user,profile);
-    // Open the saved lead in view mode
-    setDetailId(viewId);
+    // Open the saved lead in view mode — defer so the originating click/tap
+    // fully completes before the detail modal mounts (prevents the new modal's
+    // backdrop from catching the same event and closing immediately)
+    setTimeout(()=>setDetailId(viewId),60);
   };
 
   const deleteLead=async(id)=>{
