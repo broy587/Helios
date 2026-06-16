@@ -1653,13 +1653,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   const [dragOver,setDragOver]=useState(null);
   const columnRefs=useRef({});
   const boardRef=useRef(null);
-  React.useEffect(()=>{
-    const el = boardRef.current;
-    if(!el) return;
-    const onTouch = (e) => { setDbgMsg(`board-touch:${e.touches[0]?.clientX|0},${e.touches[0]?.clientY|0}`); };
-    el.addEventListener("touchstart", onTouch, {passive:true});
-    return ()=>el.removeEventListener("touchstart", onTouch);
-  },[]);
+
   const scrollAnim=useRef(null);
 
   useEffect(()=>{ loadRecruits(); },[]);
@@ -2622,7 +2616,7 @@ function LeadModal({open,onClose,onSave,initial}) {
   );
 }
 
-function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
+function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const dark=useDark();
   const colors=getStageColor(lead.stage);
   const cardRef=React.useRef(null);
@@ -2637,11 +2631,9 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
       s.moved=false;
       s.startX=e.touches[0].clientX;
       s.startY=e.touches[0].clientY;
-      onDbg&&onDbg(`TS ${Math.round(s.startX)},${Math.round(s.startY)}`);
       s.timer=setTimeout(()=>{
         if(!s.moved){
           if(navigator.vibrate) navigator.vibrate(50);
-          onDbg&&onDbg("FIRE DRAG");
           onTouchDragStart({_x:s.startX,_y:s.startY,_isMobile:true},lead.id);
         }
       },500);
@@ -2721,7 +2713,6 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
 
 function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar}) {
   const dark=useDark();
-  const [dbgMsg,setDbgMsg]=useState("");
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -2730,13 +2721,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
   const [showDropdown,setShowDropdown]=useState(false);
   const columnRefs=useRef({});
   const boardRef=useRef(null);
-  React.useEffect(()=>{
-    const el = boardRef.current;
-    if(!el) return;
-    const onTouch = (e) => { setDbgMsg(`board-touch:${e.touches[0]?.clientX|0},${e.touches[0]?.clientY|0}`); };
-    el.addEventListener("touchstart", onTouch, {passive:true});
-    return ()=>el.removeEventListener("touchstart", onTouch);
-  },[]);
+
   const scrollAnim=useRef(null);
   const draggingLead=leads.find(l=>l.id===dragId);
   const dropdownResults=search.length>0?leads.filter(l=>[l.name,l.phone,l.address,l.esiid,l.meter,l.notes].some(v=>v&&v.toLowerCase().includes(search.toLowerCase()))).slice(0,8):[];
@@ -2804,7 +2789,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         </div>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
-      <div style={{position:"fixed",top:50,left:0,right:0,zIndex:9999,background:"rgba(0,0,0,0.8)",color:"#0f0",fontSize:11,padding:4,display:dbgMsg?"block":"none"}}>{dbgMsg}</div><div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
+      <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
         {/* Main pipeline stages — no ARC */}
         {STAGES.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc),isOver=dragOver===stage;
@@ -2818,7 +2803,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {stageLeads.length===0?(
                   <div style={{textAlign:"center",color:isOver?colors.border:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10,fontWeight:isOver?700:400}}>Drop here</div>
                 ):stageLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id} onDbg={setDbgMsg}/>
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id}/>
                 ))}
               </div>
             </div>
