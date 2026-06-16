@@ -2646,7 +2646,11 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
         moved.current=true;
         if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
       }
-      if(isDraggingRef.current) e.preventDefault();
+      // Only block scroll when actively dragging, otherwise let scroll happen
+      if(isDraggingRef.current){
+        e.preventDefault();
+      }
+      // else: don't preventDefault, browser will scroll normally
     }
   };
   const handleTouchEnd=()=>{
@@ -2662,7 +2666,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,onDbg}) {
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onMouseDown={e=>{if(e.sourceCapabilities?.firesTouchEvents)return;handleMouseDown(e);}}
       onClick={()=>{if(!moved.current)onView(lead);}}
-      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"pan-y"}}>
+      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"none"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
