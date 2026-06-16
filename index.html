@@ -2281,7 +2281,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
             </div>
           </div>
-          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["📊 Smart Meter Texas",null]].map(([label,value])=>value||label==="ESIID"||label==="Meter #"||label==="📊 Smart Meter Texas"?(
+          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment],["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["📊 Smart Meter Texas",null]].map(([label,value])=>value||label==="📊 Smart Meter Texas"?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -2308,14 +2308,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </button>
                 )}
                 {label==="ESIID" && (
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                    <CopyBtn value={value}/>
-                    <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
-                      target="_blank" rel="noreferrer"
-                      style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:8,background:"#e8e2f0",textDecoration:"none",fontSize:11,fontWeight:700,color:"#1a2456",flexShrink:0,whiteSpace:"nowrap"}}>
-                      🔍 Lookup
-                    </a>
-                  </div>
+                  <CopyBtn value={value}/>
                 )}
                 {label==="Meter #" && (
                   <CopyBtn value={value}/>
@@ -5290,16 +5283,21 @@ function App() {
 
     const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
+    let viewId;
     if(modal.lead&&modal.lead.id){
+      viewId=modal.lead.id;
       // Save main fields first (fast — no photos)
       await sb.from("leads").update(payload).eq("id",modal.lead.id);
       // Only save photos if they changed
       if(photosChanged) await sb.from("leads").update({bill_photos:newPhotos}).eq("id",modal.lead.id);
     } else {
-      await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});
+      viewId=generateId();
+      await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
     }
     setModal({open:false,lead:null});
     await loadData(user,profile);
+    // Open the saved lead in view mode
+    setDetailId(viewId);
   };
 
   const deleteLead=async(id)=>{
