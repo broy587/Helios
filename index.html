@@ -1956,37 +1956,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             </div>
           );
         })}
-        {/* Follow-up agreed toggle */}
-        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:followUpAgreed==="Yes"?10:0}}>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>Agreed to a follow up?</div>
-            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-              <span style={{fontSize:11,color:followUpAgreed==="No"?"#ef4444":"#94a3b8",fontWeight:followUpAgreed==="No"?700:400}}>No</span>
-              <div onClick={async()=>{
-                const next=followUpAgreed==="Yes"?"No":"Yes";
-                setLocalVals(v=>({...v,follow_up_agreed:next}));
-                if(lead?.id) await sb.from("leads").update({follow_up_agreed:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                if(onUpdate) onUpdate({...lead,follow_up_agreed:next});
-              }} style={{width:40,height:22,borderRadius:99,background:followUpAgreed==="Yes"?"#10b981":followUpAgreed==="No"?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-                <div style={{position:"absolute",top:2,left:followUpAgreed==="Yes"?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
-              </div>
-              <span style={{fontSize:11,color:followUpAgreed==="Yes"?"#10b981":"#94a3b8",fontWeight:followUpAgreed==="Yes"?700:400}}>Yes</span>
-            </div>
-          </div>
-          {followUpAgreed==="Yes"&&(
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:12,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
-              <input type="date" value={followUpDate}
-                onChange={async e=>{
-                  const val=e.target.value;
-                  setLocalVals(v=>({...v,follow_up_date:val}));
-                  if(lead?.id) await sb.from("leads").update({follow_up_date:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  if(onUpdate) onUpdate({...lead,follow_up_date:val});
-                }}
-                style={{flex:1,padding:"6px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:13,outline:"none"}}/>
-            </div>
-          )}
-        </div>
+
       </div>
     );
   }
@@ -2007,27 +1977,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
           </div>
         </div>
       ))}
-      {/* Follow-up agreed */}
-      <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #e2e8f0"}}>
-        <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:8,lineHeight:1.4}}>Agreed to a follow up?</div>
-        <div style={{display:"flex",gap:10,marginBottom:followUpAgreed==="Yes"?10:0}}>
-          {["Yes","No"].map(opt=>(
-            <button key={opt} type="button" onClick={()=>setForm&&setForm(f=>({...f,followUpAgreed:f.followUpAgreed===opt?"":opt}))}
-              style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:followUpAgreed===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:followUpAgreed===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              <span style={{width:13,height:13,borderRadius:"50%",border:`2px solid ${followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
-              {opt}
-            </button>
-          ))}
-        </div>
-        {followUpAgreed==="Yes"&&(
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>Date:</span>
-            <input type="date" value={followUpDate}
-              onChange={e=>setForm&&setForm(f=>({...f,followUpDate:e.target.value}))}
-              style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1a2456",fontSize:13,outline:"none"}}/>
-          </div>
-        )}
-      </div>
+
     </div>
   );
 }
@@ -2384,6 +2334,40 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             </div>
           )}
 
+          {/* Follow-up agreed — view mode */}
+          {repProfiles!==undefined&&(()=>{
+            const fuAgreed = lead.follow_up_agreed||"";
+            const fuDate = lead.follow_up_date||"";
+            return (
+              <div style={{marginBottom:14,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"12px 14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:fuAgreed==="Yes"?10:0}}>
+                  <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:600}}>Agreed to a Follow Up?</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    <span style={{fontSize:11,color:fuAgreed==="No"?"#ef4444":"#94a3b8",fontWeight:fuAgreed==="No"?700:400}}>No</span>
+                    <div onClick={async()=>{
+                      const next=fuAgreed==="Yes"?"No":"Yes";
+                      await sb.from("leads").update({follow_up_agreed:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                      handleUpdate({...lead,follow_up_agreed:next});
+                    }} style={{width:40,height:22,borderRadius:99,background:fuAgreed==="Yes"?"#10b981":fuAgreed==="No"?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                      <div style={{position:"absolute",top:2,left:fuAgreed==="Yes"?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+                    </div>
+                    <span style={{fontSize:11,color:fuAgreed==="Yes"?"#10b981":"#94a3b8",fontWeight:fuAgreed==="Yes"?700:400}}>Yes</span>
+                  </div>
+                </div>
+                {fuAgreed==="Yes"&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:12,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
+                    <input type="date" value={fuDate} onChange={async e=>{
+                      const val=e.target.value;
+                      await sb.from("leads").update({follow_up_date:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                      handleUpdate({...lead,follow_up_date:val});
+                    }} style={{flex:1,padding:"6px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:13,outline:"none"}}/>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {lead.notes && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
@@ -2504,6 +2488,28 @@ function LeadModal({open,onClose,onSave,initial}) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
           <input type="email" placeholder="email@example.com" value={form.email||""} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={inputStyle}/>
         </div>
+        {/* Follow-up agreed — edit mode */}
+        <div style={{marginBottom:14,background:"#f8fafc",borderRadius:12,padding:"12px 14px",border:"1.5px solid #e2e8f0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:form.followUpAgreed==="Yes"?10:0}}>
+            <div style={{fontSize:13,color:"#64748b",fontWeight:600}}>Agreed to a Follow Up?</div>
+            <div style={{display:"flex",gap:8}}>
+              {["Yes","No"].map(opt=>(
+                <button key={opt} type="button" onClick={()=>setForm(f=>({...f,followUpAgreed:f.followUpAgreed===opt?"":opt}))}
+                  style={{padding:"6px 14px",borderRadius:8,border:`2px solid ${form.followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:form.followUpAgreed===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:form.followUpAgreed===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:form.followUpAgreed===opt?700:500,cursor:"pointer",fontSize:13}}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {form.followUpAgreed==="Yes"&&(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
+              <input type="date" value={form.followUpDate||""} onChange={e=>setForm(f=>({...f,followUpDate:e.target.value}))}
+                style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1a2456",fontSize:13,outline:"none"}}/>
+            </div>
+          )}
+        </div>
+
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
