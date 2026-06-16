@@ -1577,7 +1577,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
           {recruit.notes&&(
             <div style={{marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
-              <div style={{fontSize:14,color:"#475569",background:"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{recruit.notes}</div>
+              <div style={{fontSize:14,color:"#475569",background:"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{recruit.notes}</div>
             </div>
           )}
           {recruit.history&&recruit.history.length>0&&(
@@ -1586,7 +1586,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
               {recruit.history.map((entry,i)=>(
                 <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<recruit.history.length-1?"1px solid #f1f5f9":"none"}}>
                   <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>{entry.ts}</div>
-                  {entry.changes.map((ch,j)=><div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #6b2d4e"}}>{ch}</div>)}
+                  {entry.changes.map((ch,j)=><div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #6b2d4e",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{ch}</div>)}
                 </div>
               ))}
             </div>
@@ -2059,7 +2059,7 @@ function HistorySection({lead, dark: darkProp}) {
           </div>
           {(entry.changes||[]).map((ch,j)=>(
             <div key={j} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:4}}>
-              <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #6b2d4e",flex:1}}>{ch}</div>
+              <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #6b2d4e",flex:1,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{ch}</div>
               {editing && (
                 <button onClick={()=>deleteChange(i,j)}
                   style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>×</button>
@@ -2371,7 +2371,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
           {lead.notes && (
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
-              <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5}}>{lead.notes}</div>
+              <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.notes}</div>
             </div>
           )}
           {photosLoading && <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Loading photos...</div>}
@@ -3321,7 +3321,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         {/* Saved note display */}
         {home.notes&&(
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"10px 14px",marginBottom:8,borderLeft:"3px solid #6b2d4e"}}>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:6}}>{home.notes}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{home.notes}</div>
             <button onMouseDown={async e=>{
               e.preventDefault();
               if(home.id) await sb.from("canvass_homes").update({notes:null,updated_at:new Date().toISOString()}).eq("id",home.id);
