@@ -2204,6 +2204,22 @@ function EmailButton({email}) {
   );
 }
 
+function CopyBtn({value}) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+  return (
+    <button onClick={e=>{
+        e.stopPropagation();
+        navigator.clipboard.writeText(String(value));
+        setCopied(true);
+        setTimeout(()=>setCopied(false),1200);
+      }}
+      style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:8,background:copied?"#d1fae5":"#e8e2f0",border:"none",fontSize:11,fontWeight:700,color:copied?"#047857":"#1a2456",flexShrink:0,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s"}}>
+      {copied?"✓ Copied":"📋 Copy"}
+    </button>
+  );
+}
+
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
   const [lead, setLead] = React.useState(leadProp);
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, JSON.stringify(leadProp?.ac_checklist)]);
@@ -2292,11 +2308,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </button>
                 )}
                 {label==="ESIID" && (
-                  <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
-                    target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:8,background:"#e8e2f0",textDecoration:"none",fontSize:11,fontWeight:700,color:"#1a2456",flexShrink:0,whiteSpace:"nowrap"}}>
-                    🔍 Lookup
-                  </a>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    <CopyBtn value={value}/>
+                    <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
+                      target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"4px 10px",borderRadius:8,background:"#e8e2f0",textDecoration:"none",fontSize:11,fontWeight:700,color:"#1a2456",flexShrink:0,whiteSpace:"nowrap"}}>
+                      🔍 Lookup
+                    </a>
+                  </div>
+                )}
+                {label==="Meter #" && (
+                  <CopyBtn value={value}/>
                 )}
 
                 {label==="Phone" && (
@@ -2440,7 +2462,104 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   );
 }
 
-function LeadModal({open,onClose,onSave,initial}) {
+function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
+  const [ready,setReady]=React.useState(!!(window.google&&window.google.maps&&window.google.maps.places));
+  const [predictions,setPredictions]=React.useState([]);
+  const [showList,setShowList]=React.useState(false);
+  const [active,setActive]=React.useState(-1);
+  const serviceRef=React.useRef(null);
+  const tokenRef=React.useRef(null);
+  const blurTimer=React.useRef(null);
+
+  // Ensure the Google Maps Places library is loaded
+  React.useEffect(()=>{
+    if(window.google&&window.google.maps&&window.google.maps.places){setReady(true);return;}
+    const existing=document.getElementById("gmaps-script");
+    if(existing){
+      const check=setInterval(()=>{
+        if(window.google&&window.google.maps&&window.google.maps.places){setReady(true);clearInterval(check);}
+      },200);
+      return ()=>clearInterval(check);
+    }
+    const script=document.createElement("script");
+    script.id="gmaps-script";
+    script.src=`https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&libraries=places`;
+    script.async=true;
+    script.onload=()=>setReady(true);
+    document.head.appendChild(script);
+  },[gmapsKey]);
+
+  React.useEffect(()=>{
+    if(ready&&window.google&&window.google.maps.places&&!serviceRef.current){
+      serviceRef.current=new window.google.maps.places.AutocompleteService();
+      tokenRef.current=new window.google.maps.places.AutocompleteSessionToken();
+    }
+  },[ready]);
+
+  // Debounced prediction fetch
+  React.useEffect(()=>{
+    if(!ready||!serviceRef.current){return;}
+    if(!value||value.trim().length<3){setPredictions([]);return;}
+    const handle=setTimeout(()=>{
+      serviceRef.current.getPlacePredictions(
+        {input:value,componentRestrictions:{country:"us"},types:["address"],sessionToken:tokenRef.current},
+        (preds,status)=>{
+          if(status===window.google.maps.places.PlacesServiceStatus.OK&&preds){
+            setPredictions(preds.slice(0,5));
+          } else {
+            setPredictions([]);
+          }
+        }
+      );
+    },250);
+    return ()=>clearTimeout(handle);
+  },[value,ready]);
+
+  const choose=(p)=>{
+    onChange(p.description);
+    setPredictions([]);
+    setShowList(false);
+    setActive(-1);
+    // fresh session token after a selection
+    if(window.google&&window.google.maps.places)tokenRef.current=new window.google.maps.places.AutocompleteSessionToken();
+  };
+
+  return (
+    <div style={{position:"relative"}}>
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        autoComplete="off"
+        onChange={e=>{onChange(e.target.value);setShowList(true);setActive(-1);}}
+        onFocus={()=>{if(predictions.length)setShowList(true);}}
+        onBlur={()=>{blurTimer.current=setTimeout(()=>setShowList(false),150);}}
+        onKeyDown={e=>{
+          if(!showList||!predictions.length)return;
+          if(e.key==="ArrowDown"){e.preventDefault();setActive(a=>Math.min(a+1,predictions.length-1));}
+          else if(e.key==="ArrowUp"){e.preventDefault();setActive(a=>Math.max(a-1,0));}
+          else if(e.key==="Enter"&&active>=0){e.preventDefault();choose(predictions[active]);}
+          else if(e.key==="Escape"){setShowList(false);}
+        }}
+        style={inputStyle}/>
+      {showList&&predictions.length>0&&(
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.18)",border:"1.5px solid #e2e8f0",zIndex:2000,overflow:"hidden"}}>
+          {predictions.map((p,i)=>(
+            <div key={p.place_id}
+              onMouseDown={e=>{e.preventDefault();choose(p);}}
+              onMouseEnter={()=>setActive(i)}
+              style={{padding:"10px 14px",fontSize:13,color:"#0f172a",cursor:"pointer",borderBottom:i<predictions.length-1?"1px solid #f1f5f9":"none",background:active===i?"#f5ede0":"#fff",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:13}}>📍</span>
+              <span>{p.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
   const dark=useDark();
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
@@ -2483,7 +2602,17 @@ function LeadModal({open,onClose,onSave,initial}) {
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
           </div>
         </div>
-        {[["name","Name","text","Full name"],["address","Address","text","Street address"],["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
+        {[["name","Name","text","Full name"]].map(([k,l,t,p])=>(
+          <div key={k} style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
+          </div>
+        ))}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Address</label>
+          <AddressAutocomplete value={form.address||""} onChange={v=>setForm(f=>({...f,address:v}))} gmapsKey={gmapsKey} inputStyle={inputStyle} placeholder="Street address"/>
+        </div>
+        {[["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
             <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
@@ -5502,7 +5631,7 @@ function App() {
         )}
       </div>
 
-      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead}
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
         initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
