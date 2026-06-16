@@ -2656,7 +2656,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   };
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown}
+      onMouseDown={e=>{if(e.sourceCapabilities?.firesTouchEvents)return;handleMouseDown(e);}}
       onClick={()=>{if(!moved.current)onView(lead);}}
       style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"pan-y"}}>
       <div style={{flex:1,minWidth:0}}>
