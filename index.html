@@ -1625,13 +1625,13 @@ function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
   };
   const handleTouchMove=e=>{
     if(startPos.current){const dx=Math.abs(e.touches[0].clientX-startPos.current.x),dy=Math.abs(e.touches[0].clientY-startPos.current.y);
-      if(dx>8||dy>8){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
+      if(dx>10||dy>10){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
   };
   const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onClick={()=>{if(!moved.current)onView(recruit);}}
-      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"none"}}>
+      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"pan-y"}}>
       <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{fullName}</div>
     </div>
   );
@@ -2623,11 +2623,11 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const startPos=useRef(null);
   const handleTouchStart=e=>{
     moved.current=false; startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
-    holdTimer.current=setTimeout(()=>{if(!moved.current)onTouchDragStart(e,lead.id);},350);
+    holdTimer.current=setTimeout(()=>{if(!moved.current)onTouchDragStart(e,lead.id);},500);
   };
   const handleTouchMove=e=>{
     if(startPos.current){const dx=Math.abs(e.touches[0].clientX-startPos.current.x),dy=Math.abs(e.touches[0].clientY-startPos.current.y);
-      if(dx>8||dy>8){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
+      if(dx>10||dy>10){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
   };
   const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
   const handleMouseDown=e=>{
@@ -2639,7 +2639,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
       onMouseDown={handleMouseDown}
       onClick={()=>{if(!moved.current)onView(lead);}}
-      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"none"}}>
+      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDragging?0.3:lead.is_arc?0.65:1,touchAction:"pan-y"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           {lead.contact_status && <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,background:lead.contact_status==="good"?"#22c55e":lead.contact_status==="bad"?"#ef4444":"#e2e8f0",border:`1.5px solid ${lead.contact_status==="good"?"#16a34a":lead.contact_status==="bad"?"#dc2626":"#94a3b8"}`}}/>}
