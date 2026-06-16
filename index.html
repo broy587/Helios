@@ -2752,11 +2752,9 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
   };
 
   const handleTouchDragStart=(e,id)=>{
-    setDbgMsg(`drag: mouse=${e._isMouse} x=${e._x} y=${e._y} mob=${e._isMobile}`);
     if(e._isMouse) startDrag(id,e._mouseEvent.clientX,e._mouseEvent.clientY,true);
     else if(e._isMobile||e._x!==undefined) startDrag(id,e._x,e._y,false);
     else if(e.touches&&e.touches[0]) startDrag(id,e.touches[0].clientX,e.touches[0].clientY,false);
-    else setDbgMsg("drag: NO COORDS FOUND");
   };
 
   const detailLead=(allLeads||leads).find(l=>l.id===detailId)||null;
