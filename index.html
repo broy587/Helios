@@ -2113,6 +2113,8 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
   const [checked, setChecked] = React.useState(initialChecked||[]);
   const [saving, setSaving] = React.useState(false);
   const score = checked.length;
+  // Re-sync when initialChecked changes (e.g. opening edit after view-mode changes)
+  React.useEffect(()=>{ setChecked(initialChecked||[]); },[JSON.stringify(initialChecked)]);
 
   const toggle = async (item) => {
     const next = checked.includes(item)
@@ -2200,7 +2202,7 @@ function EmailButton({email}) {
 
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
   const [lead, setLead] = React.useState(leadProp);
-  React.useEffect(()=>setLead(leadProp),[leadProp?.id]);
+  React.useEffect(()=>setLead(leadProp),[leadProp?.id, JSON.stringify(leadProp?.ac_checklist)]);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...lead,...updated}); };
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
@@ -5435,7 +5437,11 @@ function App() {
           onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
           repProfiles={repProfiles} onTransfer={handleTransfer}
-          onUpdate={updated=>setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l))}
+          onUpdate={updated=>{
+            setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l));
+            // Also update modal.lead if it's open for this lead
+            setModal(m=>m.open&&m.lead?.id===updated.id?{...m,lead:{...m.lead,...updated}}:m);
+          }}
           onViewInCanvass={lead=>{
             setDetailId(null);
             setTab("canvass");
