@@ -2629,8 +2629,8 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
     holdTimer.current=setTimeout(()=>{
       if(!moved.current){
         isDraggingRef.current=true;
-        // Pass coords directly since touch event may have expired
-        onTouchDragStart({touches:[{clientX:x,clientY:y}]},lead.id);
+        // Pass coords directly since touch event may have expired on iOS
+        onTouchDragStart({_x:x,_y:y},lead.id);
       }
     },400);
   };
@@ -2748,7 +2748,8 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
 
   const handleTouchDragStart=(e,id)=>{
     if(e._isMouse) startDrag(id,e._mouseEvent.clientX,e._mouseEvent.clientY,true);
-    else startDrag(id,e.touches[0].clientX,e.touches[0].clientY,false);
+    else if(e._x!==undefined) startDrag(id,e._x,e._y,false);
+    else if(e.touches&&e.touches[0]) startDrag(id,e.touches[0].clientX,e.touches[0].clientY,false);
   };
 
   const detailLead=(allLeads||leads).find(l=>l.id===detailId)||null;
