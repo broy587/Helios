@@ -4299,7 +4299,6 @@ const GCal = {
     // Wait for GSI to be ready (up to 10s)
     await new Promise(res=>{
       if(window.google?.accounts?.oauth2){res();return;}
-      // Try loading script if not already there
       if(!document.getElementById("gsi-script")){
         const s=document.createElement("script");
         s.id="gsi-script";
@@ -4311,12 +4310,13 @@ const GCal = {
       const check=setInterval(()=>{if(window.google?.accounts?.oauth2){clearInterval(check);res();}},300);
       setTimeout(()=>{clearInterval(check);res();},10000);
     });
+    // Already have valid token — return immediately
+    if(this.isSignedIn()) return this._accessToken;
     return new Promise((resolve, reject) => {
       if(!window.google?.accounts?.oauth2) {
         reject(new Error("Google Sign-In not available. Please refresh the app and try again."));
         return;
       }
-      if(this.isSignedIn()) { resolve(this._accessToken); return; }
       if(!this._tokenClient) {
         this._tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: GCAL_CLIENT_ID,
@@ -4325,15 +4325,21 @@ const GCal = {
             if(resp.error) { reject(new Error(resp.error_description||resp.error)); return; }
             this._accessToken = resp.access_token;
             this._tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+            // Save email hint for silent re-auth next time
+            try { if(resp.email) localStorage.setItem("gcal_hint", resp.email); } catch(e){}
             resolve(resp.access_token);
           },
-          error_callback: (err) => {
-            reject(new Error(err.message||"Sign-in failed"));
-          },
+          error_callback: (err) => { reject(new Error(err.message||"Sign-in failed")); },
         });
       }
-      // Use select_account to let user pick their account
-      this._tokenClient.requestAccessToken({prompt: "select_account"});
+      // Try silent refresh first using saved email hint
+      const hint = (() => { try { return localStorage.getItem("gcal_hint")||""; } catch(e){ return ""; } })();
+      if(hint) {
+        // prompt:"" = silent, won't show popup if Google session still active
+        this._tokenClient.requestAccessToken({prompt:"", login_hint:hint});
+      } else {
+        this._tokenClient.requestAccessToken({prompt:"select_account"});
+      }
     });
   },
 
