@@ -2220,7 +2220,7 @@ function CopyBtn({value}) {
   );
 }
 
-function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles}) {
   const [lead, setLead] = React.useState(leadProp);
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, JSON.stringify(leadProp?.ac_checklist)]);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...lead,...updated}); };
@@ -2266,6 +2266,16 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                 {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
                 {lead.confirmed && <span style={{fontSize:11,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
               </div>
+              {lead.owner_id && (()=>{
+                const owner=(profiles||[]).find(p=>p.id===lead.owner_id);
+                const ownerName=owner?(owner.name||owner.email):"Unknown";
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                    <span style={{fontSize:13}}>👤</span>
+                    <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
+                  </div>
+                );
+              })()}
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
               {lead.address&&onViewInCanvass&&(
@@ -2924,7 +2934,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles}) {
   const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
@@ -3049,7 +3059,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
-          repProfiles={[]} onTransfer={()=>{}}
+          repProfiles={[]} onTransfer={()=>{}} profiles={profiles}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
           onSwitchToCalendar={onSwitchToCalendar}/>
@@ -5553,7 +5563,7 @@ function App() {
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </div>
             )}
-            <PipelineBoard leads={visibleLeads} allLeads={leads} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
@@ -5661,7 +5671,7 @@ function App() {
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
-          repProfiles={repProfiles} onTransfer={handleTransfer}
+          repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles}
           onUpdate={updated=>{
             setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l));
             // Also update modal.lead if it's open for this lead
