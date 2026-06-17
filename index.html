@@ -5284,22 +5284,43 @@ function App() {
     const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
-    if(modal.lead&&modal.lead.id){
+    const isUpdate = !!(modal.lead && modal.lead.id);
+    if(isUpdate){
       viewId=modal.lead.id;
-      // Save main fields first (fast — no photos)
-      await sb.from("leads").update(payload).eq("id",modal.lead.id);
-      // Only save photos if they changed
-      if(photosChanged) await sb.from("leads").update({bill_photos:newPhotos}).eq("id",modal.lead.id);
     } else {
       viewId=generateId();
-      await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
     }
+
+    // Build the full lead object for local state so the view opens instantly
+    const localLead = isUpdate
+      ? {...(existing||{}), ...payload, id:viewId, bill_photos:newPhotos}
+      : {...payload, id:viewId, owner_id:ownerId, created_at:new Date().toISOString(), bill_photos:newPhotos};
+
+    // Optimistically update local state
+    setLeads(ls=>{
+      const idx=ls.findIndex(l=>l.id===viewId);
+      if(idx>=0){const copy=[...ls];copy[idx]={...copy[idx],...localLead};return copy;}
+      return [localLead,...ls];
+    });
+
+    // Close edit modal and open view mode immediately — no network wait
     setModal({open:false,lead:null});
-    await loadData(user,profile);
-    // Open the saved lead in view mode — defer so the originating click/tap
-    // fully completes before the detail modal mounts (prevents the new modal's
-    // backdrop from catching the same event and closing immediately)
-    setTimeout(()=>setDetailId(viewId),60);
+    setDetailId(viewId);
+
+    // Persist to the database in the background
+    (async()=>{
+      try{
+        if(isUpdate){
+          await sb.from("leads").update(payload).eq("id",viewId);
+          if(photosChanged) await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);
+        } else {
+          await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
+        }
+        await loadData(user,profile);
+      }catch(err){
+        console.error("Save failed:",err);
+      }
+    })();
   };
 
   const deleteLead=async(id)=>{
