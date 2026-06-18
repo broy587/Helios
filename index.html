@@ -3529,6 +3529,29 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
         </div>
       </div>
 
+      {/* Homeowner */}
+      <div style={{padding:"0 20px 12px"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Homeowner</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input
+            type="text"
+            value={ownerName}
+            onChange={e=>setOwnerName(e.target.value)}
+            placeholder="Add homeowner name..."
+            style={{flex:1,minWidth:0,padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={saveOwnerName} disabled={savingOwner||ownerName.trim()===(home.owner_name||"").trim()}
+            style={{padding:"10px 16px",borderRadius:8,border:"none",background:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.12)":"#f97316",color:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"default":"pointer",whiteSpace:"nowrap"}}>
+            {savingOwner?"Saving...":ownerSaved?"✓ Saved":"Save"}
+          </button>
+        </div>
+        {home.phone&&(
+          <div style={{marginTop:10}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>Phone</div>
+            <div style={{fontSize:13,color:"#fff"}}>{home.phone}</div>
+          </div>
+        )}
+      </div>
+
       {/* Notes */}
       <div style={{padding:"0 20px 12px"}}>
         <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Notes</div>
@@ -3583,29 +3606,6 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
         ) : (
           <div style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center"}}>
             No pipeline lead linked — tap ⚡ LEAD to create one
-          </div>
-        )}
-      </div>
-
-      {/* Homeowner */}
-      <div style={{padding:"0 20px 12px"}}>
-        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Homeowner</div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <input
-            type="text"
-            value={ownerName}
-            onChange={e=>setOwnerName(e.target.value)}
-            placeholder="Add homeowner name..."
-            style={{flex:1,minWidth:0,padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
-          <button onClick={saveOwnerName} disabled={savingOwner||ownerName.trim()===(home.owner_name||"").trim()}
-            style={{padding:"10px 16px",borderRadius:8,border:"none",background:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.12)":"#f97316",color:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"default":"pointer",whiteSpace:"nowrap"}}>
-            {savingOwner?"Saving...":ownerSaved?"✓ Saved":"Save"}
-          </button>
-        </div>
-        {home.phone&&(
-          <div style={{marginTop:10}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>Phone</div>
-            <div style={{fontSize:13,color:"#fff"}}>{home.phone}</div>
           </div>
         )}
       </div>
