@@ -1941,7 +1941,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         {questions.map(q=>{
           const v=getValue(q);
           const isYes=v==="Yes";
-          const isNo=v==="No";
+          const isNo=!isYes;
           return(
             <div key={q.key} style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
               <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
