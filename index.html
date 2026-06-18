@@ -3393,7 +3393,7 @@ const DISPOSITIONS = [
   {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
 ];
 
-function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreateLead, leads, onStageChange}) {
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
   // Re-sync note when home prop updates (after save)
@@ -3444,6 +3444,39 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
     setNote("");
     setNoteSaved(true);
     setTimeout(()=>setNoteSaved(false), 2000);
+  };
+
+  const [ownerName, setOwnerName] = React.useState(home.owner_name||"");
+  const [ownerSaved, setOwnerSaved] = React.useState(false);
+  const [savingOwner, setSavingOwner] = React.useState(false);
+  React.useEffect(()=>{ setOwnerName(home.owner_name||""); },[home.owner_name, home.id]);
+
+  const saveOwnerName = async() => {
+    const val = ownerName.trim();
+    setSavingOwner(true);
+    setOwnerSaved(false);
+    try {
+      if(!home.id||home._isTemp||home._isPipelineLead){
+        const {data} = await sb.from("canvass_homes").insert({
+          address:home.address,
+          lat:home.lat||null,
+          lng:home.lng||null,
+          owner_name:val||null,
+          phone:home.phone||null,
+          notes:home.notes||null,
+          prescreen:home.prescreen||null,
+          added_by:currentUser?.id||null,
+          updated_at:new Date().toISOString()
+        }).select().single();
+        if(data&&onSaveOwner) await onSaveOwner(data);
+      } else {
+        await sb.from("canvass_homes").update({owner_name:val||null,updated_at:new Date().toISOString()}).eq("id",home.id);
+        if(onSaveOwner) await onSaveOwner({...home,owner_name:val||null});
+      }
+      setOwnerSaved(true);
+      setTimeout(()=>setOwnerSaved(false), 2000);
+    } catch(e){ console.error("Save owner name failed:", e); }
+    setSavingOwner(false);
   };
 
   return (
@@ -3554,20 +3587,27 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onCreate
         )}
       </div>
 
-      {/* Property info */}
+      {/* Homeowner */}
       <div style={{padding:"0 20px 12px"}}>
-        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Property Details</div>
-        <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
-          {[["Owner/Contact", home.owner_name], ["Phone", home.phone]].map(([l,v])=>v?(
-            <div key={l} style={{marginBottom:8}}>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>{l}</div>
-              <div style={{fontSize:13,color:"#fff"}}>{v}</div>
-            </div>
-          ):null)}
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:4}}>
-            Owner/renter data available with data provider integration
-          </div>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Homeowner</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input
+            type="text"
+            value={ownerName}
+            onChange={e=>setOwnerName(e.target.value)}
+            placeholder="Add homeowner name..."
+            style={{flex:1,minWidth:0,padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={saveOwnerName} disabled={savingOwner||ownerName.trim()===(home.owner_name||"").trim()}
+            style={{padding:"10px 16px",borderRadius:8,border:"none",background:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.12)":"#f97316",color:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"default":"pointer",whiteSpace:"nowrap"}}>
+            {savingOwner?"Saving...":ownerSaved?"✓ Saved":"Save"}
+          </button>
         </div>
+        {home.phone&&(
+          <div style={{marginTop:10}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>Phone</div>
+            <div style={{fontSize:13,color:"#fff"}}>{home.phone}</div>
+          </div>
+        )}
       </div>
 
       {/* Delete */}
@@ -4485,6 +4525,13 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
             if(data){setHomes(data);homesRef.current=data;}
             setSelectedHome(h=>({...h,id:home.id,notes:noteVal,_isTemp:false,_isPipelineLead:false}));
+          }}
+          onSaveOwner={async(home)=>{
+            if(!home.id) return;
+            // Reload homes fresh from DB (owner_name already written by HomePopup)
+            const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
+            if(data){setHomes(data);homesRef.current=data;}
+            setSelectedHome(h=>({...h,id:home.id,owner_name:home.owner_name,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
           leads={leads}
