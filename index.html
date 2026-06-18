@@ -2269,8 +2269,8 @@ function CopyBtn({value}) {
 
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles}) {
   const [lead, setLead] = React.useState(leadProp);
-  React.useEffect(()=>setLead(leadProp),[leadProp?.id, JSON.stringify(leadProp?.ac_checklist)]);
-  const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...lead,...updated}); };
+  const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
+  React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, JSON.stringify(leadProp?.ac_checklist)]);
   const dark=useDark();
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -2652,8 +2652,8 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
             <div style={{display:"flex",gap:8}}>
               {/* Book Closer Slot */}
               <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:""}));
-                else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||""}));
+                if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
+                else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
               }} label="📅 Book Closer Slot"/>
               {/* Personal Callback */}
               <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val}))} label="↩️ Personal CB"/>
@@ -3207,6 +3207,22 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     });
   };
 
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const startEdit = (t) => { setEditingId(t.id); setEditText(t.message||""); };
+  const cancelEdit = () => { setEditingId(null); setEditText(""); };
+  const saveEdit = async (id) => {
+    if(!editText.trim()) return;
+    setSavingEdit(true);
+    await sb.from("support_tickets").update({message:editText.trim()}).eq("id",id);
+    setTickets(ts=>ts.map(t=>t.id===id?{...t,message:editText.trim()}:t));
+    setSavingEdit(false);
+    setEditingId(null);
+    setEditText("");
+  };
+
   return (
     <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
@@ -3239,12 +3255,37 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
                     <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
                     <div style={{fontSize:11,color:"#94a3b8"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
                   </div>
-                  <button onClick={()=>handleResolve(t.id)}
-                    style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                    Resolve
-                  </button>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    {editingId!==t.id && (
+                      <button onClick={()=>startEdit(t)} title="Edit ticket"
+                        style={{padding:"4px 9px",borderRadius:20,border:"1.5px solid #e2e8f0",background:"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        ✏️ Edit
+                      </button>
+                    )}
+                    <button onClick={()=>handleResolve(t.id)}
+                      style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      Resolve
+                    </button>
+                  </div>
                 </div>
-                <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>{t.message}</div>
+                {editingId===t.id ? (
+                  <div>
+                    <textarea value={editText} onChange={e=>setEditText(e.target.value)} rows={4}
+                      style={{width:"100%",fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",border:"1.5px solid #c8b8a2",resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                      <button onClick={()=>saveEdit(t.id)} disabled={savingEdit||!editText.trim()}
+                        style={{padding:"6px 14px",borderRadius:8,border:"none",background:editText.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:editText.trim()?"#fff":"#94a3b8",fontWeight:700,fontSize:12,cursor:editText.trim()?"pointer":"default"}}>
+                        {savingEdit?"Saving...":"Save"}
+                      </button>
+                      <button onClick={cancelEdit}
+                        style={{padding:"6px 14px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
+                )}
               </div>
             ))}
           </div>
@@ -4861,9 +4902,10 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
       await sb.from("leads").update({
         gcal_event_id:null,
         appointment:null,
+        stage:"Lead: Need Bill/Appointment",
         updated_at:new Date().toISOString()
       }).eq("id",lead.id);
-      if(onUpdate) onUpdate({gcal_event_id:null,appointment:null});
+      if(onUpdate) onUpdate({gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"});
       setDoneMsg("removed");
       setDone(true);
     } catch(e){console.error(e);alert("Error removing: "+e.message);}
