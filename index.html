@@ -1680,10 +1680,11 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
         if(p.id===currentUser.id) return false;
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
       });
-  const recruitsSubTab = recruitsFilter==="mine"?"mine":recruitsFilter.startsWith("team:")?"team":recruitsFilter.startsWith("rep:")?"rep":"mine";
+  const recruitsSubTab = recruitsFilter==="mine"?"mine":recruitsFilter==="all"?"all":recruitsFilter.startsWith("team:")?"team":recruitsFilter.startsWith("rep:")?"rep":"mine";
 
   const getFilteredRecruits = () => {
     if (recruitsFilter==="mine") return recruits.filter(r=>r.owner_id===currentUser.id);
+    if (recruitsFilter==="all") return recruits;
     if (recruitsFilter.startsWith("team:")) {
       const teamId=recruitsFilter.replace("team:","");
       const memberIds=(teamMembers[teamId]||[]).map(m=>m.user_id);
@@ -1779,13 +1780,19 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
             )}
           </div>
           <div style={{position:"relative"}}>
-            <button onClick={()=>{setRecruitsRepDropOpen(o=>!o);setRecruitsTeamDropOpen(false);if(!recruitsFilter.startsWith("rep:")&&visibleReps.length>0)setRecruitsFilter(`rep:${visibleReps[0].id}`);}}
-              style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${recruitsSubTab==="rep"?"#f97316":"#e2e8f0"}`,background:recruitsSubTab==="rep"?"#f97316":"#fff",color:recruitsSubTab==="rep"?"#fff":"#64748b",fontWeight:recruitsSubTab==="rep"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
-              {recruitsSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps"}
+            <button onClick={()=>{setRecruitsRepDropOpen(o=>!o);setRecruitsTeamDropOpen(false);if(!recruitsFilter.startsWith("rep:")&&recruitsFilter!=="all"&&visibleReps.length>0)setRecruitsFilter(`rep:${visibleReps[0].id}`);}}
+              style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${(recruitsSubTab==="rep"||recruitsSubTab==="all")?"#f97316":"#e2e8f0"}`,background:(recruitsSubTab==="rep"||recruitsSubTab==="all")?"#f97316":"#fff",color:(recruitsSubTab==="rep"||recruitsSubTab==="all")?"#fff":"#64748b",fontWeight:(recruitsSubTab==="rep"||recruitsSubTab==="all")?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
+              {recruitsSubTab==="all"?"All Reps":(recruitsSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps")}
               <span style={{fontSize:9,opacity:0.7}}>{recruitsRepDropOpen?"▲":"▼"}</span>
             </button>
             {recruitsRepDropOpen&&visibleReps.length>0&&(
               <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",border:"1.5px solid #e2e8f0",zIndex:300,minWidth:160,overflow:"hidden",maxHeight:240,overflowY:"auto"}}>
+                {isOwner&&(
+                  <button onClick={()=>{setRecruitsFilter("all");setRecruitsRepDropOpen(false);}}
+                    style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:recruitsFilter==="all"?"#fff7ed":"#fff",color:recruitsFilter==="all"?"#f97316":"#0f172a",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"2px solid #ede3d6"}}>
+                    👥 View All
+                  </button>
+                )}
                 {visibleReps.map(r=>(
                   <button key={r.id} onClick={()=>{setRecruitsFilter(`rep:${r.id}`);setRecruitsRepDropOpen(false);}}
                     style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#fff7ed":"#fff",color:activeRepId===r.id?"#f97316":"#0f172a",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
