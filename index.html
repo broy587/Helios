@@ -3176,15 +3176,17 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [tickets, setTickets] = useState([]);
-  const [loadingTickets, setLoadingTickets] = useState(isOwner);
+  const [loadingTickets, setLoadingTickets] = useState(true);
 
   useEffect(()=>{
-    if(isOwner) loadTickets();
+    loadTickets();
   },[]);
 
   const loadTickets = async () => {
     setLoadingTickets(true);
-    const {data} = await sb.from("support_tickets").select("*, profiles(name,email)").order("created_at",{ascending:false});
+    let q = sb.from("support_tickets").select("*, profiles(name,email)").order("created_at",{ascending:false});
+    if(!isOwner) q = q.eq("submitted_by", user.id);
+    const {data} = await q;
     setTickets(data||[]);
     setLoadingTickets(false);
   };
@@ -3242,18 +3244,18 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
           {sending?"Submitting...":"Submit Ticket"}
         </button>
 
-        {/* Owner sees all tickets */}
-        {isOwner && (
+        {/* Ticket list — owner sees all, reps see their own */}
+        {(isOwner || tickets.length>0 || loadingTickets) && (
           <div>
-            <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginBottom:12}}>All Tickets</div>
+            <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:12}}>{isOwner?"All Tickets":"Your Tickets"}</div>
             {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
-            {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>No tickets yet.</div>}
+            {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>{isOwner?"No tickets yet.":"You haven't submitted any tickets yet."}</div>}
             {tickets.map(t=>(
               <div key={t.id} style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:"1.5px solid #e2e8f0",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                  <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
+                  <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
-                    <div style={{fontSize:11,color:"#94a3b8"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     {editingId!==t.id && (
@@ -3262,10 +3264,12 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
                         ✏️ Edit
                       </button>
                     )}
-                    <button onClick={()=>handleResolve(t.id)}
-                      style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      Resolve
-                    </button>
+                    {isOwner && (
+                      <button onClick={()=>handleResolve(t.id)}
+                        style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        Resolve
+                      </button>
+                    )}
                   </div>
                 </div>
                 {editingId===t.id ? (
