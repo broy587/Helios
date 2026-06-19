@@ -3451,6 +3451,63 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
   const [savingOwner, setSavingOwner] = React.useState(false);
   React.useEffect(()=>{ setOwnerName(home.owner_name||""); },[home.owner_name, home.id]);
 
+  const [phoneVal, setPhoneVal] = React.useState(home.phone||"");
+  const [emailVal, setEmailVal] = React.useState(home.email||"");
+  const [contactSaved, setContactSaved] = React.useState(false);
+  const [savingContact, setSavingContact] = React.useState(false);
+  React.useEffect(()=>{ setPhoneVal(home.phone||""); setEmailVal(home.email||""); },[home.phone, home.email, home.id]);
+
+  const saveContact = async() => {
+    const ph = phoneVal.trim();
+    const em = emailVal.trim();
+    setSavingContact(true);
+    setContactSaved(false);
+    const doWrite = async(includeEmail) => {
+      if(!home.id||home._isTemp||home._isPipelineLead){
+        const row = {
+          address:home.address,
+          lat:home.lat||null,
+          lng:home.lng||null,
+          owner_name:(ownerName.trim()||home.owner_name||null),
+          phone:ph||null,
+          notes:home.notes||null,
+          prescreen:home.prescreen||null,
+          added_by:currentUser?.id||null,
+          updated_at:new Date().toISOString()
+        };
+        if(includeEmail) row.email = em||null;
+        const {data,error} = await sb.from("canvass_homes").insert(row).select().single();
+        if(error) throw error;
+        if(data&&onSaveOwner) await onSaveOwner(includeEmail?data:{...data,email:em||null});
+      } else {
+        const upd = {phone:ph||null,updated_at:new Date().toISOString()};
+        if(includeEmail) upd.email = em||null;
+        const {error} = await sb.from("canvass_homes").update(upd).eq("id",home.id);
+        if(error) throw error;
+        if(onSaveOwner) await onSaveOwner({...home,phone:ph||null,email:em||null});
+      }
+    };
+    try {
+      await doWrite(true);
+      setContactSaved(true);
+      setTimeout(()=>setContactSaved(false), 2000);
+    } catch(e){
+      // Fall back if the email column doesn't exist in the table yet
+      const msg=(e&&(e.message||e.details||""))+"";
+      if(/email/i.test(msg) && /column|schema|find/i.test(msg)){
+        try {
+          await doWrite(false);
+          setContactSaved(true);
+          setTimeout(()=>setContactSaved(false), 2000);
+          console.warn("Saved phone only — add an 'email' column to canvass_homes to persist email.");
+        } catch(e2){ console.error("Save contact failed:", e2); }
+      } else {
+        console.error("Save contact failed:", e);
+      }
+    }
+    setSavingContact(false);
+  };
+
   const saveOwnerName = async() => {
     const val = ownerName.trim();
     setSavingOwner(true);
@@ -3496,7 +3553,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>{home.address}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:12}}>
-          <button onClick={()=>onCreateLead({...home,owner_name:(ownerName.trim()||home.owner_name||""),notes:(note.trim()||home.notes||"")}, linkedLead||null)}
+          <button onClick={()=>onCreateLead({...home,owner_name:(ownerName.trim()||home.owner_name||""),phone:(phoneVal.trim()||home.phone||""),email:(emailVal.trim()||home.email||""),notes:(note.trim()||home.notes||"")}, linkedLead||null)}
             title={linkedLead?"View the linked pipeline lead":"Add this home as a pipeline lead"}
             style={{background:"#f97316",border:"none",borderRadius:20,padding:"7px 14px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5}}>
             ⚡ {linkedLead?"View Lead":"Add Lead"}
@@ -3551,12 +3608,29 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
             {savingOwner?"Saving...":ownerSaved?"✓ Saved":"Save"}
           </button>
         </div>
-        {home.phone&&(
-          <div style={{marginTop:10}}>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:2}}>Phone</div>
-            <div style={{fontSize:13,color:"#fff"}}>{home.phone}</div>
-          </div>
-        )}
+      </div>
+
+      {/* Contact Info */}
+      <div style={{padding:"0 20px 12px"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Contact Info</div>
+        <input
+          type="tel"
+          value={phoneVal}
+          onChange={e=>setPhoneVal(e.target.value)}
+          placeholder="Phone number..."
+          style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none",marginBottom:8}}/>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input
+            type="email"
+            value={emailVal}
+            onChange={e=>setEmailVal(e.target.value)}
+            placeholder="Email..."
+            style={{flex:1,minWidth:0,padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={saveContact} disabled={savingContact||(phoneVal.trim()===(home.phone||"").trim()&&emailVal.trim()===(home.email||"").trim())}
+            style={{padding:"10px 16px",borderRadius:8,border:"none",background:(savingContact||(phoneVal.trim()===(home.phone||"").trim()&&emailVal.trim()===(home.email||"").trim()))?"rgba(255,255,255,0.12)":"#f97316",color:(savingContact||(phoneVal.trim()===(home.phone||"").trim()&&emailVal.trim()===(home.email||"").trim()))?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingContact||(phoneVal.trim()===(home.phone||"").trim()&&emailVal.trim()===(home.email||"").trim()))?"default":"pointer",whiteSpace:"nowrap"}}>
+            {savingContact?"Saving...":contactSaved?"✓ Saved":"Save"}
+          </button>
+        </div>
       </div>
 
       {/* Notes */}
@@ -4538,7 +4612,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             // Reload homes fresh from DB (owner_name already written by HomePopup)
             const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
             if(data){setHomes(data);homesRef.current=data;}
-            setSelectedHome(h=>({...h,id:home.id,owner_name:home.owner_name,_isTemp:false,_isPipelineLead:false}));
+            setSelectedHome(h=>({...h,id:home.id,owner_name:home.owner_name,phone:home.phone,email:home.email,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
           leads={leads}
@@ -5745,7 +5819,7 @@ function App() {
       setDetailId(existingLead.id);
     } else {
       // Open add lead form pre-filled from canvass
-      setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",notes:home.notes||""}});
+      setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",email:home.email||"",notes:home.notes||""}});
     }
   },100);
 }} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))}/>
