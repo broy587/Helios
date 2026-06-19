@@ -2274,6 +2274,27 @@ function CopyBtn({value}) {
   );
 }
 
+function FitText({children, max=14, min=9, style}) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(()=>{
+    const el = ref.current;
+    if(!el) return;
+    let cur = max;
+    el.style.fontSize = cur + "px";
+    let guard = 0;
+    while(cur > min && el.scrollWidth > el.clientWidth + 1 && guard < 60){
+      cur -= 0.5;
+      el.style.fontSize = cur + "px";
+      guard++;
+    }
+  });
+  return (
+    <div ref={ref} style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:max,...style}}>
+      {children}
+    </div>
+  );
+}
+
 function CopyIcon({value}) {
   const [copied, setCopied] = useState(false);
   if (!value) return null;
@@ -2324,10 +2345,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
-                {lead.name && <CopyIcon value={lead.name}/>}
-              </div>
+              <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
@@ -2369,14 +2387,21 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1}}>
-                  {label==="📊 Smart Meter Texas" ? (
-                    <div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Pulled</div>
-                      <UsagePulledToggle leadId={lead.id} initialValue={lead.usage_input||""} onUpdate={(v)=>onUpdate&&onUpdate({...lead,usage_input:v})}/>
-                    </div>
-                  ) : (value||"")}
-                </div>
+                {label==="Address" ? (
+                  <FitText style={{flex:1,minWidth:0,color:dark?"#f1f5f9":"#1e293b"}}>{value}</FitText>
+                ) : (
+                  <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>
+                    {label==="📊 Smart Meter Texas" ? (
+                      <div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Pulled</div>
+                        <UsagePulledToggle leadId={lead.id} initialValue={lead.usage_input||""} onUpdate={(v)=>onUpdate&&onUpdate({...lead,usage_input:v})}/>
+                      </div>
+                    ) : (value||"")}
+                  </div>
+                )}
+                {label==="Address" && (
+                  <CopyIcon value={value}/>
+                )}
                 {label==="📊 Smart Meter Texas" && (
                   <button onClick={()=>{
                       const a=document.createElement("a");
