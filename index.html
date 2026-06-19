@@ -3393,9 +3393,10 @@ const DISPOSITIONS = [
   {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
 ];
 
-function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange}) {
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange, currentUser}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
+  const [errMsg, setErrMsg] = React.useState("");
   // Re-sync note when home prop updates (after save)
   React.useEffect(()=>{ setNote(home.notes||""); },[home.notes]);
 
@@ -3423,27 +3424,28 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
   const saveNote = async() => {
     if(!note.trim()) return;
     setNoteSaved(false);
-    if(!home.id||home._isTemp||home._isPipelineLead){
-      const {data,error} = await sb.from("canvass_homes").insert({
-        address:home.address,
-        lat:home.lat||null,
-        lng:home.lng||null,
-        owner_name:home.owner_name||null,
-        phone:home.phone||null,
-        notes:note.trim(),
-        prescreen:home.prescreen||null,
-        added_by:currentUser?.id||null,
-        updated_at:new Date().toISOString()
-      }).select().single();
-      if(data) {
-        if(onSaveNote) await onSaveNote(data, note.trim());
+    try {
+      if(!home.id||home._isTemp||home._isPipelineLead){
+        const {data,error} = await sb.from("canvass_homes").insert({
+          address:home.address,
+          lat:home.lat||null,
+          lng:home.lng||null,
+          owner_name:home.owner_name||null,
+          phone:home.phone||null,
+          notes:note.trim(),
+          prescreen:home.prescreen||null,
+          added_by:currentUser?.id||null,
+          updated_at:new Date().toISOString()
+        }).select().single();
+        if(error) throw error;
+        if(data&&onSaveNote) await onSaveNote(data, note.trim());
+      } else {
+        await onSaveNote(home, note.trim());
       }
-    } else {
-      await onSaveNote(home, note.trim());
-    }
-    setNote("");
-    setNoteSaved(true);
-    setTimeout(()=>setNoteSaved(false), 2000);
+      setErrMsg("");
+      setNoteSaved(true);
+      setTimeout(()=>setNoteSaved(false), 2000);
+    } catch(e){ console.error("Save note failed:", e); setErrMsg("Couldn't save note: "+((e&&(e.message||e.details))||"unknown error")); }
   };
 
   const [ownerName, setOwnerName] = React.useState(home.owner_name||"");
@@ -3489,6 +3491,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     };
     try {
       await doWrite(true);
+      setErrMsg("");
       setContactSaved(true);
       setTimeout(()=>setContactSaved(false), 2000);
     } catch(e){
@@ -3497,12 +3500,14 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
       if(/email/i.test(msg) && /column|schema|find/i.test(msg)){
         try {
           await doWrite(false);
+          setErrMsg("Saved phone. Email needs an 'email' column on canvass_homes — see note.");
           setContactSaved(true);
           setTimeout(()=>setContactSaved(false), 2000);
           console.warn("Saved phone only — add an 'email' column to canvass_homes to persist email.");
-        } catch(e2){ console.error("Save contact failed:", e2); }
+        } catch(e2){ console.error("Save contact failed:", e2); setErrMsg("Couldn't save contact: "+((e2&&(e2.message||e2.details))||"unknown error")); }
       } else {
         console.error("Save contact failed:", e);
+        setErrMsg("Couldn't save contact: "+(msg||"unknown error"));
       }
     }
     setSavingContact(false);
@@ -3514,7 +3519,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     setOwnerSaved(false);
     try {
       if(!home.id||home._isTemp||home._isPipelineLead){
-        const {data} = await sb.from("canvass_homes").insert({
+        const {data,error} = await sb.from("canvass_homes").insert({
           address:home.address,
           lat:home.lat||null,
           lng:home.lng||null,
@@ -3525,14 +3530,17 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           added_by:currentUser?.id||null,
           updated_at:new Date().toISOString()
         }).select().single();
+        if(error) throw error;
         if(data&&onSaveOwner) await onSaveOwner(data);
       } else {
-        await sb.from("canvass_homes").update({owner_name:val||null,updated_at:new Date().toISOString()}).eq("id",home.id);
+        const {error} = await sb.from("canvass_homes").update({owner_name:val||null,updated_at:new Date().toISOString()}).eq("id",home.id);
+        if(error) throw error;
         if(onSaveOwner) await onSaveOwner({...home,owner_name:val||null});
       }
+      setErrMsg("");
       setOwnerSaved(true);
       setTimeout(()=>setOwnerSaved(false), 2000);
-    } catch(e){ console.error("Save owner name failed:", e); }
+    } catch(e){ console.error("Save owner name failed:", e); setErrMsg("Couldn't save name: "+((e&&(e.message||e.details))||"unknown error")); }
     setSavingOwner(false);
   };
 
@@ -3564,6 +3572,11 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
 
       {/* Disposition buttons */}
       <div style={{padding:"12px 20px 4px"}}>
+        {errMsg && (
+          <div style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#fca5a5",lineHeight:1.4}}>
+            {errMsg}
+          </div>
+        )}
         <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Disposition</div>
         <div style={{display:"flex",gap:8,justifyContent:"space-between"}}>
           {DISPOSITIONS.map(d=>{
@@ -4528,6 +4541,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       {selectedHome&&(
         <HomePopup
           home={selectedHome}
+          currentUser={currentUser}
           onClose={()=>setSelectedHome(null)}
           onDelete={handleDeleteHome}
           onDisposition={async(home,disp)=>{
