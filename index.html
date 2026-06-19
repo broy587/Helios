@@ -2685,7 +2685,12 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
         ))}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Address</label>
-          <AddressAutocomplete value={form.address||""} onChange={v=>setForm(f=>({...f,address:v}))} gmapsKey={gmapsKey} inputStyle={inputStyle} placeholder="Street address"/>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,minWidth:0}}>
+              <AddressAutocomplete value={form.address||""} onChange={v=>setForm(f=>({...f,address:v}))} gmapsKey={gmapsKey} inputStyle={inputStyle} placeholder="Street address"/>
+            </div>
+            {form.address && <CopyIcon value={form.address}/>}
+          </div>
         </div>
         {[["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
