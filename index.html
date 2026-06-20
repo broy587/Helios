@@ -3345,7 +3345,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const moveToY = (clientY) => {
     const st = dragState.current;
     if(!st.active || !listRef.current) return;
-    const cards = Array.prototype.slice.call(listRef.current.querySelectorAll("[data-ticket-card]"));
+    const cards = Array.prototype.slice.call(listRef.current.children);
     if(!cards.length) return;
     let target = cards.length-1;
     for(let k=0;k<cards.length;k++){
