@@ -1987,7 +1987,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
     };
     return (
       <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Close</div>
+        <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Closer Notes</div>
         {questions.map(q=>{
           const v=getValue(q);
           const isYes=v==="Yes";
@@ -2046,7 +2046,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   }
   return (
     <div style={{marginBottom:22,background:"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:"1.5px solid #e2e8f0"}}>
-      <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Close</label>
+      <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
       {questions.map((q,idx)=>(
         <div key={q.key} style={{marginBottom:idx<questions.length-1?14:0}}>
           <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>{q.label}</div>
@@ -2251,7 +2251,7 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
   return (
     <div style={{marginBottom:16,background:dark?"#0f172a":"#fef9ee",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#f0d080"}`}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC Checklist</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setters AC Checklist</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
           <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
@@ -2575,12 +2575,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               </div>
             </div>
           )}
-          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           <ACChecklist
             leadId={lead.id}
             initialChecked={lead.ac_checklist||[]}
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
+          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
           )}
@@ -2891,7 +2891,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
           </select>
         </div>
         <div style={{marginBottom:14,background:"#f8fafc",borderRadius:12,padding:"14px",border:"1.5px solid #e2e8f0"}}>
-          <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Lead Status</label>
+          <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>AC Status</label>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Current Customer Response</div>
             <div style={{display:"flex",gap:16,alignItems:"center"}}>
