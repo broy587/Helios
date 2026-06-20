@@ -3342,16 +3342,15 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     } catch(e){ console.error("Reorder save failed:", e); }
   };
 
-  const onPtrMove = (e) => {
+  const moveToY = (clientY) => {
     const st = dragState.current;
     if(!st.active || !listRef.current) return;
     const cards = Array.prototype.slice.call(listRef.current.querySelectorAll("[data-ticket-card]"));
     if(!cards.length) return;
-    const y = e.clientY;
     let target = cards.length-1;
     for(let k=0;k<cards.length;k++){
       const r = cards[k].getBoundingClientRect();
-      if(y < r.top + r.height/2){ target = k; break; }
+      if(clientY < r.top + r.height/2){ target = k; break; }
     }
     if(target!==st.idx){
       setTickets(prev=>{
@@ -3364,21 +3363,29 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
       setDragIndex(target);
     }
   };
-  const onPtrUp = () => {
-    window.removeEventListener("pointermove", onPtrMove);
-    window.removeEventListener("pointerup", onPtrUp);
-    if(!dragState.current.active) return;
-    dragState.current.active=false;
-    setDragIndex(null);
-    setTickets(prev=>{ persistOrder(prev); return prev; });
-  };
-  const onHandleDown = (e, i) => {
-    e.preventDefault();
-    e.stopPropagation();
+
+  const beginReorder = (clientY, isTouch, i) => {
     dragState.current = {active:true, idx:i};
     setDragIndex(i);
-    window.addEventListener("pointermove", onPtrMove);
-    window.addEventListener("pointerup", onPtrUp);
+    const onMove = (ev) => {
+      if(isTouch){ ev.preventDefault(); if(ev.touches&&ev.touches[0]) moveToY(ev.touches[0].clientY); }
+      else moveToY(ev.clientY);
+    };
+    const onEnd = () => {
+      dragState.current.active=false;
+      setDragIndex(null);
+      setTickets(prev=>{ persistOrder(prev); return prev; });
+      if(isTouch){ window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onEnd); window.removeEventListener("touchcancel",onEnd); }
+      else { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onEnd); }
+    };
+    if(isTouch){
+      window.addEventListener("touchmove",onMove,{passive:false});
+      window.addEventListener("touchend",onEnd);
+      window.addEventListener("touchcancel",onEnd);
+    } else {
+      window.addEventListener("mousemove",onMove);
+      window.addEventListener("mouseup",onEnd);
+    }
   };
 
   useEffect(()=>{
@@ -3460,8 +3467,11 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
               <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${dragIndex===i?"#f97316":"#e2e8f0"}`,boxShadow:dragIndex===i?"0 8px 24px rgba(0,0,0,0.18)":"0 1px 4px rgba(0,0,0,0.06)",opacity:dragIndex===i?0.92:1,transform:dragIndex===i?"scale(1.01)":"none",transition:"box-shadow 0.15s, border-color 0.15s"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
-                    <div onPointerDown={e=>onHandleDown(e,i)} title="Drag to reorder"
-                      style={{touchAction:"none",cursor:"grab",color:"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none"}}>⠿</div>
+                    <div
+                      onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,i);}}
+                      onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,i);}}
+                      title="Drag to reorder"
+                      style={{touchAction:"none",cursor:dragIndex===i?"grabbing":"grab",color:dragIndex===i?"#f97316":"#cbd5e1",fontSize:20,lineHeight:1,padding:"4px 4px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",alignSelf:"center"}}>⠿</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
                       <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
