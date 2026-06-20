@@ -5508,7 +5508,7 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
 function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   const canManage = isOwner || isPrivileged;
   const CATEGORIES = [
-    {key:"pitches", label:"Pitches", icon:"🎯", blurb:"Door approaches & full pitches"},
+    {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
     {key:"playbooks", label:"Playbooks", icon:"📘", blurb:"Process guides & SOPs"},
     {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"}
@@ -5517,9 +5517,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   const [loading, setLoading] = useState(true);
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
-  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:""});
+  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:""});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
   const load = async () => {
@@ -5538,8 +5539,8 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   };
   useEffect(()=>{ load(); },[]);
 
-  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:""}); setEditing("new"); };
-  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||""}); setEditing(m); };
+  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:""}); setEditing("new"); };
+  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||""}); setEditing(m); };
   const closeForm = () => { setEditing(null); setErrMsg(""); };
 
   const handleFile = async (e) => {
@@ -5565,12 +5566,35 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   };
   const removeFile = () => setForm(f=>({...f, fileUrl:"", fileName:""}));
 
+  const handleImage = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if(!file) return;
+    if(!/^image\//.test(file.type) && !/\.(png|jpe?g|gif|webp|heic)$/i.test(file.name)){ setErrMsg("Please choose an image file."); return; }
+    if(file.size > 15*1024*1024){ setErrMsg("That image is too large (max 15 MB)."); return; }
+    setUploadingImg(true); setErrMsg("");
+    try {
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const path = `${userId}/img_${Date.now()}_${safe}`;
+      const {error} = await sb.storage.from("vault-files").upload(path, file, {contentType:file.type||"image/jpeg", upsert:false});
+      if(error) throw error;
+      const {data} = sb.storage.from("vault-files").getPublicUrl(path);
+      setForm(f=>({...f, imageUrl:(data&&data.publicUrl)||"", imageName:file.name}));
+    } catch(err){
+      const msg=((err&&(err.message||err.error||err.details))||"")+"";
+      if(/bucket|not found/i.test(msg)) setErrMsg("File storage isn't set up yet — the 'vault-files' bucket needs to be created.");
+      else setErrMsg("Upload failed: "+(msg||"unknown error"));
+    }
+    setUploadingImg(false);
+  };
+  const removeImage = () => setForm(f=>({...f, imageUrl:"", imageName:""}));
+
   const save = async () => {
     if(!form.title.trim()) return;
     setSaving(true);
     let url = form.url.trim();
     if(url && !/^https?:\/\//i.test(url)) url = "https://"+url; // tolerate pasted links without scheme
-    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null};
+    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null};
     try {
       if(editing==="new"){
         payload.created_by = userId;
@@ -5667,6 +5691,11 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
                 </div>
               )}
             </div>
+            {m.image_url && (
+              <a href={m.image_url} target="_blank" rel="noopener noreferrer" style={{display:"block",marginTop:10}}>
+                <img src={m.image_url} alt={m.title||""} style={{display:"block",width:"100%",maxHeight:280,objectFit:"contain",borderRadius:10,border:`1px solid ${dark?"#334155":"#e8e2f0"}`,background:dark?"#0f172a":"#f8fafc"}}/>
+              </a>
+            )}
             {(m.url || m.file_url) && (
               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
                 {m.file_url && (
@@ -5708,7 +5737,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
             <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))} placeholder="https://…" style={{...inputStyle,marginBottom:16}}/>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Attach PDF <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(optional)</span></label>
             {form.fileUrl ? (
-              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc",marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc",marginBottom:16}}>
                 <span style={{fontSize:18}}>📕</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#0f172a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{form.fileName||"Attached PDF"}</div>
@@ -5717,9 +5746,25 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
                 <button onClick={removeFile} style={{flexShrink:0,padding:"5px 10px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
               </div>
             ) : (
-              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",borderRadius:10,border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#fafafa",cursor:uploading?"default":"pointer",marginBottom:20,color:dark?"#94a3b8":"#64748b",fontSize:13,fontWeight:600}}>
+              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",borderRadius:10,border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#fafafa",cursor:uploading?"default":"pointer",marginBottom:16,color:dark?"#94a3b8":"#64748b",fontSize:13,fontWeight:600}}>
                 {uploading ? "Uploading…" : "📎 Choose a PDF to upload"}
                 <input type="file" accept="application/pdf,.pdf" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
+              </label>
+            )}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Attach Photo <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(optional)</span></label>
+            {form.imageUrl ? (
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc",marginBottom:20}}>
+                <img src={form.imageUrl} alt="" style={{width:46,height:46,objectFit:"cover",borderRadius:8,flexShrink:0,border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#0f172a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{form.imageName||"Attached photo"}</div>
+                  <a href={form.imageUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6b2d4e",fontWeight:600,textDecoration:"none"}}>Preview ↗</a>
+                </div>
+                <button onClick={removeImage} style={{flexShrink:0,padding:"5px 10px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
+              </div>
+            ) : (
+              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",borderRadius:10,border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#fafafa",cursor:uploadingImg?"default":"pointer",marginBottom:20,color:dark?"#94a3b8":"#64748b",fontSize:13,fontWeight:600}}>
+                {uploadingImg ? "Uploading…" : "🖼️ Choose a photo to upload"}
+                <input type="file" accept="image/*" onChange={handleImage} disabled={uploadingImg} style={{display:"none"}}/>
               </label>
             )}
             <div style={{display:"flex",gap:10}}>
