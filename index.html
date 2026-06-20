@@ -2508,12 +2508,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   <FitText style={{flex:1,minWidth:0,color:dark?"#f1f5f9":"#1e293b"}}>{value}</FitText>
                 ) : (
                   <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>
-                    {label==="📊 Smart Meter Texas" ? (
-                      <div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Usage Pulled</div>
-                        <UsagePulledToggle leadId={lead.id} initialValue={lead.usage_input||""} onUpdate={(v)=>onUpdate&&onUpdate({...lead,usage_input:v})}/>
-                      </div>
-                    ) : (value||"")}
+                    {value||""}
                   </div>
                 )}
                 {label==="Address" && (
@@ -2877,19 +2872,11 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey}) {
           </div>
         ))}
         <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Usage Pulled</label>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
           <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
-            style={{background:"none",border:"none",fontSize:12,fontWeight:600,color:"#6b2d4e",cursor:"pointer",textDecoration:"underline",padding:0}}>
-            Smart Meter Texas
+            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+            Open ›
           </button>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:form.usageInput==="No"?"#ef4444":"#94a3b8",fontWeight:form.usageInput==="No"?700:400}}>No</span>
-            <div onClick={()=>setForm(f=>({...f,usageInput:f.usageInput==="Yes"?"No":"Yes"}))}
-              style={{width:44,height:24,borderRadius:99,background:form.usageInput==="Yes"?"#10b981":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-              <div style={{position:"absolute",top:3,left:form.usageInput==="Yes"?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
-            </div>
-            <span style={{fontSize:12,color:form.usageInput==="Yes"?"#10b981":"#94a3b8",fontWeight:form.usageInput==="Yes"?700:400}}>Yes</span>
-          </div>
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
