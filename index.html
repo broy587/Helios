@@ -5733,10 +5733,6 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"12px 16px",flexShrink:0}}>
             <div style={{color:"#fff",fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{viewer.name}</div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <a href={viewer.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
-                style={{display:"inline-flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.15)",color:"#fff",textDecoration:"none",fontSize:12,fontWeight:700}}>
-                Open ↗
-              </a>
               <button onClick={()=>setViewer(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",fontSize:18,lineHeight:1,width:34,height:34,borderRadius:8,cursor:"pointer"}}>✕</button>
             </div>
           </div>
