@@ -3342,39 +3342,46 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     } catch(e){ console.error("Reorder save failed:", e); }
   };
 
-  const moveToY = (clientY) => {
-    const st = dragState.current;
-    if(!st.active || !listRef.current) return;
-    const cards = Array.prototype.slice.call(listRef.current.children);
-    if(!cards.length) return;
-    let target = cards.length-1;
-    for(let k=0;k<cards.length;k++){
-      const r = cards[k].getBoundingClientRect();
-      if(clientY < r.top + r.height/2){ target = k; break; }
-    }
-    if(target!==st.idx){
-      setTickets(prev=>{
-        const arr=[...prev];
-        const [moved]=arr.splice(st.idx,1);
-        arr.splice(target,0,moved);
-        return arr;
-      });
-      st.idx = target;
-      setDragIndex(target);
-    }
-  };
+  const [dragY, setDragY] = useState(0);
 
   const beginReorder = (clientY, isTouch, i) => {
-    dragState.current = {active:true, idx:i};
+    dragState.current = {active:true, idx:i, startY:clientY, lastY:clientY};
     setDragIndex(i);
+    setDragY(0);
     const onMove = (ev) => {
-      if(isTouch){ ev.preventDefault(); if(ev.touches&&ev.touches[0]) moveToY(ev.touches[0].clientY); }
-      else moveToY(ev.clientY);
+      const st = dragState.current;
+      if(!st.active) return;
+      if(isTouch && ev.cancelable) ev.preventDefault();
+      const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
+      st.lastY = cy;
+      setDragY(cy - st.startY);
     };
     const onEnd = () => {
-      dragState.current.active=false;
+      const st = dragState.current;
+      const cy = st.lastY;
+      let target = st.idx;
+      if(listRef.current){
+        const cards = Array.prototype.slice.call(listRef.current.children);
+        let count = 0;
+        for(let k=0;k<cards.length;k++){
+          if(k===st.idx) continue;
+          const r = cards[k].getBoundingClientRect();
+          if(cy > r.top + r.height/2) count++;
+        }
+        target = count;
+      }
+      st.active=false;
       setDragIndex(null);
-      setTickets(prev=>{ persistOrder(prev); return prev; });
+      setDragY(0);
+      if(target!==st.idx){
+        setTickets(prev=>{
+          const arr=[...prev];
+          const [moved]=arr.splice(st.idx,1);
+          arr.splice(target,0,moved);
+          persistOrder(arr);
+          return arr;
+        });
+      }
       if(isTouch){ window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onEnd); window.removeEventListener("touchcancel",onEnd); }
       else { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onEnd); }
     };
@@ -3464,7 +3471,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
             {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>{isOwner?"No tickets yet.":"You haven't submitted any tickets yet."}</div>}
             <div ref={listRef}>
             {tickets.map((t,i)=>(
-              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${dragIndex===i?"#f97316":"#e2e8f0"}`,boxShadow:dragIndex===i?"0 8px 24px rgba(0,0,0,0.18)":"0 1px 4px rgba(0,0,0,0.06)",opacity:dragIndex===i?0.92:1,transform:dragIndex===i?"scale(1.01)":"none",transition:"box-shadow 0.15s, border-color 0.15s"}}>
+              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${dragIndex===i?"#f97316":"#e2e8f0"}`,boxShadow:dragIndex===i?"0 12px 28px rgba(0,0,0,0.22)":"0 1px 4px rgba(0,0,0,0.06)",opacity:dragIndex===i?0.95:1,transform:dragIndex===i?`translateY(${dragY}px) scale(1.02)`:"none",transition:dragIndex===i?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:dragIndex===i?50:1,touchAction:dragIndex===i?"none":"auto"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
                     <div
