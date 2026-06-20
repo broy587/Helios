@@ -2145,7 +2145,11 @@ function HistorySection({lead, dark: darkProp}) {
       {open && history.map((entry,i)=>(
         <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<history.length-1?`1px solid ${dark?"#334155":"#f1f5f9"}`:"none",position:"relative"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-            <div style={{fontSize:11,color:"#64748b"}}>{entry.ts}</div>
+            <div style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span>{entry.ts}</span>
+              {entry.by && <span style={{color:dark?"#64748b":"#94a3b8"}}>•</span>}
+              {entry.by && <span style={{fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>{entry.by}</span>}
+            </div>
             {editing && (
               <button onClick={()=>deleteEntry(i)}
                 style={{background:"#fee2e2",border:"none",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,color:"#ef4444",cursor:"pointer"}}>
@@ -2955,29 +2959,30 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       if(e.button!==0)return;
       const startX=e.clientX, startY=e.clientY;
       let moved=false;
+      let dragStarted=false;
+      const beginDrag=()=>{
+        if(dragStarted) return;
+        dragStarted=true;
+        onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
+      };
       const onMM=ev=>{
-        if(Math.abs(ev.clientX-startX)>5||Math.abs(ev.clientY-startY)>5) moved=true;
+        if(!moved && (Math.abs(ev.clientX-startX)>5||Math.abs(ev.clientY-startY)>5)){
+          moved=true;
+          clearTimeout(timer);
+          beginDrag(); // movement past threshold = drag (works for fast drags too)
+        }
       };
       const onMU=()=>{
-        window.removeEventListener("mousemove",onMM);
-        window.removeEventListener("mouseup",onMU);
-        if(!moved) onView(lead);
-      };
-      const timer=setTimeout(()=>{
-        window.removeEventListener("mousemove",onMM);
-        window.removeEventListener("mouseup",onMU);
-        if(moved) onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
-        else onTouchDragStart({_isMouse:true,_mouseEvent:e},lead.id);
-      },200);
-      // If released quickly = click, if held = drag
-      const onMU2=()=>{
         clearTimeout(timer);
         window.removeEventListener("mousemove",onMM);
-        window.removeEventListener("mouseup",onMU2);
-        if(!moved) onView(lead);
+        window.removeEventListener("mouseup",onMU);
+        // Only a real click (no drag ever started, no movement) opens the lead
+        if(!dragStarted && !moved) onView(lead);
       };
+      // Press-and-hold also starts a drag even without moving yet
+      const timer=setTimeout(beginDrag,200);
       window.addEventListener("mousemove",onMM);
-      window.addEventListener("mouseup",onMU2);
+      window.addEventListener("mouseup",onMU);
     };
 
     el.addEventListener("touchstart",onTS,{passive:true});
@@ -3790,7 +3795,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
             <select value={linkedLead.stage||""} onChange={async e=>{
               const newStage=e.target.value;
-              const entry={ts:formatTs(),changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
+              const entry={ts:formatTs(),by:(currentUser&&(currentUser.name||currentUser.email))||"Unknown",changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
               await sb.from("leads").update({stage:newStage,history:[entry,...(linkedLead.history||[])],updated_at:new Date().toISOString()}).eq("id",linkedLead.id);
               if(onStageChange) onStageChange(linkedLead.id, newStage, entry);
             }}
@@ -5577,7 +5582,8 @@ function App() {
       const pc=(existing.bill_photos||[]).length,nc=(form.billPhotos||[]).length;
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
     }
-    const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Lead created"]}];
+    const author=(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown";
+    const newHistory=existing?(changes.length>0?[{ts:formatTs(),by:author,changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),by:author,changes:["Lead created"]}];
     // Split payload — save bill_photos separately only if changed (they're huge)
     const existingPhotos = modal.lead?.bill_photos || [];
     const newPhotos = form.billPhotos || [];
@@ -5648,14 +5654,14 @@ function App() {
 
   const handleStageChange=async(id,newStage)=>{
     const lead=leads.find(l=>l.id===id);if(!lead)return;
-    const entry={ts:formatTs(),changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
+    const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
     await sb.from("leads").update({stage:newStage,history:[entry,...(lead.history||[])],updated_at:new Date().toISOString()}).eq("id",id);
     setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
   };
 
   const handleTransfer=async(leadId,toRepId)=>{
     const lead=leads.find(l=>l.id===leadId),toRep=profiles.find(p=>p.id===toRepId);
-    const entry={ts:formatTs(),changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
+    const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
     await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
     await loadData(user,profile);
   };
@@ -5911,7 +5917,7 @@ function App() {
             })()}
             canvassLeadFilter={canvassLeadFilter}
             setCanvassLeadFilter={setCanvassLeadFilter}
-            currentUser={user}
+            currentUser={{...user, name:profile?.name}}
             isOwner={isOwner}
             teams={teams}
             teamMembers={teamMembers}
