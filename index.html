@@ -2370,6 +2370,40 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [photos,setPhotos]=useState([]);
   const [photosLoading,setPhotosLoading]=useState(false);
 
+  const savePhoto = async (src, idx, ev) => {
+    if(ev) ev.stopPropagation();
+    try {
+      let blob, mime="image/jpeg";
+      if(typeof src==="string" && src.startsWith("data:")){
+        const [head,b64]=src.split(",");
+        mime=((head.match(/:(.*?);/)||[])[1])||"image/jpeg";
+        const bin=atob(b64), arr=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+        blob=new Blob([arr],{type:mime});
+      } else {
+        const res=await fetch(src); blob=await res.blob(); mime=blob.type||"image/jpeg";
+      }
+      const ext=(mime.split("/")[1]||"jpg").replace("jpeg","jpg");
+      const base=((lead&&lead.name)||"lead").replace(/[^a-z0-9]/gi,"_").slice(0,40)||"lead";
+      const fileName=`${base}_bill_${idx+1}.${ext}`;
+      const file=new File([blob],fileName,{type:mime});
+      // Mobile: native share sheet offers "Save Image" to Photos
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        try { await navigator.share({files:[file]}); return; }
+        catch(shareErr){ if(shareErr&&shareErr.name==="AbortError") return; /* fall through to download */ }
+      }
+      // Desktop / fallback: trigger a download
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(e){
+      console.error("Save photo failed:",e);
+      try { window.open(src,"_blank"); } catch(_){}
+    }
+  };
+
   useEffect(()=>{
     if(!lead) return;
     setPhotos([]);
@@ -2572,7 +2606,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
       {imgOpen!==null && photos && photos[imgOpen] && (
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
           <img src={photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}/>
-          <div style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}}>✕</div>
+          <button onClick={e=>savePhoto(photos[imgOpen],imgOpen,e)}
+            style={{position:"absolute",top:16,left:20,display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1.5px solid rgba(255,255,255,0.35)",color:"#fff",fontSize:14,fontWeight:700,padding:"8px 16px",borderRadius:10,cursor:"pointer",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
+            ⬇ Save
+          </button>
+          <div onClick={()=>setImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}}>✕</div>
           <div style={{position:"absolute",bottom:16,color:"#fff",fontSize:13,opacity:0.7,background:"rgba(0,0,0,0.4)",padding:"4px 12px",borderRadius:20}}>{imgOpen+1} of {photos.length} — tap to close</div>
         </div>
       )}
@@ -3294,6 +3332,54 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const [sent, setSent] = useState(false);
   const [tickets, setTickets] = useState([]);
   const [loadingTickets, setLoadingTickets] = useState(true);
+  const [dragIndex, setDragIndex] = useState(null);
+  const listRef = React.useRef(null);
+  const dragState = React.useRef({active:false, idx:null});
+
+  const persistOrder = async (arr) => {
+    try {
+      await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx}).eq("id",t.id)));
+    } catch(e){ console.error("Reorder save failed:", e); }
+  };
+
+  const onPtrMove = (e) => {
+    const st = dragState.current;
+    if(!st.active || !listRef.current) return;
+    const cards = Array.prototype.slice.call(listRef.current.querySelectorAll("[data-ticket-card]"));
+    if(!cards.length) return;
+    const y = e.clientY;
+    let target = cards.length-1;
+    for(let k=0;k<cards.length;k++){
+      const r = cards[k].getBoundingClientRect();
+      if(y < r.top + r.height/2){ target = k; break; }
+    }
+    if(target!==st.idx){
+      setTickets(prev=>{
+        const arr=[...prev];
+        const [moved]=arr.splice(st.idx,1);
+        arr.splice(target,0,moved);
+        return arr;
+      });
+      st.idx = target;
+      setDragIndex(target);
+    }
+  };
+  const onPtrUp = () => {
+    window.removeEventListener("pointermove", onPtrMove);
+    window.removeEventListener("pointerup", onPtrUp);
+    if(!dragState.current.active) return;
+    dragState.current.active=false;
+    setDragIndex(null);
+    setTickets(prev=>{ persistOrder(prev); return prev; });
+  };
+  const onHandleDown = (e, i) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragState.current = {active:true, idx:i};
+    setDragIndex(i);
+    window.addEventListener("pointermove", onPtrMove);
+    window.addEventListener("pointerup", onPtrUp);
+  };
 
   useEffect(()=>{
     loadTickets();
@@ -3301,9 +3387,11 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
 
   const loadTickets = async () => {
     setLoadingTickets(true);
-    let q = sb.from("support_tickets").select("*, profiles(name,email)").order("created_at",{ascending:false});
-    if(!isOwner) q = q.eq("submitted_by", user.id);
-    const {data} = await q;
+    const base = () => { let q = sb.from("support_tickets").select("*, profiles(name,email)"); if(!isOwner) q = q.eq("submitted_by", user.id); return q; };
+    let {data,error} = await base().order("sort_order",{ascending:true,nullsFirst:false}).order("created_at",{ascending:false});
+    if(error){ // sort_order column may not exist yet — fall back gracefully
+      ({data} = await base().order("created_at",{ascending:false}));
+    }
     setTickets(data||[]);
     setLoadingTickets(false);
   };
@@ -3312,7 +3400,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     if(!message.trim()) return;
     setSending(true);
     const {data} = await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()}).select("*, profiles(name,email)").single();
-    if(data) setTickets(ts=>[data,...ts]);
+    if(data) setTickets(ts=>{ const arr=[data,...ts]; persistOrder(arr); return arr; });
     setSending(false); setSent(true); setMessage("");
     setTimeout(()=>setSent(false),3000);
   };
@@ -3367,12 +3455,17 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
             <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:12}}>{isOwner?"All Tickets":"Your Tickets"}</div>
             {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
             {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>{isOwner?"No tickets yet.":"You haven't submitted any tickets yet."}</div>}
-            {tickets.map(t=>(
-              <div key={t.id} style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:"1.5px solid #e2e8f0",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+            <div ref={listRef}>
+            {tickets.map((t,i)=>(
+              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${dragIndex===i?"#f97316":"#e2e8f0"}`,boxShadow:dragIndex===i?"0 8px 24px rgba(0,0,0,0.18)":"0 1px 4px rgba(0,0,0,0.06)",opacity:dragIndex===i?0.92:1,transform:dragIndex===i?"scale(1.01)":"none",transition:"box-shadow 0.15s, border-color 0.15s"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
+                    <div onPointerDown={e=>onHandleDown(e,i)} title="Drag to reorder"
+                      style={{touchAction:"none",cursor:"grab",color:"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none"}}>⠿</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
+                      <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+                    </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     {editingId!==t.id && (
@@ -3409,6 +3502,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
                 )}
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>
