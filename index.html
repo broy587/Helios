@@ -3075,6 +3075,30 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
             {lead.confirmed && <span style={{fontSize:10,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"1px 7px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
           </div>
         )}
+        {lead.follow_up_date && (()=>{
+          let label = lead.follow_up_date;
+          try {
+            const parts = lead.follow_up_date.split("-"); // YYYY-MM-DD
+            if(parts.length===3){
+              const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+              const today = new Date(); today.setHours(0,0,0,0);
+              const diff = Math.round((d - today)/86400000);
+              const md = `${parts[1]}/${parts[2]}`;
+              if(diff===0) label = `Today (${md})`;
+              else if(diff===1) label = `Tomorrow (${md})`;
+              else if(diff<0) label = `${md} (overdue)`;
+              else label = md;
+            }
+          } catch(e){}
+          const overdue = (()=>{ try { const p=lead.follow_up_date.split("-"); const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); const t=new Date(); t.setHours(0,0,0,0); return d<t; } catch(e){ return false; } })();
+          return (
+            <div style={{display:"flex",marginTop:3}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:overdue?"#b91c1c":"#92400e",background:overdue?"#fee2e2":"#fef3c7",borderRadius:20,padding:"1px 8px"}}>
+                🔔 Follow up: {label}
+              </span>
+            </div>
+          );
+        })()}
       </div>
       <div style={{fontSize:16,color:"#cbd5e1",flexShrink:0,marginLeft:8}}>≡</div>
     </div>
