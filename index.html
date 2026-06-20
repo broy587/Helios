@@ -5691,17 +5691,18 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
                 </div>
               )}
             </div>
-            {m.image_url && (
-              <a href={m.image_url} target="_blank" rel="noopener noreferrer" style={{display:"block",marginTop:10}}>
-                <img src={m.image_url} alt={m.title||""} style={{display:"block",width:"100%",maxHeight:280,objectFit:"contain",borderRadius:10,border:`1px solid ${dark?"#334155":"#e8e2f0"}`,background:dark?"#0f172a":"#f8fafc"}}/>
-              </a>
-            )}
-            {(m.url || m.file_url) && (
+            {(m.url || m.file_url || m.image_url) && (
               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
                 {m.file_url && (
                   <a href={m.file_url} target="_blank" rel="noopener noreferrer"
                     style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fde8e8",color:"#b91c1c",textDecoration:"none",fontSize:13,fontWeight:700}}>
                     📕 View PDF
+                  </a>
+                )}
+                {m.image_url && (
+                  <a href={m.image_url} target="_blank" rel="noopener noreferrer"
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e6f7ee",color:"#047857",textDecoration:"none",fontSize:13,fontWeight:700}}>
+                    🖼️ View Photo
                   </a>
                 )}
                 {m.url && (
