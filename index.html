@@ -3343,36 +3343,39 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   };
 
   const [dragY, setDragY] = useState(0);
+  const [dropG, setDropG] = useState(null);
 
   const beginReorder = (clientY, isTouch, i) => {
-    dragState.current = {active:true, idx:i, startY:clientY, lastY:clientY};
+    const cardsEl = listRef.current ? Array.prototype.slice.call(listRef.current.children) : [];
+    const centers = cardsEl.map(c=>{ const r=c.getBoundingClientRect(); return r.top + r.height/2; });
+    const H = (cardsEl[i] ? cardsEl[i].getBoundingClientRect().height : 60) + 10;
+    dragState.current = {active:true, idx:i, startY:clientY, lastY:clientY, centers:centers, H:H, g:i};
     setDragIndex(i);
     setDragY(0);
+    setDropG(i);
+    const computeG = (cy) => {
+      const st = dragState.current;
+      let g = 0;
+      for(let k=0;k<st.centers.length;k++){ if(k===st.idx) continue; if(cy > st.centers[k]) g++; }
+      return g;
+    };
     const onMove = (ev) => {
       const st = dragState.current;
       if(!st.active) return;
       if(isTouch && ev.cancelable) ev.preventDefault();
       const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
       st.lastY = cy;
+      st.g = computeG(cy);
       setDragY(cy - st.startY);
+      setDropG(st.g);
     };
     const onEnd = () => {
       const st = dragState.current;
-      const cy = st.lastY;
-      let target = st.idx;
-      if(listRef.current){
-        const cards = Array.prototype.slice.call(listRef.current.children);
-        let count = 0;
-        for(let k=0;k<cards.length;k++){
-          if(k===st.idx) continue;
-          const r = cards[k].getBoundingClientRect();
-          if(cy > r.top + r.height/2) count++;
-        }
-        target = count;
-      }
+      const target = st.g;
       st.active=false;
       setDragIndex(null);
       setDragY(0);
+      setDropG(null);
       if(target!==st.idx){
         setTickets(prev=>{
           const arr=[...prev];
@@ -3470,8 +3473,17 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
             {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
             {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>{isOwner?"No tickets yet.":"You haven't submitted any tickets yet."}</div>}
             <div ref={listRef}>
-            {tickets.map((t,i)=>(
-              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${dragIndex===i?"#f97316":"#e2e8f0"}`,boxShadow:dragIndex===i?"0 12px 28px rgba(0,0,0,0.22)":"0 1px 4px rgba(0,0,0,0.06)",opacity:dragIndex===i?0.95:1,transform:dragIndex===i?`translateY(${dragY}px) scale(1.02)`:"none",transition:dragIndex===i?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:dragIndex===i?50:1,touchAction:dragIndex===i?"none":"auto"}}>
+            {tickets.map((t,i)=>{
+              const isDragged = dragIndex===i;
+              let shift = 0;
+              if(dragIndex!==null && !isDragged && dropG!==null){
+                const H = (dragState.current && dragState.current.H) || 0;
+                if(i>dragIndex && i<=dropG) shift = -H;
+                else if(i<dragIndex && i>=dropG) shift = H;
+              }
+              const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : (shift ? `translateY(${shift}px)` : "none");
+              return (
+              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":"#e2e8f0"}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.22)":"0 1px 4px rgba(0,0,0,0.06)",opacity:isDragged?0.95:1,transform:transform,transition:isDragged?"none":"transform 0.18s ease, box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,touchAction:isDragged?"none":"auto"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
                     <div
@@ -3518,7 +3530,8 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
                   <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
                 )}
               </div>
-            ))}
+              );
+            })}
             </div>
           </div>
         )}
