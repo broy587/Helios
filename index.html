@@ -5660,7 +5660,9 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   };
 
   const beginReorder = (clientY, isTouch, id) => {
-    dragState.current = {active:true, id, startY:clientY, lastY:clientY, idx:0};
+    const draggedEl = listRef.current ? listRef.current.querySelector(`[data-mat-id="${id}"]`) : null;
+    const H = draggedEl ? draggedEl.getBoundingClientRect().height + 10 : 80;
+    dragState.current = {active:true, id, startY:clientY, lastY:clientY, idx:0, H};
     setDragId(id);
     setDragY(0);
     setDropIndex(null);
@@ -5870,11 +5872,17 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
 
       {!loading && (
         <div ref={listRef}>
-        {catMaterials.map(m=>{
+        {(()=>{ const dragIndex = dragId ? catMaterials.findIndex(x=>x.id===dragId) : -1; const H = (dragState.current && dragState.current.H) || 0; return catMaterials.map((m,i)=>{
         const isVideo = activeCat==="videos";
         const isDragged = dragId===m.id;
+        let shift = 0;
+        if(!isDragged && dragIndex>=0 && dropIndex!==null){
+          if(i>dragIndex && i<=dropIndex) shift = -H;
+          else if(i<dragIndex && i>=dropIndex) shift = H;
+        }
+        const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : (shift ? `translateY(${shift}px)` : "none");
         return (
-          <div key={m.id} data-mat-id={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e8e2f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.25)":"0 1px 4px rgba(0,0,0,0.05)",transform:isDragged?`translateY(${dragY}px) scale(1.02)`:"none",transition:isDragged?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,opacity:isDragged?0.97:1,touchAction:isDragged?"none":"auto"}}>
+          <div key={m.id} data-mat-id={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e8e2f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.25)":"0 1px 4px rgba(0,0,0,0.05)",transform:transform,transition:isDragged?"none":"transform 0.18s ease, box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,opacity:isDragged?0.97:1,touchAction:isDragged?"none":"auto"}}>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
                 {canManage && (
@@ -5927,7 +5935,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
             )}
           </div>
         );
-      })}
+      }); })()}
         </div>
       )}
 
