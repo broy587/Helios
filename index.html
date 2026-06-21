@@ -5609,7 +5609,7 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
 
 
 function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
-  const canManage = isOwner || isPrivileged;
+  const canManage = isOwner;
   const CATEGORIES = [
     {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
@@ -5626,6 +5626,73 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
   const [uploading, setUploading] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
   const [errMsg, setErrMsg] = useState("");
+  const [dragId, setDragId] = useState(null);
+  const [dragY, setDragY] = useState(0);
+  const [dropIndex, setDropIndex] = useState(null);
+  const listRef = React.useRef(null);
+  const dragState = React.useRef({active:false, id:null});
+
+  const persistOrder = async (arr) => {
+    try { await Promise.all(arr.map((m,idx)=> sb.from("vault_materials").update({sort_order:idx}).eq("id",m.id))); }
+    catch(e){ console.error("Vault reorder save failed:", e); }
+  };
+
+  const beginReorder = (clientY, isTouch, id) => {
+    dragState.current = {active:true, id, startY:clientY, lastY:clientY, idx:0};
+    setDragId(id);
+    setDragY(0);
+    setDropIndex(null);
+    const computeIdx = (cy) => {
+      let index = 0;
+      if(listRef.current){
+        const cards = Array.prototype.slice.call(listRef.current.children).filter(el=>{ const cid=el.getAttribute("data-mat-id"); return cid && cid!==dragState.current.id; });
+        for(let k=0;k<cards.length;k++){ const r=cards[k].getBoundingClientRect(); if(cy > r.top + r.height/2) index++; }
+      }
+      return index;
+    };
+    const onMove = (ev) => {
+      const st = dragState.current;
+      if(!st.active) return;
+      if(isTouch && ev.cancelable) ev.preventDefault();
+      const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
+      st.lastY = cy;
+      st.idx = computeIdx(cy);
+      setDragY(cy - st.startY);
+      setDropIndex(st.idx);
+    };
+    const onEnd = () => {
+      const st = dragState.current;
+      const target = st.idx;
+      st.active=false;
+      setDragId(null);
+      setDragY(0);
+      setDropIndex(null);
+      setMaterials(prev=>{
+        const catList = prev.filter(m=>m.category===activeCat);
+        const dragged = catList.find(m=>m.id===st.id);
+        if(!dragged) return prev;
+        const without = catList.filter(m=>m.id!==st.id);
+        without.splice(Math.min(target, without.length), 0, dragged);
+        // rebuild full materials: active category replaced with new order, others kept
+        const known = CATEGORIES.map(c=>c.key);
+        const newAll = [];
+        CATEGORIES.forEach(c=>{ newAll.push(...(c.key===activeCat ? without : prev.filter(m=>m.category===c.key))); });
+        newAll.push(...prev.filter(m=>!known.includes(m.category)));
+        persistOrder(newAll);
+        return newAll;
+      });
+      if(isTouch){ window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onEnd); window.removeEventListener("touchcancel",onEnd); }
+      else { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onEnd); }
+    };
+    if(isTouch){
+      window.addEventListener("touchmove",onMove,{passive:false});
+      window.addEventListener("touchend",onEnd);
+      window.addEventListener("touchcancel",onEnd);
+    } else {
+      window.addEventListener("mousemove",onMove);
+      window.addEventListener("mouseup",onEnd);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -5779,14 +5846,26 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
         </div>
       )}
 
-      {!loading && catMaterials.map(m=>{
+      {!loading && (
+        <div ref={listRef}>
+        {catMaterials.map(m=>{
         const isVideo = activeCat==="videos";
+        const isDragged = dragId===m.id;
         return (
-          <div key={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${dark?"#334155":"#e8e2f0"}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:m.description?4:0}}>{m.title}</div>
-                {m.description && <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45,whiteSpace:"pre-wrap"}}>{m.description}</div>}
+          <div key={m.id} data-mat-id={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e8e2f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.25)":"0 1px 4px rgba(0,0,0,0.05)",transform:isDragged?`translateY(${dragY}px) scale(1.02)`:"none",transition:isDragged?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,opacity:isDragged?0.97:1,touchAction:isDragged?"none":"auto"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
+                {canManage && (
+                  <div
+                    onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,m.id);}}
+                    onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,m.id);}}
+                    title="Drag to reorder"
+                    style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",marginTop:2}}>⠿</div>
+                )}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:m.description?4:0}}>{m.title}</div>
+                  {m.description && <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45,whiteSpace:"pre-wrap"}}>{m.description}</div>}
+                </div>
               </div>
               {canManage && (
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
@@ -5820,6 +5899,8 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark}) {
           </div>
         );
       })}
+        </div>
+      )}
 
       {/* In-app viewer (PDF / photo) */}
       {viewer && (
