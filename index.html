@@ -3363,6 +3363,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const [dropInfo, setDropInfo] = useState(null); // {pile, index}
   const urgentRef = React.useRef(null);
   const ideasRef = React.useRef(null);
+  const scrollRef = React.useRef(null);
   const dragState = React.useRef({active:false, id:null});
 
   const pileOf = (t) => (t && t.pile==="ideas") ? "ideas" : "urgent";
@@ -3378,7 +3379,8 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   };
 
   const beginReorder = (clientY, isTouch, id) => {
-    dragState.current = {active:true, id, startY:clientY, lastY:clientY, drop:null};
+    const scroller = scrollRef.current;
+    dragState.current = {active:true, id, startY:clientY, lastY:clientY, drop:null, startScroll: scroller?scroller.scrollTop:0, raf:null};
     setDragId(id);
     setDragY(0);
     setDropInfo(null);
@@ -3396,18 +3398,44 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
       }
       return {pile, index};
     };
+    const updateVisual = (cy) => {
+      const st = dragState.current;
+      const sc = scrollRef.current;
+      const scrollDelta = sc ? (sc.scrollTop - st.startScroll) : 0;
+      st.drop = computeDrop(cy);
+      setDragY((cy - st.startY) + scrollDelta);
+      setDropInfo(st.drop);
+    };
+    const autoScroll = () => {
+      const st = dragState.current;
+      if(!st.active){ st.raf=null; return; }
+      const sc = scrollRef.current;
+      if(sc){
+        const rect = sc.getBoundingClientRect();
+        const edge = 64;
+        const cy = st.lastY;
+        let dv = 0;
+        if(cy < rect.top + edge) dv = -Math.min(16, (rect.top + edge - cy)/3 + 4);
+        else if(cy > rect.bottom - edge) dv = Math.min(16, (cy - (rect.bottom - edge))/3 + 4);
+        if(dv !== 0){
+          const before = sc.scrollTop;
+          sc.scrollTop = before + dv;
+          if(sc.scrollTop !== before) updateVisual(cy);
+        }
+      }
+      st.raf = requestAnimationFrame(autoScroll);
+    };
     const onMove = (ev) => {
       const st = dragState.current;
       if(!st.active) return;
       if(isTouch && ev.cancelable) ev.preventDefault();
       const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
       st.lastY = cy;
-      st.drop = computeDrop(cy);
-      setDragY(cy - st.startY);
-      setDropInfo(st.drop);
+      updateVisual(cy);
     };
     const onEnd = () => {
       const st = dragState.current;
+      if(st.raf) cancelAnimationFrame(st.raf);
       const drop = st.drop || computeDrop(st.lastY);
       st.active=false;
       setDragId(null);
@@ -3427,6 +3455,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
       if(isTouch){ window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onEnd); window.removeEventListener("touchcancel",onEnd); }
       else { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onEnd); }
     };
+    dragState.current.raf = requestAnimationFrame(autoScroll);
     if(isTouch){
       window.addEventListener("touchmove",onMove,{passive:false});
       window.addEventListener("touchend",onEnd);
@@ -3550,7 +3579,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const pileDropStyle = (which) => ({minHeight:54,padding:"2px",marginBottom:8,borderRadius:12,transition:"background 0.15s, outline-color 0.15s",background:dropInfo&&dropInfo.pile===which?(dark?"rgba(249,115,22,0.08)":"#fff7ed"):"transparent",outline:dropInfo&&dropInfo.pile===which?"2px dashed #fdba74":"2px dashed transparent",outlineOffset:2});
 
   return (
-    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
+    <div ref={scrollRef} style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Submit a Ticket</div>
