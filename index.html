@@ -3355,34 +3355,46 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [newPile, setNewPile] = useState("urgent");
   const [tickets, setTickets] = useState([]);
   const [loadingTickets, setLoadingTickets] = useState(true);
-  const [dragIndex, setDragIndex] = useState(null);
-  const listRef = React.useRef(null);
-  const dragState = React.useRef({active:false, idx:null});
+  const [dragId, setDragId] = useState(null);
+  const [dragY, setDragY] = useState(0);
+  const [dropInfo, setDropInfo] = useState(null); // {pile, index}
+  const urgentRef = React.useRef(null);
+  const ideasRef = React.useRef(null);
+  const dragState = React.useRef({active:false, id:null});
 
-  const persistOrder = async (arr) => {
+  const pileOf = (t) => (t && t.pile==="ideas") ? "ideas" : "urgent";
+  const rebuild = (arr) => [...arr.filter(t=>pileOf(t)==="urgent"), ...arr.filter(t=>pileOf(t)==="ideas")];
+
+  const persistAll = async (arr) => {
     try {
-      await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx}).eq("id",t.id)));
-    } catch(e){ console.error("Reorder save failed:", e); }
+      await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx, pile:pileOf(t)}).eq("id",t.id)));
+    } catch(e){
+      try { await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx}).eq("id",t.id))); }
+      catch(e2){ console.error("Ticket save failed:", e2); }
+    }
   };
 
-  const [dragY, setDragY] = useState(0);
-  const [dropG, setDropG] = useState(null);
-
-  const beginReorder = (clientY, isTouch, i) => {
-    const cardsEl = listRef.current ? Array.prototype.slice.call(listRef.current.children) : [];
-    const centers = cardsEl.map(c=>{ const r=c.getBoundingClientRect(); return r.top + r.height/2; });
-    const H = (cardsEl[i] ? cardsEl[i].getBoundingClientRect().height : 60) + 10;
-    dragState.current = {active:true, idx:i, startY:clientY, lastY:clientY, centers:centers, H:H, g:i};
-    setDragIndex(i);
+  const beginReorder = (clientY, isTouch, id) => {
+    dragState.current = {active:true, id, startY:clientY, lastY:clientY, drop:null};
+    setDragId(id);
     setDragY(0);
-    setDropG(i);
-    const computeG = (cy) => {
-      const st = dragState.current;
-      let g = 0;
-      for(let k=0;k<st.centers.length;k++){ if(k===st.idx) continue; if(cy > st.centers[k]) g++; }
-      return g;
+    setDropInfo(null);
+    const computeDrop = (cy) => {
+      const uRect = urgentRef.current ? urgentRef.current.getBoundingClientRect() : null;
+      const iRect = ideasRef.current ? ideasRef.current.getBoundingClientRect() : null;
+      let pile;
+      if(uRect && iRect) pile = cy < (uRect.bottom + iRect.top)/2 ? "urgent" : "ideas";
+      else pile = uRect ? "urgent" : "ideas";
+      const cont = pile==="urgent" ? urgentRef.current : ideasRef.current;
+      let index = 0;
+      if(cont){
+        const cards = Array.prototype.slice.call(cont.children).filter(el=>{ const cid=el.getAttribute("data-ticket-id"); return cid && cid!==dragState.current.id; });
+        for(let k=0;k<cards.length;k++){ const r=cards[k].getBoundingClientRect(); if(cy > r.top + r.height/2) index++; }
+      }
+      return {pile, index};
     };
     const onMove = (ev) => {
       const st = dragState.current;
@@ -3390,26 +3402,28 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
       if(isTouch && ev.cancelable) ev.preventDefault();
       const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
       st.lastY = cy;
-      st.g = computeG(cy);
+      st.drop = computeDrop(cy);
       setDragY(cy - st.startY);
-      setDropG(st.g);
+      setDropInfo(st.drop);
     };
     const onEnd = () => {
       const st = dragState.current;
-      const target = st.g;
+      const drop = st.drop || computeDrop(st.lastY);
       st.active=false;
-      setDragIndex(null);
+      setDragId(null);
       setDragY(0);
-      setDropG(null);
-      if(target!==st.idx){
-        setTickets(prev=>{
-          const arr=[...prev];
-          const [moved]=arr.splice(st.idx,1);
-          arr.splice(target,0,moved);
-          persistOrder(arr);
-          return arr;
-        });
-      }
+      setDropInfo(null);
+      setTickets(prev=>{
+        const dragged = prev.find(t=>t.id===st.id);
+        if(!dragged) return prev;
+        const others = prev.filter(t=>t.id!==st.id);
+        const targetList = others.filter(t=>pileOf(t)===drop.pile);
+        const otherList = others.filter(t=>pileOf(t)!==drop.pile);
+        targetList.splice(Math.min(drop.index, targetList.length), 0, {...dragged, pile:drop.pile});
+        const finalArr = rebuild([...otherList, ...targetList]);
+        persistAll(finalArr);
+        return finalArr;
+      });
       if(isTouch){ window.removeEventListener("touchmove",onMove); window.removeEventListener("touchend",onEnd); window.removeEventListener("touchcancel",onEnd); }
       else { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onEnd); }
     };
@@ -3441,8 +3455,12 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const handleSubmit = async () => {
     if(!message.trim()) return;
     setSending(true);
-    const {data} = await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()}).select("*, profiles(name,email)").single();
-    if(data) setTickets(ts=>{ const arr=[data,...ts]; persistOrder(arr); return arr; });
+    let {data,error} = await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim(), pile:newPile}).select("*, profiles(name,email)").single();
+    if(error){ // pile column may not exist yet — retry without it
+      ({data} = await sb.from("support_tickets").insert({submitted_by:user.id, message:message.trim()}).select("*, profiles(name,email)").single());
+      if(data) data = {...data, pile:newPile};
+    }
+    if(data) setTickets(ts=>{ const arr=rebuild([data,...ts]); persistAll(arr); return arr; });
     setSending(false); setSent(true); setMessage("");
     setTimeout(()=>setSent(false),3000);
   };
@@ -3472,11 +3490,70 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     setEditText("");
   };
 
+  const urgentTickets = tickets.filter(t=>pileOf(t)==="urgent");
+  const ideasTickets = tickets.filter(t=>pileOf(t)==="ideas");
+
+  const renderCard = (t) => {
+    const isDragged = dragId===t.id;
+    const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : "none";
+    return (
+      <div key={t.id} data-ticket-id={t.id} style={{background:dark?"#0f172a":"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e2e8f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.28)":"0 1px 4px rgba(0,0,0,0.06)",opacity:isDragged?0.97:1,transform:transform,transition:isDragged?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,touchAction:isDragged?"none":"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
+            <div
+              onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,t.id);}}
+              onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,t.id);}}
+              title="Drag to move / reorder"
+              style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:20,lineHeight:1,padding:"4px 4px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",alignSelf:"center"}}>⠿</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
+              <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            {editingId!==t.id && (
+              <button onClick={()=>startEdit(t)} title="Edit ticket"
+                style={{padding:"4px 9px",borderRadius:20,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                ✏️ Edit
+              </button>
+            )}
+            {isOwner && (
+              <button onClick={()=>handleResolve(t.id)}
+                style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:dark?"#1e293b":"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                Resolve
+              </button>
+            )}
+          </div>
+        </div>
+        {editingId===t.id ? (
+          <div>
+            <textarea value={editText} onChange={e=>setEditText(e.target.value)} rows={4}
+              style={{width:"100%",fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",border:"1.5px solid #c8b8a2",resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <button onClick={()=>saveEdit(t.id)} disabled={savingEdit||!editText.trim()}
+                style={{padding:"6px 14px",borderRadius:8,border:"none",background:editText.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:editText.trim()?"#fff":"#94a3b8",fontWeight:700,fontSize:12,cursor:editText.trim()?"pointer":"default"}}>
+                {savingEdit?"Saving...":"Save"}
+              </button>
+              <button onClick={cancelEdit}
+                style={{padding:"6px 14px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,background:dark?"#1e293b":"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
+        )}
+      </div>
+    );
+  };
+
+  const pileDropStyle = (which) => ({minHeight:54,padding:"2px",marginBottom:8,borderRadius:12,transition:"background 0.15s, outline-color 0.15s",background:dropInfo&&dropInfo.pile===which?(dark?"rgba(249,115,22,0.08)":"#fff7ed"):"transparent",outline:dropInfo&&dropInfo.pile===which?"2px dashed #fdba74":"2px dashed transparent",outlineOffset:2});
+
   return (
     <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
-        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Report an Issue</div>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Submit a Ticket</div>
       </div>
       <div style={{padding:"0 20px"}}>
         {sent && <div style={{background:"#d1fae5",border:"1.5px solid #10b981",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#065f46",marginBottom:16}}>Ticket submitted! We'll look into it.</div>}
@@ -3486,78 +3563,50 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
             placeholder="What went wrong? Be as specific as possible..."
             style={{...inputStyle,resize:"vertical"}}/>
         </div>
+        <div style={{marginBottom:16}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Type</label>
+          <div style={{display:"flex",gap:8}}>
+            {[{k:"urgent",label:"🔴 Urgent",c:"#ef4444",bg:"#fff5f5",tc:"#b91c1c"},{k:"ideas",label:"💡 Idea",c:"#f59e0b",bg:"#fffbeb",tc:"#b45309"}].map(o=>(
+              <button key={o.k} type="button" onClick={()=>setNewPile(o.k)}
+                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${newPile===o.k?o.c:"#e2e8f0"}`,background:newPile===o.k?o.bg:"#fff",color:newPile===o.k?o.tc:"#64748b",fontWeight:newPile===o.k?700:500,cursor:"pointer",fontSize:14}}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button onClick={handleSubmit} disabled={sending||!message.trim()}
           style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:message.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:message.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:message.trim()?"pointer":"default",fontSize:15,marginBottom:24}}>
           {sending?"Submitting...":"Submit Ticket"}
         </button>
 
-        {/* Ticket list — owner sees all, reps see their own */}
+        {/* Ticket list — two piles: Urgent and Ideas */}
         {(isOwner || tickets.length>0 || loadingTickets) && (
           <div>
-            <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:12}}>{isOwner?"All Tickets":"Your Tickets"}</div>
+            <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:6}}>{isOwner?"All Tickets":"Your Tickets"}</div>
+            {isOwner && !loadingTickets && tickets.length>0 && <div style={{fontSize:12,color:"#94a3b8",marginBottom:14}}>Drag a ticket by its ⠿ handle to move it between Urgent and Ideas.</div>}
             {loadingTickets && <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>}
             {!loadingTickets && tickets.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>{isOwner?"No tickets yet.":"You haven't submitted any tickets yet."}</div>}
-            <div ref={listRef}>
-            {tickets.map((t,i)=>{
-              const isDragged = dragIndex===i;
-              let shift = 0;
-              if(dragIndex!==null && !isDragged && dropG!==null){
-                const H = (dragState.current && dragState.current.H) || 0;
-                if(i>dragIndex && i<=dropG) shift = -H;
-                else if(i<dragIndex && i>=dropG) shift = H;
-              }
-              const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : (shift ? `translateY(${shift}px)` : "none");
-              return (
-              <div key={t.id} data-ticket-card style={{background:"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":"#e2e8f0"}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.22)":"0 1px 4px rgba(0,0,0,0.06)",opacity:isDragged?0.95:1,transform:transform,transition:isDragged?"none":"transform 0.18s ease, box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,touchAction:isDragged?"none":"auto"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
-                    <div
-                      onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,i);}}
-                      onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,i);}}
-                      title="Drag to reorder"
-                      style={{touchAction:"none",cursor:dragIndex===i?"grabbing":"grab",color:dragIndex===i?"#f97316":"#cbd5e1",fontSize:20,lineHeight:1,padding:"4px 4px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",alignSelf:"center"}}>⠿</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-                    </div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                    {editingId!==t.id && (
-                      <button onClick={()=>startEdit(t)} title="Edit ticket"
-                        style={{padding:"4px 9px",borderRadius:20,border:"1.5px solid #e2e8f0",background:"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        ✏️ Edit
-                      </button>
-                    )}
-                    {isOwner && (
-                      <button onClick={()=>handleResolve(t.id)}
-                        style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        Resolve
-                      </button>
-                    )}
-                  </div>
+            {!loadingTickets && tickets.length>0 && (
+              <>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <span style={{fontSize:14,fontWeight:800,color:"#dc2626"}}>🔴 Urgent</span>
+                  <span style={{fontSize:11,fontWeight:700,color:dark?"#94a3b8":"#64748b",background:dark?"#334155":"#f1f5f9",borderRadius:10,padding:"1px 8px"}}>{urgentTickets.length}</span>
                 </div>
-                {editingId===t.id ? (
-                  <div>
-                    <textarea value={editText} onChange={e=>setEditText(e.target.value)} rows={4}
-                      style={{width:"100%",fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",border:"1.5px solid #c8b8a2",resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
-                    <div style={{display:"flex",gap:8,marginTop:8}}>
-                      <button onClick={()=>saveEdit(t.id)} disabled={savingEdit||!editText.trim()}
-                        style={{padding:"6px 14px",borderRadius:8,border:"none",background:editText.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"#e2e8f0",color:editText.trim()?"#fff":"#94a3b8",fontWeight:700,fontSize:12,cursor:editText.trim()?"pointer":"default"}}>
-                        {savingEdit?"Saving...":"Save"}
-                      </button>
-                      <button onClick={cancelEdit}
-                        style={{padding:"6px 14px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer"}}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{fontSize:13,color:"#475569",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
-                )}
-              </div>
-              );
-            })}
-            </div>
+                <div ref={urgentRef} style={pileDropStyle("urgent")}>
+                  {urgentTickets.map(renderCard)}
+                  {urgentTickets.length===0 && <div style={{textAlign:"center",padding:"14px 0",color:"#cbd5e1",fontSize:12}}>No urgent tickets — drag one here</div>}
+                </div>
+                <div style={{borderTop:`2px solid ${dark?"#334155":"#e2e8f0"}`,margin:"16px 0"}}/>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                  <span style={{fontSize:14,fontWeight:800,color:"#d97706"}}>💡 Ideas</span>
+                  <span style={{fontSize:11,fontWeight:700,color:dark?"#94a3b8":"#64748b",background:dark?"#334155":"#f1f5f9",borderRadius:10,padding:"1px 8px"}}>{ideasTickets.length}</span>
+                </div>
+                <div ref={ideasRef} style={pileDropStyle("ideas")}>
+                  {ideasTickets.map(renderCard)}
+                  {ideasTickets.length===0 && <div style={{textAlign:"center",padding:"14px 0",color:"#cbd5e1",fontSize:12}}>No ideas yet — drag one here</div>}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -3576,7 +3625,7 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
   const menuItems = [
     {key:"profile", icon:"👤", label:"Profile"},
     {key:"settings", icon:"⚙️", label:"Settings"},
-    {key:"report", icon:"🚩", label:"Report an Issue", badge:isOwner&&unreadTickets>0?unreadTickets:0},
+    {key:"report", icon:"🚩", label:"Submit a Ticket", badge:isOwner&&unreadTickets>0?unreadTickets:0},
   ];
 
   return (
