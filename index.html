@@ -1129,6 +1129,16 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
     await onDataRefresh();
   };
 
+  const handlePermanentDelete = async (repId, repName) => {
+    if (!window.confirm(`Permanently delete ${repName}?\n\nThis erases their profile AND all of their leads from the database. This CANNOT be undone.`)) return;
+    if (!window.confirm(`Are you absolutely sure? ${repName}'s pipeline will be gone forever.`)) return;
+    await sb.from("leads").delete().eq("owner_id",repId);
+    await sb.from("team_members").delete().eq("user_id",repId);
+    const {error} = await sb.from("profiles").delete().eq("id",repId);
+    if (error){ window.alert("Couldn't delete rep: "+(error.message||"unknown error")); return; }
+    await onDataRefresh();
+  };
+
   const handleAssignToTeam = async (repId, teamId) => {
     const already = (teamMembers[teamId]||[]).some(m=>m.user_id===repId);
     if (!already) await sb.from("team_members").insert({team_id:teamId,user_id:repId});
@@ -1326,10 +1336,16 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                 <div style={{fontWeight:700,fontSize:14,color:dark?"#e2e8f0":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rep.name||"Unnamed"}</div>
                 <div style={{fontSize:12,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rep.email}</div>
               </div>
-              <button onClick={()=>handleRestoreRep(rep.id)}
-                style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                Restore
-              </button>
+              <div style={{display:"flex",gap:8,flexShrink:0}}>
+                <button onClick={()=>handleRestoreRep(rep.id)}
+                  style={{padding:"7px 14px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  Restore
+                </button>
+                <button onClick={()=>handlePermanentDelete(rep.id, rep.name||"this rep")}
+                  style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fff",color:"#ef4444",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -3090,7 +3106,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer}) {
   const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
@@ -3215,7 +3231,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
-          repProfiles={[]} onTransfer={()=>{}} profiles={profiles}
+          repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
           onSwitchToCalendar={onSwitchToCalendar}/>
@@ -6191,8 +6207,8 @@ function App() {
   const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
-    ["canvass","Canvass"],
     ...((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner?[["calendar","Calendar"]]:[[]]),
+    ["canvass","Canvass"],
     ["stats","Stats"],
     ["team","Team"],
     ["vault","Vault"]
@@ -6294,7 +6310,7 @@ function App() {
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </div>
             )}
-            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
