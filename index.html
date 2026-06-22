@@ -5642,6 +5642,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState(null); // {type:"pdf"|"image", url, name}
   const [gmailPicker, setGmailPicker] = useState(null); // material being sent
+  const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
@@ -5910,9 +5911,15 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
                 {m.body && <CopyTextButton text={m.body} label={m.template_type==="email"?"📋 Copy Email":m.template_type==="text"?"📋 Copy Text":"📋 Copy"}/>}
                 {m.template_type==="email" && m.body && (
-                  <button onClick={()=>{ setPickerSearch(""); setGmailPicker(m); }}
+                  <button onClick={()=>{ setPickerSearch(""); setPickerMode("email"); setGmailPicker(m); }}
                     style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fce8e6",color:"#c5221f",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                     ✉️ Open in Gmail
+                  </button>
+                )}
+                {m.template_type==="text" && m.body && (
+                  <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker(m); }}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    💬 Open in Messages
                   </button>
                 )}
                 {m.file_url && (
@@ -5941,12 +5948,19 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
         </div>
       )}
 
-      {/* Customer picker for Gmail send */}
+      {/* Customer picker for Gmail / Messages send */}
       {gmailPicker && (()=>{
+        const isText = pickerMode==="text";
         const q = pickerSearch.trim().toLowerCase();
-        const list = (leads||[]).filter(l=>{ if(!q) return true; return (l.name||"").toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q); }).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+        const list = (leads||[]).filter(l=>{ if(!q) return true; return (l.name||"").toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q) || (l.phone||"").toLowerCase().includes(q); }).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
         const sendTo = (l) => {
-          const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
+          let url;
+          if(isText){
+            const num = (l.phone||"").replace(/[^\d+]/g,"");
+            url = `sms:${num}?&body=${encodeURIComponent(gmailPicker.body||"")}`;
+          } else {
+            url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
+          }
           window.open(url,"_blank","noopener,noreferrer");
           setGmailPicker(null); setPickerSearch("");
         };
@@ -5958,21 +5972,24 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                 <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Send to customer</div>
                 <button onClick={()=>setGmailPicker(null)} style={{background:"none",border:"none",fontSize:20,color:"#94a3b8",cursor:"pointer",padding:0}}>✕</button>
               </div>
-              <div style={{fontSize:13,color:"#94a3b8",marginBottom:12,lineHeight:1.4}}>Opens Gmail with “{gmailPicker.title}” and the chosen customer's email as the recipient.</div>
-              <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder="Search customers by name or email…" style={{...inputStyle}}/>
+              <div style={{fontSize:13,color:"#94a3b8",marginBottom:12,lineHeight:1.4}}>{isText ? `Opens Messages with “${gmailPicker.title}” and the chosen customer's phone number as the recipient.` : `Opens Gmail with “${gmailPicker.title}” and the chosen customer's email as the recipient.`}</div>
+              <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder="Search customers by name…" style={{...inputStyle}}/>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"0 20px 20px"}}>
               {list.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No customers found.</div>}
-              {list.map(l=>(
+              {list.map(l=>{
+                const contact = isText ? l.phone : l.email;
+                return (
                 <button key={l.id} onClick={()=>sendTo(l)}
                   style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,width:"100%",textAlign:"left",padding:"11px 12px",marginBottom:8,borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",cursor:"pointer"}}>
                   <div style={{minWidth:0,flex:1}}>
                     <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name||"Unnamed"}</div>
-                    <div style={{fontSize:12,color:l.email?"#94a3b8":"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.email||"No email on file"}</div>
+                    <div style={{fontSize:12,color:contact?"#94a3b8":"#ef4444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{contact||(isText?"No phone on file":"No email on file")}</div>
                   </div>
-                  <span style={{fontSize:16,flexShrink:0}}>✉️</span>
+                  <span style={{fontSize:16,flexShrink:0}}>{isText?"💬":"✉️"}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
