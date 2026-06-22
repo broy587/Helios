@@ -1982,7 +1982,6 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   const dark=useDark();
   const [localVals, setLocalVals] = React.useState({});
   const questions=[
-    {key:"billRetrieved",db:"bill_retrieved",label:"Was the bill input?"},
     {key:"autopayInput",db:"autopay_input",label:"Was autopay input?"},
     {key:"knewSolar",db:"knew_solar",label:"Did homeowner know solar was/could be involved?"},
     {key:"closerInside",db:"closer_inside",label:"Did homeowner let closer inside?"},
@@ -3350,6 +3349,25 @@ function SettingsPage({onBack, dark, setDark}) {
 }
 
 // ── Report Issue Page ─────────────────────────────────────────────────
+function TicketCopyButton({text, dark}) {
+  const [copied, setCopied] = React.useState(false);
+  const doCopy = (e) => {
+    if(e) e.stopPropagation();
+    const finish=()=>{ setCopied(true); setTimeout(()=>setCopied(false),1500); };
+    const fallback=()=>{ try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(err){} finish(); };
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(finish).catch(fallback); }
+      else fallback();
+    } catch(err){ finish(); }
+  };
+  return (
+    <button onClick={doCopy} title="Copy ticket text"
+      style={{padding:"4px 9px",borderRadius:20,border:`1.5px solid ${copied?"#86efac":(dark?"#334155":"#e2e8f0")}`,background:copied?"#dcfce7":(dark?"#1e293b":"#fff"),color:copied?"#166534":"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+      {copied?"✓ Copied":"📋 Copy"}
+    </button>
+  );
+}
+
 function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
   const dark=useDark();
   const [message, setMessage] = useState("");
@@ -3539,13 +3557,14 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
               <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
             {editingId!==t.id && (
               <button onClick={()=>startEdit(t)} title="Edit ticket"
                 style={{padding:"4px 9px",borderRadius:20,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                 ✏️ Edit
               </button>
             )}
+            {editingId!==t.id && <TicketCopyButton text={t.message||""} dark={dark}/>}
             {isOwner && (
               <button onClick={()=>handleResolve(t.id)}
                 style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:dark?"#1e293b":"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -5635,7 +5654,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const CATEGORIES = [
     {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
-    {key:"playbooks", label:"Sales Materials", icon:"📧", blurb:"Email & text templates, closing & setter materials"},
+    {key:"playbooks", label:"Templates", icon:"📧", blurb:"Email & text templates, closing & setter materials"},
     {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"}
   ];
   const [materials, setMaterials] = useState([]);
