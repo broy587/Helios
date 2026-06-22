@@ -3389,11 +3389,32 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
 
   const persistAll = async (arr) => {
     try {
-      await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx, pile:pileOf(t)}).eq("id",t.id)));
+      await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx, pile:pileOf(t), starred:!!t.starred}).eq("id",t.id)));
     } catch(e){
-      try { await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx}).eq("id",t.id))); }
-      catch(e2){ console.error("Ticket save failed:", e2); }
+      try {
+        await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx, pile:pileOf(t)}).eq("id",t.id)));
+      } catch(e2){
+        try { await Promise.all(arr.map((t,idx)=> sb.from("support_tickets").update({sort_order:idx}).eq("id",t.id))); }
+        catch(e3){ console.error("Ticket save failed:", e3); }
+      }
     }
+  };
+
+  const toggleStar = (t) => {
+    const newStarred = !t.starred;
+    setTickets(prev=>{
+      let arr = prev.map(x=>x.id===t.id?{...x,starred:newStarred}:x);
+      if(newStarred){
+        const moved = arr.find(x=>x.id===t.id);
+        const others = arr.filter(x=>x.id!==t.id);
+        const pile = pileOf(moved);
+        const samePile = others.filter(x=>pileOf(x)===pile);
+        const otherPile = others.filter(x=>pileOf(x)!==pile);
+        arr = rebuild([...otherPile, moved, ...samePile]);
+      }
+      persistAll(arr);
+      return arr;
+    });
   };
 
   const beginReorder = (clientY, isTouch, id) => {
@@ -3580,6 +3601,10 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
                 ✏️ Edit
               </button>
               <TicketCopyButton text={t.message||""} dark={dark}/>
+              <button onClick={()=>toggleStar(t)} title={t.starred?"Starred — tap to unstar":"Star (moves to top of pile)"}
+                style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${t.starred?"#fbbf24":(dark?"#334155":"#e2e8f0")}`,background:t.starred?(dark?"#422006":"#fef3c7"):(dark?"#1e293b":"#fff"),color:t.starred?"#d97706":"#94a3b8",fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1}}>
+                {t.starred?"★":"☆"}
+              </button>
               {isOwner && (
                 <button onClick={()=>handleResolve(t.id)}
                   style={{padding:"6px 14px",borderRadius:20,border:"1.5px solid #fee2e2",background:dark?"#1e293b":"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",marginLeft:"auto"}}>
