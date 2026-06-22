@@ -3545,32 +3545,15 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : "none";
     return (
       <div key={t.id} data-ticket-id={t.id} style={{background:dark?"#0f172a":"#fff",borderRadius:12,padding:"14px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e2e8f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.28)":"0 1px 4px rgba(0,0,0,0.06)",opacity:isDragged?0.97:1,transform:transform,transition:isDragged?"none":"box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,touchAction:isDragged?"none":"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:10}}>
-          <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
-            <div
-              onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,t.id);}}
-              onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,t.id);}}
-              title="Drag to move / reorder"
-              style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:20,lineHeight:1,padding:"4px 4px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",alignSelf:"center"}}>⠿</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{t.profiles?.name||"Unknown"}</div>
-              <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
-            </div>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-            {editingId!==t.id && (
-              <button onClick={()=>startEdit(t)} title="Edit ticket"
-                style={{padding:"4px 9px",borderRadius:20,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                ✏️ Edit
-              </button>
-            )}
-            {editingId!==t.id && <TicketCopyButton text={t.message||""} dark={dark}/>}
-            {isOwner && (
-              <button onClick={()=>handleResolve(t.id)}
-                style={{padding:"4px 10px",borderRadius:20,border:"1.5px solid #fee2e2",background:dark?"#1e293b":"#fff",color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                Resolve
-              </button>
-            )}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <div
+            onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,t.id);}}
+            onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,t.id);}}
+            title="Drag to move / reorder"
+            style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:20,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none"}}>⠿</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.profiles?.name||"Unknown"}</div>
+            <div style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.profiles?.email} · {new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
           </div>
         </div>
         {editingId===t.id ? (
@@ -3589,7 +3572,22 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
             </div>
           </div>
         ) : (
-          <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,background:dark?"#1e293b":"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
+          <React.Fragment>
+            <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,background:dark?"#1e293b":"#f8fafc",borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{t.message}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
+              <button onClick={()=>startEdit(t)} title="Edit ticket"
+                style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                ✏️ Edit
+              </button>
+              <TicketCopyButton text={t.message||""} dark={dark}/>
+              {isOwner && (
+                <button onClick={()=>handleResolve(t.id)}
+                  style={{padding:"6px 14px",borderRadius:20,border:"1.5px solid #fee2e2",background:dark?"#1e293b":"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",marginLeft:"auto"}}>
+                  Resolve
+                </button>
+              )}
+            </div>
+          </React.Fragment>
         )}
       </div>
     );
