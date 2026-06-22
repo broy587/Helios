@@ -5644,6 +5644,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [gmailPicker, setGmailPicker] = useState(null); // material being sent
   const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
+  const [templateView, setTemplateView] = useState(null); // material whose body is being viewed
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
   const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:""});
@@ -5909,6 +5910,12 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
             </div>
             {(m.url || m.file_url || m.image_url || m.body) && (
               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
+                {m.body && (
+                  <button onClick={()=>setTemplateView(m)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:dark?"#0f172a":"#f1f5f9",color:dark?"#cbd5e1":"#475569",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    👁 View
+                  </button>
+                )}
                 {m.body && <CopyTextButton text={m.body} label={m.template_type==="email"?"📋 Copy Email":m.template_type==="text"?"📋 Copy Text":"📋 Copy"}/>}
                 {m.template_type==="email" && m.body && (
                   <button onClick={()=>{ setPickerSearch(""); setPickerMode("email"); setGmailPicker(m); }}
@@ -5945,6 +5952,30 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
           </div>
         );
       }); })()}
+        </div>
+      )}
+
+      {/* Read-only template viewer */}
+      {templateView && (
+        <div onClick={()=>setTemplateView(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:260}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:560,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 30px rgba(0,0,0,0.25)"}}>
+            <div style={{padding:"18px 20px 12px",flexShrink:0,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",wordBreak:"break-word"}}>{templateView.title}</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:3,textTransform:"uppercase",letterSpacing:"0.04em",fontWeight:700}}>{templateView.template_type==="email"?"✉️ Email template":templateView.template_type==="text"?"💬 Text template":"Template"}</div>
+              </div>
+              <button onClick={()=>setTemplateView(null)} style={{background:"none",border:"none",fontSize:20,color:"#94a3b8",cursor:"pointer",padding:0,flexShrink:0}}>✕</button>
+            </div>
+            {templateView.description && <div style={{padding:"0 20px 10px",fontSize:13,color:"#94a3b8",lineHeight:1.4,flexShrink:0}}>{templateView.description}</div>}
+            <div style={{flex:1,overflowY:"auto",padding:"0 20px 16px"}}>
+              <div style={{fontSize:14,color:dark?"#e2e8f0":"#334155",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word",background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>{templateView.body}</div>
+            </div>
+            <div style={{padding:"0 20px 20px",flexShrink:0,display:"flex",flexWrap:"wrap",gap:8}}>
+              <CopyTextButton text={templateView.body} label="📋 Copy"/>
+              {templateView.template_type==="email" && <button onClick={()=>{ setTemplateView(null); setPickerSearch(""); setPickerMode("email"); setGmailPicker(templateView); }} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fce8e6",color:"#c5221f",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>✉️ Open in Gmail</button>}
+              {templateView.template_type==="text" && <button onClick={()=>{ setTemplateView(null); setPickerSearch(""); setPickerMode("text"); setGmailPicker(templateView); }} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>💬 Open in Messages</button>}
+            </div>
+          </div>
         </div>
       )}
 
