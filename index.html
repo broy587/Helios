@@ -5954,14 +5954,13 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
         const q = pickerSearch.trim().toLowerCase();
         const list = (leads||[]).filter(l=>{ if(!q) return true; return (l.name||"").toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q) || (l.phone||"").toLowerCase().includes(q); }).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
         const sendTo = (l) => {
-          let url;
           if(isText){
             const num = (l.phone||"").replace(/[^\d+]/g,"");
-            url = `sms:${num}?&body=${encodeURIComponent(gmailPicker.body||"")}`;
+            window.location.href = `sms:${num}?&body=${encodeURIComponent(gmailPicker.body||"")}`;
           } else {
-            url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
+            const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
+            window.open(url,"_blank","noopener,noreferrer");
           }
-          window.open(url,"_blank","noopener,noreferrer");
           setGmailPicker(null); setPickerSearch("");
         };
         return (
