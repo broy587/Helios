@@ -5288,8 +5288,8 @@ const GCal = {
 function CalendarSyncButton({lead, onUpdate, label}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
-  // Sync when lead.gcal_event_id changes externally
-  React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.appointment]);
+  // Sync when the lead's calendar OR identifying fields change (so a brand-new, unsaved lead's typed name/address/notes flow into the booking)
+  React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.appointment, lead?.name, lead?.address, lead?.phone, lead?.email, lead?.notes]);
   const isBooked = !!localLead.gcal_event_id;
   const handleUpdate = (updated) => {
     setLocalLead(l=>({...l,...updated}));
@@ -5431,12 +5431,14 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
          body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
       );
       // Clear gcal_event_id AND appointment from lead, revert stage
-      await sb.from("leads").update({
-        gcal_event_id:null,
-        appointment:null,
-        stage:"Lead: Need Bill/Appointment",
-        updated_at:new Date().toISOString()
-      }).eq("id",lead.id);
+      if(lead.id){
+        await sb.from("leads").update({
+          gcal_event_id:null,
+          appointment:null,
+          stage:"Lead: Need Bill/Appointment",
+          updated_at:new Date().toISOString()
+        }).eq("id",lead.id);
+      }
       if(onUpdate) onUpdate({gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"});
       setDoneMsg("removed");
       setDone(true);
@@ -5473,12 +5475,14 @@ function CalendarEventModal({lead, onClose, onUpdate}) {
       const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
       const apptStr = `${startTime.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} - ${startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} to ${endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
-      await sb.from("leads").update({
-        appointment:apptStr,
-        gcal_event_id:selectedSlot.id,
-        stage:"AC / Scheduled",
-        updated_at:new Date().toISOString()
-      }).eq("id",lead.id);
+      if(lead.id){
+        await sb.from("leads").update({
+          appointment:apptStr,
+          gcal_event_id:selectedSlot.id,
+          stage:"AC / Scheduled",
+          updated_at:new Date().toISOString()
+        }).eq("id",lead.id);
+      }
       if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:"AC / Scheduled"});
       setDoneMsg("booked");
       setDone(true);
@@ -6372,7 +6376,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
