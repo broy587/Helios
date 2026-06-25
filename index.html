@@ -6171,10 +6171,17 @@ function App() {
   // ── Pull-to-refresh ──────────────────────────────────────────────
   const [pullDist, setPullDist] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [pullArmed, setPullArmed] = useState(false); // crossed threshold & held → ready to release-refresh
   const pullRef = React.useRef(0);
+  // Live ref to whether any modal/overlay is open, so pull-to-refresh can bail out
+  // without re-subscribing all the listeners on every modal toggle.
+  const blockPullRef = React.useRef(false);
   React.useEffect(()=>{
-    const THRESH=70, MAX=110;
-    let startY=0, pulling=false, atTop=false, mouseDown=false;
+    // Higher distance threshold + a hold requirement make accidental refreshes
+    // much harder. You now have to pull further AND pause briefly before release.
+    const THRESH=130, MAX=180, HOLD_MS=350;
+    let startY=0, pulling=false, atTop=false, mouseDown=false, armed=false, holdTimer=null;
+    const clearHold=()=>{ if(holdTimer){clearTimeout(holdTimer);holdTimer=null;} };
     const scrollableAncestor=(el)=>{
       while(el && el.nodeType===1 && el!==document.body){
         try { const s=window.getComputedStyle(el); if(/(auto|scroll)/.test(s.overflowY) && el.scrollHeight>el.clientHeight) return el; } catch(e){}
@@ -6183,14 +6190,14 @@ function App() {
       return null;
     };
     const startAt=(clientY, target)=>{
-      if(refreshing) return;
+      if(refreshing || blockPullRef.current) return;
       startY=clientY;
       const sc=scrollableAncestor(target);
       atTop = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
-      pulling=false;
+      pulling=false; armed=false; clearHold(); setPullArmed(false);
     };
     const moveTo=(clientY, ev)=>{
-      if(refreshing) return;
+      if(refreshing || blockPullRef.current) return;
       const dy=clientY-startY;
       if(atTop && dy>6){
         pulling=true;
@@ -6198,19 +6205,29 @@ function App() {
         const d=Math.min(dy*0.5, MAX);
         pullRef.current=d;
         setPullDist(d);
+        // Arm only after the user holds past the threshold for HOLD_MS.
+        if(d>=THRESH && !armed && !holdTimer){
+          holdTimer=setTimeout(()=>{ armed=true; setPullArmed(true); holdTimer=null; }, HOLD_MS);
+        } else if(d<THRESH){
+          // Dropped back below the line → cancel the pending arm.
+          clearHold(); armed=false; setPullArmed(false);
+        }
       } else if(dy<=0 && pulling){
-        pulling=false; pullRef.current=0; setPullDist(0);
+        pulling=false; armed=false; clearHold(); setPullArmed(false);
+        pullRef.current=0; setPullDist(0);
       }
     };
     const endPull=()=>{
-      if(refreshing) return;
-      if(pulling && pullRef.current>=THRESH){
+      clearHold();
+      if(refreshing || blockPullRef.current){ pulling=false; return; }
+      // Only refresh if the pull was held long enough to arm.
+      if(pulling && armed && pullRef.current>=THRESH){
         setRefreshing(true);
         setTimeout(()=>{ try{window.location.reload();}catch(e){} }, 250);
       } else {
-        pullRef.current=0; setPullDist(0);
+        pullRef.current=0; setPullDist(0); setPullArmed(false);
       }
-      pulling=false;
+      pulling=false; armed=false;
     };
     // Touch (phones / tablets)
     const onTouchStart=(e)=>{ const t=e.touches&&e.touches[0]; if(t) startAt(t.clientY, e.target); };
@@ -6222,7 +6239,7 @@ function App() {
     // Wheel / trackpad scroll-up at top (laptop / desktop)
     let overscroll=0, wheelTimer=null;
     const onWheel=(e)=>{
-      if(refreshing) return;
+      if(refreshing || blockPullRef.current) return;
       const sc=scrollableAncestor(e.target);
       const top = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
       if(top && e.deltaY<0){
@@ -6230,7 +6247,7 @@ function App() {
         const d=Math.min(overscroll*0.6, MAX);
         pullRef.current=d; setPullDist(d);
         if(wheelTimer) clearTimeout(wheelTimer);
-        if(overscroll>=190){
+        if(overscroll>=320){
           overscroll=0;
           setRefreshing(true);
           setTimeout(()=>{ try{window.location.reload();}catch(err){} }, 250);
@@ -6267,6 +6284,18 @@ function App() {
   const [tab,setTab]=useState("pipeline");
   const [modal,setModal]=useState({open:false,lead:null});
   const [detailId,setDetailId]=useState(null);
+  // Disable pull-to-refresh whenever a modal/drawer is open so an accidental
+  // upward drag while creating or viewing a lead can never reload the app.
+  // Also warn the browser before unloading while the lead form is open.
+  React.useEffect(()=>{
+    const overlayOpen = modal.open || detailId!=null || drawerOpen;
+    blockPullRef.current = overlayOpen;
+    if(modal.open){
+      const warn=(e)=>{ e.preventDefault(); e.returnValue=""; return ""; };
+      window.addEventListener("beforeunload", warn);
+      return ()=>window.removeEventListener("beforeunload", warn);
+    }
+  }, [modal.open, detailId, drawerOpen]);
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
@@ -6659,8 +6688,8 @@ function App() {
       {(pullDist>0 || refreshing) && (
         <div style={{position:"fixed",top:0,left:0,right:0,display:"flex",alignItems:"flex-start",justifyContent:"center",height:refreshing?54:pullDist,zIndex:400,pointerEvents:"none",overflow:"hidden",transition:refreshing?"height 0.2s ease":"none"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(26,36,86,0.96)",borderRadius:99,padding:"8px 16px",boxShadow:"0 4px 16px rgba(0,0,0,0.3)",marginTop:10,color:"#fff"}}>
-            <span style={{width:15,height:15,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.35)",borderTopColor:"#fff",display:"inline-block",animation:refreshing?"spin 0.7s linear infinite":"none",transform:refreshing?"none":`rotate(${Math.min(pullDist/70,1)*270}deg)`}}/>
-            <span style={{fontSize:13,fontWeight:700}}>{refreshing?"Refreshing…":(pullDist>=70?"Release to refresh":"Pull to refresh")}</span>
+            <span style={{width:15,height:15,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.35)",borderTopColor:pullArmed?"#4ade80":"#fff",display:"inline-block",animation:refreshing?"spin 0.7s linear infinite":"none",transform:refreshing?"none":`rotate(${Math.min(pullDist/130,1)*270}deg)`}}/>
+            <span style={{fontSize:13,fontWeight:700,color:pullArmed?"#4ade80":"#fff"}}>{refreshing?"Refreshing…":(pullArmed?"Release to refresh":(pullDist>=130?"Hold to refresh…":"Pull down to refresh"))}</span>
           </div>
         </div>
       )}
