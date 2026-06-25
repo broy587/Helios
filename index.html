@@ -3508,7 +3508,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
     await sb.from("support_tickets").delete().eq("id",id);
     setTickets(ts=>{
       const updated = ts.filter(t=>t.id!==id);
-      if(onTicketsChanged) onTicketsChanged(updated.length);
+      if(onTicketsChanged) onTicketsChanged(updated.filter(t=>pileOf(t)==="urgent").length);
       return updated;
     });
   };
@@ -6219,6 +6219,26 @@ function App() {
     const onMouseDown=(e)=>{ if(e.button!==0) return; mouseDown=true; startAt(e.clientY, e.target); };
     const onMouseMove=(e)=>{ if(!mouseDown) return; moveTo(e.clientY, e); };
     const onMouseUp=()=>{ if(!mouseDown) return; mouseDown=false; endPull(); };
+    // Wheel / trackpad scroll-up at top (laptop / desktop)
+    let overscroll=0, wheelTimer=null;
+    const onWheel=(e)=>{
+      if(refreshing) return;
+      const sc=scrollableAncestor(e.target);
+      const top = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
+      if(top && e.deltaY<0){
+        overscroll += -e.deltaY;
+        const d=Math.min(overscroll*0.6, MAX);
+        pullRef.current=d; setPullDist(d);
+        if(wheelTimer) clearTimeout(wheelTimer);
+        if(overscroll>=190){
+          overscroll=0;
+          setRefreshing(true);
+          setTimeout(()=>{ try{window.location.reload();}catch(err){} }, 250);
+          return;
+        }
+        wheelTimer=setTimeout(()=>{ overscroll=0; pullRef.current=0; setPullDist(0); }, 320);
+      }
+    };
     document.addEventListener("touchstart",onTouchStart,{passive:true});
     document.addEventListener("touchmove",onTouchMove,{passive:false});
     document.addEventListener("touchend",endPull);
@@ -6226,9 +6246,12 @@ function App() {
     document.addEventListener("mousedown",onMouseDown);
     document.addEventListener("mousemove",onMouseMove);
     document.addEventListener("mouseup",onMouseUp);
+    document.addEventListener("wheel",onWheel,{passive:true});
     return ()=>{
+      if(wheelTimer) clearTimeout(wheelTimer);
       document.removeEventListener("touchstart",onTouchStart); document.removeEventListener("touchmove",onTouchMove); document.removeEventListener("touchend",endPull); document.removeEventListener("touchcancel",endPull);
       document.removeEventListener("mousedown",onMouseDown); document.removeEventListener("mousemove",onMouseMove); document.removeEventListener("mouseup",onMouseUp);
+      document.removeEventListener("wheel",onWheel);
     };
   }, [refreshing]);
 
@@ -6269,11 +6292,14 @@ function App() {
     });
   },[]);
 
-  // Load unread ticket count for owner
+  // Load urgent-pile ticket count for owner (ideas don't notify)
   const refreshTicketCount = React.useCallback(async () => {
     if (!user || user.id!==OWNER_ID) return;
-    const {count} = await sb.from("support_tickets").select("*",{count:"exact",head:true});
-    setUnreadTickets(count||0);
+    let res = await sb.from("support_tickets").select("*",{count:"exact",head:true}).or("pile.is.null,pile.neq.ideas");
+    if (res.error) { // pile column may not exist yet — count all as fallback
+      res = await sb.from("support_tickets").select("*",{count:"exact",head:true});
+    }
+    setUnreadTickets(res.count||0);
   },[user]);
 
   useEffect(()=>{
