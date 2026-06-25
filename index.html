@@ -6174,7 +6174,7 @@ function App() {
   const pullRef = React.useRef(0);
   React.useEffect(()=>{
     const THRESH=70, MAX=110;
-    let startY=0, pulling=false, atTop=false;
+    let startY=0, pulling=false, atTop=false, mouseDown=false;
     const scrollableAncestor=(el)=>{
       while(el && el.nodeType===1 && el!==document.body){
         try { const s=window.getComputedStyle(el); if(/(auto|scroll)/.test(s.overflowY) && el.scrollHeight>el.clientHeight) return el; } catch(e){}
@@ -6182,21 +6182,19 @@ function App() {
       }
       return null;
     };
-    const onStart=(e)=>{
+    const startAt=(clientY, target)=>{
       if(refreshing) return;
-      const t=e.touches&&e.touches[0]; if(!t) return;
-      startY=t.clientY;
-      const sc=scrollableAncestor(e.target);
+      startY=clientY;
+      const sc=scrollableAncestor(target);
       atTop = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
       pulling=false;
     };
-    const onMove=(e)=>{
+    const moveTo=(clientY, ev)=>{
       if(refreshing) return;
-      const t=e.touches&&e.touches[0]; if(!t) return;
-      const dy=t.clientY-startY;
+      const dy=clientY-startY;
       if(atTop && dy>6){
         pulling=true;
-        if(e.cancelable) e.preventDefault();
+        if(ev && ev.cancelable) ev.preventDefault();
         const d=Math.min(dy*0.5, MAX);
         pullRef.current=d;
         setPullDist(d);
@@ -6204,7 +6202,7 @@ function App() {
         pulling=false; pullRef.current=0; setPullDist(0);
       }
     };
-    const onEnd=()=>{
+    const endPull=()=>{
       if(refreshing) return;
       if(pulling && pullRef.current>=THRESH){
         setRefreshing(true);
@@ -6214,11 +6212,24 @@ function App() {
       }
       pulling=false;
     };
-    document.addEventListener("touchstart",onStart,{passive:true});
-    document.addEventListener("touchmove",onMove,{passive:false});
-    document.addEventListener("touchend",onEnd);
-    document.addEventListener("touchcancel",onEnd);
-    return ()=>{ document.removeEventListener("touchstart",onStart); document.removeEventListener("touchmove",onMove); document.removeEventListener("touchend",onEnd); document.removeEventListener("touchcancel",onEnd); };
+    // Touch (phones / tablets)
+    const onTouchStart=(e)=>{ const t=e.touches&&e.touches[0]; if(t) startAt(t.clientY, e.target); };
+    const onTouchMove=(e)=>{ const t=e.touches&&e.touches[0]; if(t) moveTo(t.clientY, e); };
+    // Mouse (laptop / desktop)
+    const onMouseDown=(e)=>{ if(e.button!==0) return; mouseDown=true; startAt(e.clientY, e.target); };
+    const onMouseMove=(e)=>{ if(!mouseDown) return; moveTo(e.clientY, e); };
+    const onMouseUp=()=>{ if(!mouseDown) return; mouseDown=false; endPull(); };
+    document.addEventListener("touchstart",onTouchStart,{passive:true});
+    document.addEventListener("touchmove",onTouchMove,{passive:false});
+    document.addEventListener("touchend",endPull);
+    document.addEventListener("touchcancel",endPull);
+    document.addEventListener("mousedown",onMouseDown);
+    document.addEventListener("mousemove",onMouseMove);
+    document.addEventListener("mouseup",onMouseUp);
+    return ()=>{
+      document.removeEventListener("touchstart",onTouchStart); document.removeEventListener("touchmove",onTouchMove); document.removeEventListener("touchend",endPull); document.removeEventListener("touchcancel",endPull);
+      document.removeEventListener("mousedown",onMouseDown); document.removeEventListener("mousemove",onMouseMove); document.removeEventListener("mouseup",onMouseUp);
+    };
   }, [refreshing]);
 
   const [drawerOpen,setDrawerOpen]=useState(false);
