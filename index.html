@@ -5695,6 +5695,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [gmailPicker, setGmailPicker] = useState(null); // material being sent
   const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
+  const [emailChoice, setEmailChoice] = useState(null); // chosen lead awaiting app/browser pick
   const [templateView, setTemplateView] = useState(null); // material whose body is being viewed
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
@@ -6039,11 +6040,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
           if(isText){
             const num = (l.phone||"").replace(/[^\d+]/g,"");
             window.location.href = `sms:${num}?&body=${encodeURIComponent(gmailPicker.body||"")}`;
+            setGmailPicker(null); setPickerSearch("");
           } else {
-            const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
-            window.open(url,"_blank","noopener,noreferrer");
+            setEmailChoice(l); // ask Gmail app vs browser
           }
-          setGmailPicker(null); setPickerSearch("");
         };
         return (
         <div onClick={()=>setGmailPicker(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:260}}>
@@ -6076,6 +6076,32 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
         </div>
         );
       })()}
+
+      {/* Gmail: app vs browser choice */}
+      {emailChoice && gmailPicker && (
+        <div onClick={()=>setEmailChoice(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:290,padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:18,width:"100%",maxWidth:360,padding:"20px",boxShadow:"0 12px 40px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Open in Gmail</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,lineHeight:1.4}}>Sending “{gmailPicker.title}” to {emailChoice.name||emailChoice.email||"customer"}.</div>
+            <button onClick={()=>{
+                window.location.href = `googlegmail://co?to=${encodeURIComponent(emailChoice.email||"")}&subject=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
+                setEmailChoice(null); setGmailPicker(null); setPickerSearch("");
+              }}
+              style={{width:"100%",padding:"13px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#ea4335,#c5221f)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:17}}>📱</span>
+              <span style={{textAlign:"left"}}>Open Gmail App<br/><span style={{fontSize:10,fontWeight:400,opacity:0.85}}>Requires Gmail installed</span></span>
+            </button>
+            <button onClick={()=>{
+                window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailChoice.email||"")}&su=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`,"_blank","noopener,noreferrer");
+                setEmailChoice(null); setGmailPicker(null); setPickerSearch("");
+              }}
+              style={{width:"100%",padding:"13px 16px",borderRadius:11,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#0f172a",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:17}}>🌐</span>
+              <span>Open in Browser</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* In-app viewer (PDF / photo) */}
       {viewer && (
