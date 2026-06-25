@@ -6168,6 +6168,59 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
 function App() {
   const [user,setUser]=useState(null);
   const [profile,setProfile]=useState(null);
+  // ── Pull-to-refresh ──────────────────────────────────────────────
+  const [pullDist, setPullDist] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullRef = React.useRef(0);
+  React.useEffect(()=>{
+    const THRESH=70, MAX=110;
+    let startY=0, pulling=false, atTop=false;
+    const scrollableAncestor=(el)=>{
+      while(el && el.nodeType===1 && el!==document.body){
+        try { const s=window.getComputedStyle(el); if(/(auto|scroll)/.test(s.overflowY) && el.scrollHeight>el.clientHeight) return el; } catch(e){}
+        el=el.parentElement;
+      }
+      return null;
+    };
+    const onStart=(e)=>{
+      if(refreshing) return;
+      const t=e.touches&&e.touches[0]; if(!t) return;
+      startY=t.clientY;
+      const sc=scrollableAncestor(e.target);
+      atTop = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
+      pulling=false;
+    };
+    const onMove=(e)=>{
+      if(refreshing) return;
+      const t=e.touches&&e.touches[0]; if(!t) return;
+      const dy=t.clientY-startY;
+      if(atTop && dy>6){
+        pulling=true;
+        if(e.cancelable) e.preventDefault();
+        const d=Math.min(dy*0.5, MAX);
+        pullRef.current=d;
+        setPullDist(d);
+      } else if(dy<=0 && pulling){
+        pulling=false; pullRef.current=0; setPullDist(0);
+      }
+    };
+    const onEnd=()=>{
+      if(refreshing) return;
+      if(pulling && pullRef.current>=THRESH){
+        setRefreshing(true);
+        setTimeout(()=>{ try{window.location.reload();}catch(e){} }, 250);
+      } else {
+        pullRef.current=0; setPullDist(0);
+      }
+      pulling=false;
+    };
+    document.addEventListener("touchstart",onStart,{passive:true});
+    document.addEventListener("touchmove",onMove,{passive:false});
+    document.addEventListener("touchend",onEnd);
+    document.addEventListener("touchcancel",onEnd);
+    return ()=>{ document.removeEventListener("touchstart",onStart); document.removeEventListener("touchmove",onMove); document.removeEventListener("touchend",onEnd); document.removeEventListener("touchcancel",onEnd); };
+  }, [refreshing]);
+
   const [drawerOpen,setDrawerOpen]=useState(false);
   const [unreadTickets,setUnreadTickets]=useState(0);
   const [dark,setDark]=useDarkMode();
@@ -6562,59 +6615,6 @@ function App() {
     ["team","Team"],
     ["vault","Vault"]
   ];
-
-  // ── Pull-to-refresh ──────────────────────────────────────────────
-  const [pullDist, setPullDist] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const pullRef = React.useRef(0);
-  React.useEffect(()=>{
-    const THRESH=70, MAX=110;
-    let startY=0, pulling=false, atTop=false;
-    const scrollableAncestor=(el)=>{
-      while(el && el.nodeType===1 && el!==document.body){
-        try { const s=window.getComputedStyle(el); if(/(auto|scroll)/.test(s.overflowY) && el.scrollHeight>el.clientHeight) return el; } catch(e){}
-        el=el.parentElement;
-      }
-      return null;
-    };
-    const onStart=(e)=>{
-      if(refreshing) return;
-      const t=e.touches&&e.touches[0]; if(!t) return;
-      startY=t.clientY;
-      const sc=scrollableAncestor(e.target);
-      atTop = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
-      pulling=false;
-    };
-    const onMove=(e)=>{
-      if(refreshing) return;
-      const t=e.touches&&e.touches[0]; if(!t) return;
-      const dy=t.clientY-startY;
-      if(atTop && dy>6){
-        pulling=true;
-        if(e.cancelable) e.preventDefault();
-        const d=Math.min(dy*0.5, MAX);
-        pullRef.current=d;
-        setPullDist(d);
-      } else if(dy<=0 && pulling){
-        pulling=false; pullRef.current=0; setPullDist(0);
-      }
-    };
-    const onEnd=()=>{
-      if(refreshing) return;
-      if(pulling && pullRef.current>=THRESH){
-        setRefreshing(true);
-        setTimeout(()=>{ try{window.location.reload();}catch(e){} }, 250);
-      } else {
-        pullRef.current=0; setPullDist(0);
-      }
-      pulling=false;
-    };
-    document.addEventListener("touchstart",onStart,{passive:true});
-    document.addEventListener("touchmove",onMove,{passive:false});
-    document.addEventListener("touchend",onEnd);
-    document.addEventListener("touchcancel",onEnd);
-    return ()=>{ document.removeEventListener("touchstart",onStart); document.removeEventListener("touchmove",onMove); document.removeEventListener("touchend",onEnd); document.removeEventListener("touchcancel",onEnd); };
-  }, [refreshing]);
 
   return (
     <DarkCtx.Provider value={dark}>
