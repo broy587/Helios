@@ -1991,71 +1991,37 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   const followUpDate = readOnly ? (localVals["follow_up_date"]!==undefined?localVals["follow_up_date"]:(lead?.follow_up_date||"")) : (form?.followUpDate||"");
   const hasFollowUp = followUpAgreed==="Yes" || !!followUpDate;
   if (readOnly) {
-    const getValue = (q) => localVals[q.db] !== undefined ? localVals[q.db] : (lead&&lead[q.db])||"";
-    const toggle = async (q) => {
-      const cur = getValue(q);
-      const next = cur==="Yes"?"No":"Yes";
-      setLocalVals(v=>({...v,[q.db]:next}));
-      await sb.from("leads").update({[q.db]:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
-      // Update parent lead object so reopening shows correct value
-      if (onUpdate) onUpdate({...lead,[q.db]:next});
+    const getValue = (q) => (lead && lead[q.db]) || "";
+    const Badge = ({val}) => {
+      const isYes = val==="Yes";
+      const isNo = val==="No";
+      return (
+        <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,
+          background:isYes?(dark?"#064e3b":"#d1fae5"):isNo?(dark?"#7f1d1d":"#fee2e2"):(dark?"#1e293b":"#f1f5f9"),
+          color:isYes?(dark?"#6ee7b7":"#047857"):isNo?(dark?"#fca5a5":"#b91c1c"):"#94a3b8"}}>
+          {isYes?"Yes":isNo?"No":"—"}
+        </span>
+      );
     };
     return (
       <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
         <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Closer Notes</div>
-        {questions.map(q=>{
-          const v=getValue(q);
-          const isYes=v==="Yes";
-          const isNo=!isYes;
-          return(
-            <div key={q.key} style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-              <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <span style={{fontSize:11,color:isNo?"#ef4444":"#94a3b8",fontWeight:isNo?700:400}}>No</span>
-                <div onClick={()=>toggle(q)}
-                  style={{width:40,height:22,borderRadius:99,background:isYes?"#10b981":isNo?"#ef4444":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-                  <div style={{position:"absolute",top:2,left:isYes?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
-                </div>
-                <span style={{fontSize:11,color:isYes?"#10b981":"#94a3b8",fontWeight:isYes?700:400}}>Yes</span>
-              </div>
-            </div>
-          );
-        })}
+        {questions.map(q=>(
+          <div key={q.key} style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
+            <Badge val={getValue(q)}/>
+          </div>
+        ))}
         <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
           <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>Agreed to a Follow Up?</div>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-            <span style={{fontSize:11,color:!hasFollowUp?"#ef4444":"#94a3b8",fontWeight:!hasFollowUp?700:400}}>No</span>
-            <div onClick={async()=>{
-                if(hasFollowUp){
-                  // Turn off → remove the follow-up entirely
-                  setLocalVals(v=>({...v,follow_up_agreed:"No",follow_up_date:""}));
-                  await sb.from("leads").update({follow_up_agreed:"No",follow_up_date:null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  if(onUpdate)onUpdate({...lead,follow_up_agreed:"No",follow_up_date:null});
-                } else {
-                  setLocalVals(v=>({...v,follow_up_agreed:"Yes"}));
-                  await sb.from("leads").update({follow_up_agreed:"Yes",updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  if(onUpdate)onUpdate({...lead,follow_up_agreed:"Yes"});
-                }
-              }}
-              style={{width:40,height:22,borderRadius:99,background:hasFollowUp?"#10b981":"#ef4444",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
-              <div style={{position:"absolute",top:2,left:hasFollowUp?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
-            </div>
-            <span style={{fontSize:11,color:hasFollowUp?"#10b981":"#94a3b8",fontWeight:hasFollowUp?700:400}}>Yes</span>
-          </div>
+          <Badge val={hasFollowUp?"Yes":"No"}/>
         </div>
-        {hasFollowUp&&(
+        {hasFollowUp && followUpDate && (
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
             <span style={{fontSize:11,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
-            <input type="date" value={followUpDate||""} onChange={async e=>{
-                const val=e.target.value;
-                setLocalVals(v=>({...v,follow_up_date:val}));
-                await sb.from("leads").update({follow_up_date:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                if(onUpdate)onUpdate({...lead,follow_up_date:val});
-              }}
-              style={{flex:1,padding:"6px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1a2456",fontSize:13,outline:"none"}}/>
+            <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1a2456"}}>{followUpDate}</span>
           </div>
         )}
-
       </div>
     );
   }
