@@ -6323,23 +6323,39 @@ function App() {
     const onMouseMove=(e)=>{ if(!mouseDown) return; moveTo(e.clientY, e); };
     const onMouseUp=()=>{ if(!mouseDown) return; mouseDown=false; endPull(); };
     // Wheel / trackpad scroll-up at top (laptop / desktop)
-    let overscroll=0, wheelTimer=null;
+    let overscroll=0, wheelTimer=null, wheelArmed=false, wheelPaused=false, pauseTimer=null;
+    const resetWheel=()=>{ overscroll=0; wheelArmed=false; wheelPaused=false; pullRef.current=0; setPullDist(0); setPullArmed(false); };
     const onWheel=(e)=>{
       if(refreshing || blockPullRef.current) return;
       const sc=scrollableAncestor(e.target);
       const top = sc ? sc.scrollTop<=0 : ((window.scrollY||window.pageYOffset||0)<=0);
       if(top && e.deltaY<0){
-        overscroll += -e.deltaY;
-        const d=Math.min(overscroll*0.6, MAX);
-        pullRef.current=d; setPullDist(d);
-        if(wheelTimer) clearTimeout(wheelTimer);
-        if(overscroll>=320){
-          overscroll=0;
-          setRefreshing(true);
-          setTimeout(()=>{ try{window.location.reload();}catch(err){} }, 250);
-          return;
+        // If armed, the user must pause, then deliberately scroll up AGAIN to
+        // confirm. A single continuous momentum-scroll only arms and waits.
+        if(wheelArmed){
+          if(wheelPaused){
+            resetWheel();
+            setRefreshing(true);
+            setTimeout(()=>{ try{window.location.reload();}catch(err){} }, 250);
+            return;
+          }
+          // still in the same scroll burst — keep showing armed, refresh the timers below
+        } else {
+          overscroll += -e.deltaY;
+          const d=Math.min(overscroll*0.6, MAX);
+          pullRef.current=d; setPullDist(d);
+          if(overscroll>=THRESH){ wheelArmed=true; setPullArmed(true); }
         }
-        wheelTimer=setTimeout(()=>{ overscroll=0; pullRef.current=0; setPullDist(0); }, 320);
+        if(wheelTimer) clearTimeout(wheelTimer);
+        if(pauseTimer) clearTimeout(pauseTimer);
+        if(wheelArmed){
+          // Once armed, a brief pause "primes" the confirm gesture; if no
+          // follow-up scroll comes soon after, disarm entirely.
+          pauseTimer=setTimeout(()=>{ wheelPaused=true; }, 140);
+          wheelTimer=setTimeout(resetWheel, 1400);
+        } else {
+          wheelTimer=setTimeout(resetWheel, 320);
+        }
       }
     };
     document.addEventListener("touchstart",onTouchStart,{passive:true});
