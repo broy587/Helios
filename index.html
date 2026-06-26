@@ -102,6 +102,12 @@ const TEAM_CALENDARS = {
     embedUrl: "https://calendar.google.com/calendar/embed?src=c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
     name: "Helios Calendar"
   },
+  // ── The Culture ──────────────────────────────────────────────────────
+  "d857508d-b3ea-4b33-a461-081c7464ef32": {
+    calendarId: "c_9cefbc53b8d6cdf00d25578ee9c2d49b7368d9a90a333b3b2bd2bb90808270d2@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=c_9cefbc53b8d6cdf00d25578ee9c2d49b7368d9a90a333b3b2bd2bb90808270d2%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    name: "The Culture Calendar"
+  },
   // Add more teams here:
   // "TEAM_ID": { calendarId: "...", embedUrl: "...", name: "Team Name Calendar" }
 };
@@ -5057,19 +5063,46 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
       if(onEventUrlUsed) onEventUrlUsed();
     }
   },[newEventUrl]);
-  // Find which team calendar to show based on user's team
-  const userTeamId = Object.keys(TEAM_CALENDARS).find(tid=>
-    // Passed via prop or detected from teamMembers in parent
-    TEAM_CALENDARS[tid]
-  ) || "b1f166c3-661e-4e02-b839-3b9560c9237b";
-  const teamCal = TEAM_CALENDARS[userTeamId] || TEAM_CALENDARS["b1f166c3-661e-4e02-b839-3b9560c9237b"];
-  const CALENDAR_EMBED = teamCal.embedUrl;
-  const CALENDAR_NAME = teamCal.name;
+
+  // Which calendars can this user browse?
+  //  - owner: all configured team calendars
+  //  - rep/manager: only their own team calendar(s)
+  const browsable = TeamCalendars.isOwner ? TeamCalendars.teams : TeamCalendars.myTeams;
+  const [selectedTid, setSelectedTid] = React.useState(browsable[0]?.id || null);
+  React.useEffect(()=>{
+    if(!selectedTid && browsable[0]) setSelectedTid(browsable[0].id);
+  },[browsable.length]);
+
+  const teamCfg = selectedTid ? TEAM_CALENDARS[selectedTid] : null;
+  const selectedTeam = browsable.find(t=>t.id===selectedTid);
+  const CALENDAR_EMBED = teamCfg?.embedUrl || null;
+  const CALENDAR_NAME = selectedTeam?.name || teamCfg?.name || "Calendar";
+
+  if(!CALENDAR_EMBED){
+    return (
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0",textAlign:"center",padding:"0 30px"}}>
+        <div style={{fontSize:42,marginBottom:14}}>📅</div>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No calendar to show</div>
+        <div style={{fontSize:13,color:dark?"#94a3b8":"#6b2d4e",lineHeight:1.5,maxWidth:340}}>
+          {TeamCalendars.isOwner
+            ? "No team calendars are configured yet. Add one to the TEAM_CALENDARS list to see it here."
+            : "Your team doesn't have a calendar connected yet. An owner can set this up."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
-      <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
-        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{CALENDAR_NAME}</div>
+      <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+        {browsable.length>1 ? (
+          <select value={selectedTid||""} onChange={e=>{setSelectedTid(e.target.value);setCalKey(k=>k+1);}}
+            style={{fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",maxWidth:"55%"}}>
+            {browsable.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        ) : (
+          <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{CALENDAR_NAME}</div>
+        )}
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
             style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:14,color:dark?"#94a3b8":"#6b2d4e"}}>
@@ -5098,7 +5131,7 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
           style={{flex:1,border:"none",width:"100%"}}
           frameBorder="0"
           scrolling="no"
-          title="Helios Calendar" key={calKey}
+          title={CALENDAR_NAME} key={calKey}
         />
       )}
     </div>
@@ -5183,7 +5216,7 @@ const GCal = {
     } catch(e) { return null; }
   },
 
-  async createEvent(lead) {
+  async createEvent(lead, calendarId) {
     const token = await this.signIn();
     const times = this.parseAppointment(lead.appointment);
     const event = {
@@ -5207,7 +5240,7 @@ const GCal = {
     };
 
     const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events`,
       {
         method: "POST",
         headers: {
@@ -5221,7 +5254,7 @@ const GCal = {
     return await res.json();
   },
 
-  async updateEvent(eventId, lead) {
+  async updateEvent(eventId, lead, calendarId) {
     const token = await this.signIn();
     const times = this.parseAppointment(lead.appointment);
     const event = {
@@ -5242,7 +5275,7 @@ const GCal = {
         : { date: new Date().toISOString().split("T")[0] },
     };
     const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${eventId}`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${eventId}`,
       {
         method: "PATCH",
         headers: {
@@ -5256,12 +5289,58 @@ const GCal = {
     return await res.json();
   },
 
-  async deleteEvent(eventId) {
+  async deleteEvent(eventId, calendarId) {
     const token = await this.signIn();
     await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${eventId}`,
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${eventId}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
     );
+  },
+};
+
+// ── Team Calendar Registry ────────────────────────────────────────────
+// App populates this once on load so the deeply-nested calendar components
+// can resolve which calendar to use without prop-drilling through every layer.
+const TeamCalendars = {
+  currentUserId: null,
+  isOwner: false,
+  // [{ id, name, calendarId }] — only teams that HAVE a calendar configured
+  teams: [],
+  // teams (with calendars) the current user belongs to
+  myTeams: [],
+  // owner's remembered pick for this session
+  lastOwnerPick: null,
+  set({ currentUserId, isOwner, teams, teamMembers }) {
+    this.currentUserId = currentUserId;
+    this.isOwner = isOwner;
+    // Pull calendar config from the TEAM_CALENDARS map (keyed by team id).
+    // A team only counts as "has a calendar" if it's present there.
+    const withCal = (teams||[])
+      .map(t=>{
+        const cfg = TEAM_CALENDARS[t.id];
+        return cfg ? { id:t.id, name:t.name||cfg.name, calendarId:cfg.calendarId } : null;
+      })
+      .filter(Boolean);
+    this.teams = withCal;
+    this.myTeams = withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId));
+  },
+  // Returns one of:
+  //  { status:"ok", calendarId, teamName }              → use this calendar
+  //  { status:"choose", options:[{id,name,calendarId}] } → user must pick
+  //  { status:"none" }                                   → no calendar available (block)
+  resolve() {
+    if(this.isOwner){
+      if(this.teams.length===0) return { status:"none" };
+      if(this.lastOwnerPick){
+        const found = this.teams.find(t=>t.calendarId===this.lastOwnerPick);
+        if(found) return { status:"ok", calendarId:found.calendarId, teamName:found.name };
+      }
+      return { status:"choose", options:this.teams };
+    }
+    // rep / manager
+    if(this.myTeams.length===0) return { status:"none" };
+    if(this.myTeams.length===1) return { status:"ok", calendarId:this.myTeams[0].calendarId, teamName:this.myTeams[0].name };
+    return { status:"choose", options:this.myTeams };
   },
 };
 
@@ -5348,7 +5427,26 @@ function PersonalApptButton({onSelect, label}) {
 function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
   const dark = useDark();
   const isBooked = !!lead.gcal_event_id;
-  const [view, setView] = React.useState(isBooked?"manage":"calendar"); // manage | calendar | slots | confirm
+  // Resolve which team calendar this booking should use.
+  const initialResolve = React.useMemo(()=>TeamCalendars.resolve(),[]);
+  // calendarId: the calendar we'll actually read/write. For an already-booked
+  // lead we trust the stored one (it was booked on its team's calendar); we
+  // still resolve so owner/multi-team users can manage it.
+  const [calChoice, setCalChoice] = React.useState(
+    initialResolve.status==="ok" ? {calendarId:initialResolve.calendarId, teamName:initialResolve.teamName} : null
+  );
+  const calendarId = calChoice?.calendarId || null;
+  // "picker" forces a calendar choice before showing the booking calendar.
+  const needsPick = !calChoice && initialResolve.status==="choose";
+  const noCalendar = initialResolve.status==="none";
+  const [view, setView] = React.useState(
+    noCalendar ? "nocal" : (needsPick ? "pickcal" : (isBooked?"manage":"calendar"))
+  ); // pickcal | nocal | manage | calendar | slots | confirm
+  const pickCalendar = (opt) => {
+    TeamCalendars.lastOwnerPick = opt.calendarId; // remember for the session (owner)
+    setCalChoice({calendarId:opt.calendarId, teamName:opt.name});
+    setView(isBooked?"manage":"calendar");
+  };
   const [selectedDay, setSelectedDay] = React.useState(null);
   const [slots, setSlots] = React.useState([]);
   const [selectedSlot, setSelectedSlot] = React.useState(null);
@@ -5377,7 +5475,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
       const dayStart = new Date(day); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
       // Use API key for reading — no OAuth needed
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime&key=AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU`;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime&key=AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU`;
       const res = await fetch(url);
       if(!res.ok){
         const err = await res.json();
@@ -5408,7 +5506,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
       const token = await GCal.signIn();
       // Restore calendar event back to Open Slot
       await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
          body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
       );
@@ -5436,7 +5534,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
       if(lead.gcal_event_id && lead.gcal_event_id !== selectedSlot.id) {
         try {
           await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
             {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
              body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
           );
@@ -5449,7 +5547,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
         colorId: "10", // basil green = booked
       };
       const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
       );
       if(!res.ok) throw new Error(await res.text());
@@ -5482,17 +5580,56 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:calChoice&&!done&&!noAccess&&view!=="pickcal"&&view!=="nocal"?6:20}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            {view!=="calendar"&&view!=="manage"&&!done&&!noAccess&&(
+            {view!=="calendar"&&view!=="manage"&&view!=="pickcal"&&view!=="nocal"&&!done&&!noAccess&&(
               <button onClick={()=>setView("calendar")} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:18,padding:0}}>←</button>
             )}
             <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>
-              {done?(doneMsg==="removed"?"Booking Removed":"Appointment Booked!"):noAccess?"No Calendar Access":view==="manage"?"Manage Booking":view==="calendar"?"Pick a Day":view==="slots"?"Available Slots":"Confirm Booking"}
+              {done?(doneMsg==="removed"?"Booking Removed":"Appointment Booked!"):noAccess?"No Calendar Access":view==="nocal"?"No Team Calendar":view==="pickcal"?"Choose a Calendar":view==="manage"?"Manage Booking":view==="calendar"?"Pick a Day":view==="slots"?"Available Slots":"Confirm Booking"}
             </div>
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
         </div>
+        {/* Selected-calendar subtitle */}
+        {calChoice&&!done&&!noAccess&&view!=="pickcal"&&view!=="nocal"&&(
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:18}}>
+            <span style={{fontSize:11,fontWeight:700,color:dark?"#a78bfa":"#6b2d4e",background:dark?"#2e1065":"#f3e8ff",padding:"3px 10px",borderRadius:20}}>📅 {calChoice.teamName} calendar</span>
+            {(TeamCalendars.isOwner||TeamCalendars.myTeams.length>1)&&(
+              <button onClick={()=>setView("pickcal")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>change</button>
+            )}
+          </div>
+        )}
+
+        {/* Choose calendar (owner / multi-team) */}
+        {!done&&view==="pickcal"&&(
+          <div>
+            <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",marginBottom:14,lineHeight:1.5}}>
+              Which team's calendar do you want to book on?
+            </div>
+            {(initialResolve.options||TeamCalendars.teams).map(opt=>(
+              <button key={opt.id} onClick={()=>pickCalendar(opt)}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",marginBottom:10,borderRadius:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontWeight:700,fontSize:15,cursor:"pointer"}}>
+                <span>📅 {opt.name}</span>
+                <span style={{color:"#94a3b8",fontSize:18}}>›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* No team calendar configured */}
+        {!done&&view==="nocal"&&(
+          <div style={{textAlign:"center",padding:"10px 4px 8px"}}>
+            <div style={{fontSize:40,marginBottom:12}}>📅</div>
+            <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No calendar set for your team</div>
+            <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.5,marginBottom:20}}>
+              {TeamCalendars.isOwner
+                ? "No teams have a calendar configured yet. Add a calendar ID to a team in Supabase, then you can book slots here."
+                : "Booking isn't available until an owner connects a calendar to your team. You can still set a personal callback from the lead instead."}
+            </div>
+            <button onClick={onClose} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>Got it</button>
+          </div>
+        )}
 
         {/* Manage existing booking */}
         {!done&&!noAccess&&view==="manage"&&(
@@ -6363,8 +6500,18 @@ function App() {
   const [loading,setLoading]=useState(true);
   const [leads,setLeads]=useState([]);
   const [profiles,setProfiles]=useState([]);
-  const [teams,setTeams]=useState([]);
-  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
+  const [teams,setTeams]=useState([]);  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
+  // Keep the team-calendar registry in sync so deeply-nested booking components
+  // can resolve the right calendar without prop-drilling.
+  React.useEffect(()=>{
+    if(!user) return;
+    TeamCalendars.set({
+      currentUserId: user.id,
+      isOwner: user.id === OWNER_ID,
+      teams,
+      teamMembers,
+    });
+  },[user, teams, teamMembers]);
   const [teamGoals,setTeamGoals]=useState({}); // { teamId: { weekly: {...}, quarterly: {...} } }
   const [tab,setTab]=useState("pipeline");
   const [modal,setModal]=useState({open:false,lead:null});
