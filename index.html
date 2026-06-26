@@ -2520,6 +2520,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                 {label==="Appointment" && repProfiles!==undefined && (
                   <div style={{display:"flex",gap:6,flexShrink:0}}>
                     <CalendarSyncButton lead={lead} onUpdate={updated=>{handleUpdate({...lead,...updated});}} creatorName={creatorName}/>
+                    {!lead.gcal_event_id && (
+                      <button title="Remove appointment"
+                        onClick={async()=>{
+                          if(!window.confirm("Remove this appointment? This clears the date/time from the lead."))return;
+                          const entry={ts:formatTs(),changes:[`Appointment removed (was: ${lead.appointment})`]};
+                          const nextHistory=[entry,...(lead.history||[])];
+                          await sb.from("leads").update({appointment:"",updated_at:new Date().toISOString(),history:nextHistory}).eq("id",lead.id);
+                          handleUpdate({...lead,appointment:"",history:nextHistory});
+                        }}
+                        style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:dark?"#3f1d2b":"#fee2e2",border:"none",fontSize:15,cursor:"pointer",color:dark?"#fca5a5":"#b91c1c"}}>✕</button>
+                    )}
                   </div>
                 )}
                 {label==="Address" && (
