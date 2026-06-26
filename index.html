@@ -5068,9 +5068,27 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
   //  - owner: all configured team calendars
   //  - rep/manager: only their own team calendar(s)
   const browsable = TeamCalendars.isOwner ? TeamCalendars.teams : TeamCalendars.myTeams;
-  const [selectedTid, setSelectedTid] = React.useState(browsable[0]?.id || null);
+  // Remember the last calendar across tab-switches AND full app restarts.
+  // Falls back to the first available calendar if nothing was saved or the
+  // saved one is no longer in this user's browsable list.
+  const LS_KEY = "pp_last_calendar_tid";
+  const readSaved = () => { try { return localStorage.getItem(LS_KEY); } catch(e){ return null; } };
+  const pickInitial = () => {
+    const saved = readSaved();
+    if(saved && browsable.some(t=>t.id===saved)) return saved;
+    return browsable[0]?.id || null;
+  };
+  const [selectedTid, setSelectedTid] = React.useState(pickInitial());
+  const chooseCalendar = (tid) => {
+    setSelectedTid(tid);
+    try { localStorage.setItem(LS_KEY, tid); } catch(e){}
+  };
   React.useEffect(()=>{
-    if(!selectedTid && browsable[0]) setSelectedTid(browsable[0].id);
+    // Once the browsable list loads/changes, make sure we have a valid selection.
+    if(!selectedTid && browsable[0]) chooseCalendar(browsable[0].id);
+    else if(selectedTid && browsable.length && !browsable.some(t=>t.id===selectedTid)){
+      chooseCalendar(browsable[0].id); // saved calendar no longer available
+    }
   },[browsable.length]);
 
   const teamCfg = selectedTid ? TEAM_CALENDARS[selectedTid] : null;
@@ -5096,7 +5114,7 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
         {browsable.length>1 ? (
-          <select value={selectedTid||""} onChange={e=>{setSelectedTid(e.target.value);setCalKey(k=>k+1);}}
+          <select value={selectedTid||""} onChange={e=>{chooseCalendar(e.target.value);setCalKey(k=>k+1);}}
             style={{fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",maxWidth:"55%"}}>
             {browsable.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
