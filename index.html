@@ -5675,6 +5675,9 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
     // Google Drive: drive.google.com/file/d/FILEID/...  or  ?id=FILEID
     m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:.*&)?id=)([A-Za-z0-9_-]+)/);
     if(m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+    // Loom: loom.com/share/ID  or  loom.com/embed/ID  (ID is hex)
+    m = u.match(/loom\.com\/(?:share|embed)\/([A-Za-z0-9]+)/);
+    if(m) return `https://www.loom.com/embed/${m[1]}`;
     return null;
   };
   const [gmailPicker, setGmailPicker] = useState(null); // material being sent
@@ -6150,7 +6153,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
               </div>
             ))}
             <div style={{fontSize:12,color:dark?"#64748b":"#94a3b8",lineHeight:1.5,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:16}}>
-              💡 Google Drive and Vimeo links work too — paste any of them and they’ll play inline.
+              💡 Loom, Google Drive, and Vimeo links work too — paste any of them and they’ll play inline.
             </div>
             <button onClick={()=>{ setVideoHelp(false); openNew("videos"); }}
               style={{width:"100%",padding:"13px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -6198,7 +6201,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                 </div>
               ) : (form.category==="videos" && (
                 <div style={{display:"flex",alignItems:"flex-start",gap:7,fontSize:12,fontWeight:500,color:dark?"#fbbf24":"#b45309",marginBottom:16,lineHeight:1.4}}>
-                  <span>ℹ️</span> <span>This link will open in a new tab instead of playing inline. For in-app playback, paste a YouTube, Vimeo, or Google Drive link. <button type="button" onClick={()=>setVideoHelp(true)} style={{background:"none",border:"none",padding:0,color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>How?</button></span>
+                  <span>ℹ️</span> <span>This link will open in a new tab instead of playing inline. For in-app playback, paste a YouTube, Loom, Vimeo, or Google Drive link. <button type="button" onClick={()=>setVideoHelp(true)} style={{background:"none",border:"none",padding:0,color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>How?</button></span>
                 </div>
               ))
             )}
