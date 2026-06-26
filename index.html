@@ -5657,7 +5657,26 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   ];
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewer, setViewer] = useState(null); // {type:"pdf"|"image", url, name}
+  const [viewer, setViewer] = useState(null); // {type:"pdf"|"image"|"video", url, name}
+  const [videoHelp, setVideoHelp] = useState(false); // "how to add a YouTube video" walkthrough
+  // Convert a YouTube / Vimeo / Google-Drive share link into an embeddable URL
+  // so training videos play inline instead of opening a new tab. Returns null
+  // if we don't recognize the link as an embeddable video host.
+  const toEmbedUrl = (raw) => {
+    if(!raw) return null;
+    const u = raw.trim();
+    let m;
+    // youtu.be/ID  or  youtube.com/watch?v=ID  or  /embed/ID  or  /shorts/ID  or  /live/ID
+    m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    if(m) return `https://www.youtube.com/embed/${m[1]}?rel=0&playsinline=1`;
+    // vimeo.com/123456789
+    m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    if(m) return `https://player.vimeo.com/video/${m[1]}`;
+    // Google Drive: drive.google.com/file/d/FILEID/...  or  ?id=FILEID
+    m = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:.*&)?id=)([A-Za-z0-9_-]+)/);
+    if(m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+    return null;
+  };
   const [gmailPicker, setGmailPicker] = useState(null); // material being sent
   const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
@@ -5872,10 +5891,18 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,margin:"8px 0 14px"}}>
         <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b"}}>{cat.icon} {cat.blurb}</div>
         {canManage && (
-          <button onClick={()=>openNew(activeCat)}
-            style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 15px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-            + Add Material
-          </button>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            {activeCat==="videos" && (
+              <button onClick={()=>setVideoHelp(true)}
+                style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 13px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                🎥 How to add
+              </button>
+            )}
+            <button onClick={()=>openNew(activeCat)}
+              style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 15px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+              + Add {activeCat==="videos"?"Video":"Material"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -5959,12 +5986,17 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                     🖼️ View Photo
                   </button>
                 )}
-                {m.url && (
+                {m.url && (()=>{ const emb = toEmbedUrl(m.url); return emb ? (
+                  <button onClick={()=>setViewer({type:"video",url:emb,name:m.title||"Video"})}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fee2e2",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    ▶ Watch
+                  </button>
+                ) : (
                   <a href={m.url} target="_blank" rel="noopener noreferrer"
                     style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:isVideo?"#fee2e2":"#e8f0ff",color:isVideo?"#b91c1c":"#1a2456",textDecoration:"none",fontSize:13,fontWeight:700}}>
                     {isVideo?"▶ Watch":"📄 Open Link"}
                   </a>
-                )}
+                ); })()}
               </div>
             )}
           </div>
@@ -6081,9 +6113,49 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
           <div onClick={e=>e.stopPropagation()} style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 12px 16px"}}>
             {viewer.type==="image" ? (
               <img src={viewer.url} alt={viewer.name} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8}}/>
+            ) : viewer.type==="video" ? (
+              <div style={{width:"100%",maxWidth:960,aspectRatio:"16 / 9",maxHeight:"100%"}}>
+                <iframe src={viewer.url} title={viewer.name} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"#000"}}/>
+              </div>
             ) : (
               <iframe src={viewer.url} title={viewer.name} style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"#fff"}}/>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* How to add a training video from your phone */}
+      {videoHelp && (
+        <div onClick={()=>setVideoHelp(false)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:310}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto",padding:"20px",boxShadow:"0 -8px 30px rgba(0,0,0,0.25)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{fontSize:18,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🎥 Add a training video</div>
+              <div onClick={()=>setVideoHelp(false)} style={{fontSize:24,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</div>
+            </div>
+            <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.5,marginBottom:16}}>
+              Videos play right inside Pipeline Push, but they’re hosted on YouTube so they stream fast and never count against the app’s storage. It takes about a minute the first time.
+            </div>
+            {[
+              {n:"1",t:"Upload to YouTube from your phone",d:"Open the YouTube app, tap ➕ at the bottom, and pick your video from your camera roll."},
+              {n:"2",t:"Set visibility to “Unlisted”",d:"On the details screen, change visibility from Public to Unlisted. Unlisted means it won’t show up in search or on your channel — only people with the link can watch."},
+              {n:"3",t:"Copy the video link",d:"After it finishes uploading, open the video, tap Share, then Copy link."},
+              {n:"4",t:"Paste it here",d:"Tap “Add Video”, give it a title, and paste the link into the Link field. You’ll see a green ✓ when it’s set to play inline. Save, and you’re done."}
+            ].map(s=>(
+              <div key={s.n} style={{display:"flex",gap:12,marginBottom:14}}>
+                <div style={{flexShrink:0,width:26,height:26,borderRadius:"50%",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{s.n}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:2}}>{s.t}</div>
+                  <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45}}>{s.d}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{fontSize:12,color:dark?"#64748b":"#94a3b8",lineHeight:1.5,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:16}}>
+              💡 Google Drive and Vimeo links work too — paste any of them and they’ll play inline.
+            </div>
+            <button onClick={()=>{ setVideoHelp(false); openNew("videos"); }}
+              style={{width:"100%",padding:"13px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+              Got it — add a video
+            </button>
           </div>
         </div>
       )}
@@ -6118,7 +6190,18 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
               <textarea value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} placeholder={form.templateType==="email"?"Paste the email template here. The title above is used as the email subject.":"Paste the text-message template here."} rows={6} style={{...inputStyle,marginBottom:16,resize:"vertical"}}/>
             )}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Link <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(doc, video, or drive URL)</span></label>
-            <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))} placeholder="https://…" style={{...inputStyle,marginBottom:16}}/>
+            <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))} placeholder="https://…" style={{...inputStyle,marginBottom:form.url.trim()?6:16}}/>
+            {form.url.trim() && (
+              toEmbedUrl(form.url) ? (
+                <div style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:600,color:"#16a34a",marginBottom:16}}>
+                  <span>✓</span> This video will play inside Pipeline Push.
+                </div>
+              ) : (form.category==="videos" && (
+                <div style={{display:"flex",alignItems:"flex-start",gap:7,fontSize:12,fontWeight:500,color:dark?"#fbbf24":"#b45309",marginBottom:16,lineHeight:1.4}}>
+                  <span>ℹ️</span> <span>This link will open in a new tab instead of playing inline. For in-app playback, paste a YouTube, Vimeo, or Google Drive link. <button type="button" onClick={()=>setVideoHelp(true)} style={{background:"none",border:"none",padding:0,color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>How?</button></span>
+                </div>
+              ))
+            )}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Attach PDF <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(optional)</span></label>
             {form.fileUrl ? (
               <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc",marginBottom:16}}>
