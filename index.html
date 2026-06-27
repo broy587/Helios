@@ -5177,32 +5177,33 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
       {/* Notes */}
       <div style={{padding:"0 20px 12px"}}>
         <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Notes</div>
-        {/* Saved note display */}
-        {home.notes&&(
-          <div style={{background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"10px 14px",marginBottom:8,borderLeft:"3px solid #6b2d4e"}}>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{home.notes}</div>
-            <button onMouseDown={async e=>{
-              e.preventDefault();
-              if(home.id) await sb.from("canvass_homes").update({notes:null,updated_at:new Date().toISOString()}).eq("id",home.id);
-              home.notes=null;
-              if(onSaveNote) onSaveNote({...home,notes:null},"");
-            }}
-              style={{background:"none",border:"none",color:"rgba(255,68,68,0.7)",fontSize:11,cursor:"pointer",padding:0,fontWeight:600}}>
-              ✕ Delete note
-            </button>
-          </div>
-        )}
-        {/* Add/edit note input */}
-        <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"flex-end",gap:10}}>
+        {/* Single editable note — edit the existing note directly here */}
+        <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"10px 14px",borderLeft:home.notes?"3px solid #6b2d4e":"none"}}>
           <textarea value={note} onChange={e=>setNote(e.target.value)}
             placeholder={home.notes?"Edit note...":"Add a note..."}
-            rows={2}
-            style={{flex:1,background:"none",border:"none",outline:"none",color:"#fff",fontSize:13,resize:"none",fontFamily:"inherit",lineHeight:1.5}}/>
-          <button onMouseDown={e=>{e.preventDefault();saveNote();}}
-            onClick={saveNote}
-            style={{background:noteSaved?"#10b981":"#3b82f6",border:"none",borderRadius:8,padding:"6px 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",flexShrink:0}}>
-            {noteSaved?"✓ Saved":"Save"}
-          </button>
+            rows={home.notes?5:2}
+            style={{width:"100%",boxSizing:"border-box",background:"none",border:"none",outline:"none",color:"#fff",fontSize:13,resize:"vertical",fontFamily:"inherit",lineHeight:1.5}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:8}}>
+            {home.notes ? (
+              <button onMouseDown={async e=>{
+                e.preventDefault();
+                if(!window.confirm("Delete this note?")) return;
+                if(home.id) await sb.from("canvass_homes").update({notes:null,updated_at:new Date().toISOString()}).eq("id",home.id);
+                home.notes=null;
+                setNote("");
+                if(onSaveNote) onSaveNote({...home,notes:null},"");
+              }}
+                style={{background:"none",border:"none",color:"rgba(255,68,68,0.7)",fontSize:12,cursor:"pointer",padding:0,fontWeight:600}}>
+                ✕ Delete note
+              </button>
+            ) : <span/>}
+            <button onMouseDown={e=>{e.preventDefault();saveNote();}}
+              onClick={saveNote}
+              disabled={note.trim()===(home.notes||"").trim()}
+              style={{background:noteSaved?"#10b981":(note.trim()===(home.notes||"").trim()?"rgba(255,255,255,0.12)":"#3b82f6"),border:"none",borderRadius:8,padding:"6px 16px",color:note.trim()===(home.notes||"").trim()&&!noteSaved?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:note.trim()===(home.notes||"").trim()?"default":"pointer",flexShrink:0}}>
+              {noteSaved?"✓ Saved":"Save"}
+            </button>
+          </div>
         </div>
       </div>
 
