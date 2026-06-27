@@ -3617,9 +3617,17 @@ function analyzeConversions(leads) {
   // An account counts as having "reached" stage Y if its current stage is at or
   // past Y in the progression. For ARC / On Hold / Needs Cancel Save leads, the
   // remembered (pre-flag) stage is used — getEffectiveStageIndex handles that.
+  // NOTE: for conversions, "Install" means the literal Install stage or beyond
+  // (NOT "Install Scheduled"), so a booked-but-not-installed account doesn't count.
+  const CONV_INDEX = {
+    "AC": MILESTONE_INDEX.AC,
+    "VC": MILESTONE_INDEX.VC,
+    "Permits": MILESTONE_INDEX.Permits,
+    "Install": STAGE_PROGRESSION.indexOf("Install"),
+  };
   const atOrPast = (lead, ms) => {
     const idx = getEffectiveStageIndex(lead);
-    return idx >= 0 && idx >= MILESTONE_INDEX[ms];
+    return idx >= 0 && idx >= CONV_INDEX[ms];
   };
   const poolAt = (ms) => (leads||[]).filter(l=>atOrPast(l, ms));
   const acAt = poolAt("AC");
@@ -4899,7 +4907,7 @@ const DISPOSITIONS = [
   {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
 ];
 
-function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange, currentUser}) {
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange, currentUser, profiles}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
   const [errMsg, setErrMsg] = React.useState("");
@@ -4926,6 +4934,15 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     : leads && home.address
       ? leads.find(l=>l.address&&l.address.toLowerCase().includes(home.address.split(",")[0].toLowerCase().trim()))
       : null;
+
+  // Which rep owns this account (the pipeline lead's owner), resolved to a name.
+  const accountOwner = (() => {
+    const ownerId = (linkedLead && linkedLead.owner_id) || home.owner_id || (home._isPipelineLead ? home.owner_id : null);
+    if(!ownerId) return null;
+    if(currentUser && ownerId===currentUser.id) return "You";
+    const p = (profiles||[]).find(pr=>pr.id===ownerId);
+    return p ? (p.nickname || p.name || "Unknown rep") : null;
+  })();
 
   const saveNote = async() => {
     if(!note.trim()) return;
@@ -5059,6 +5076,11 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
             <div onClick={()=>onCreateLead(home, linkedLead)}
               style={{display:"inline-flex",alignItems:"center",gap:6,background:"#10b981",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700,color:"#fff",marginBottom:8,cursor:"pointer"}}>
               ⚡ Lead created — tap to view
+            </div>
+          )}
+          {accountOwner && (
+            <div style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.1)",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700,color:"#e2e8f0",marginBottom:8,marginLeft:linkedLead?6:0}}>
+              👤 {accountOwner}{accountOwner==="You"?"r account":"'s account"}
             </div>
           )}
           <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:2}}>
@@ -5463,7 +5485,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         setSelectedHome({
           id:null,_isPipelineLead:true,_leadId:lead.id,
           address:lead.address,owner_name:lead.name||"",
-          phone:lead.phone||"",notes:lead.notes||"",
+          phone:lead.phone||"",email:lead.email||"",notes:lead.notes||"",
           prescreen:"lead",lat:coords.lat,lng:coords.lng
         });
       }
@@ -5661,6 +5683,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             address:lead.address||"",
             owner_name:lead.name||"",
             phone:lead.phone||"",
+            email:lead.email||"",
             notes:lead.notes||"",
             prescreen:"lead",
             lat:loc.lat,
@@ -6049,6 +6072,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         <HomePopup
           home={selectedHome}
           currentUser={currentUser}
+          profiles={profiles}
           onClose={()=>setSelectedHome(null)}
           onDelete={handleDeleteHome}
           onDisposition={async(home,disp)=>{
