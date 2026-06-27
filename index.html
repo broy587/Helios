@@ -5599,7 +5599,7 @@ const GCal = {
       summary: title,
       start: { dateTime: startISO, timeZone: "America/Chicago" },
       end:   { dateTime: endISO,   timeZone: "America/Chicago" },
-      colorId: "9", // blueberry
+      colorId: "5", // banana
     };
     const res = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events`,
@@ -5679,7 +5679,7 @@ const GCal = {
       ].filter(Boolean).join("\n"),
       start,
       end,
-      colorId: "5", // banana / yellow
+      colorId: "4", // flamingo
       reminders: { useDefault: true },
     };
     const res = await fetch(
