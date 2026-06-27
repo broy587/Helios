@@ -2432,9 +2432,24 @@ const AC_CHECKLIST_ITEMS = [
   "Homeowner Asked Questions",
   "Homeowner Had Objections",
   "Named Drop In Pitch",
-  "At Least 2 Take Aways",
+  "Knew solar was/could be involved",
   "Clear Expectations Set",
 ];
+
+// Legacy → current AC checklist item names. Any checked item stored under an
+// old name is migrated to the new name so checkmarks/scores aren't lost.
+const AC_CHECKLIST_RENAMES = {
+  "At Least 2 Take Aways": "Knew solar was/could be involved",
+};
+function migrateAcChecklist(arr) {
+  if (!Array.isArray(arr)) return {list:arr, changed:false};
+  let changed = false;
+  const list = arr.map(item=>{
+    if (AC_CHECKLIST_RENAMES[item]) { changed = true; return AC_CHECKLIST_RENAMES[item]; }
+    return item;
+  });
+  return {list, changed};
+}
 
 function ACStatus({softSolid, confirmed, onChange, dark}) {
   const labelStyle = {fontSize:11,fontWeight:600,color:dark?"#94a3b8":"#64748b",textTransform:"uppercase",letterSpacing:"0.04em"};
@@ -2468,11 +2483,14 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
 
 function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
   const dark = useDark();
-  const [checked, setChecked] = React.useState(initialChecked||[]);
+  // Normalize any legacy item names to current ones so a renamed item still
+  // shows as checked in both view and edit modes, regardless of data source.
+  const normalized = migrateAcChecklist(initialChecked).list || [];
+  const [checked, setChecked] = React.useState(normalized);
   const [saving, setSaving] = React.useState(false);
   const score = checked.length;
   // Re-sync when initialChecked changes (e.g. opening edit after view-mode changes)
-  React.useEffect(()=>{ setChecked(initialChecked||[]); },[JSON.stringify(initialChecked)]);
+  React.useEffect(()=>{ setChecked(migrateAcChecklist(initialChecked).list || []); },[JSON.stringify(initialChecked)]);
 
   const toggle = async (item) => {
     const next = checked.includes(item)
@@ -3388,9 +3406,47 @@ function analyzeHygiene(leads, staleDays) {
   return {stale, noAppt, badCloseDate};
 }
 
+// ── Conversion metrics ────────────────────────────────────────────────
+// Pools are based on whether a lead actually REACHED a milestone (via history),
+// so a lead that hit AC then went No-Show still counts toward "AC or after."
+function analyzeConversions(leads) {
+  const acPool = [], vcPool = [];
+  for (const lead of (leads||[])) {
+    if (getStageReachedAt(lead, MILESTONE_INDEX.AC) != null) acPool.push(lead);
+    if (getStageReachedAt(lead, MILESTONE_INDEX.VC) != null) vcPool.push(lead);
+  }
+  const hasItem = (lead, item) => Array.isArray(lead.ac_checklist) && lead.ac_checklist.includes(item);
+  const isYes = (lead, field) => (lead[field]||"") === "Yes";
+  const pct = (count, total) => total === 0 ? null : Math.round((count/total)*100);
+  const countAc = (item) => acPool.filter(l=>hasItem(l,item)).length;
+  const countVc = (field) => vcPool.filter(l=>isYes(l,field)).length;
+
+  const avgScore = acPool.length === 0 ? null
+    : (acPool.reduce((s,l)=>s + (Array.isArray(l.ac_checklist)?l.ac_checklist.length:0), 0) / acPool.length);
+
+  return {
+    acTotal: acPool.length,
+    vcTotal: vcPool.length,
+    avgScore, // out of 10
+    ac: [
+      {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
+      {label:"Got contact info", pct:pct(countAc("Contact Info"), acPool.length), n:countAc("Contact Info")},
+      {label:"Same/next-day apt", pct:pct(countAc("Same Day or Next Day Apt"), acPool.length), n:countAc("Same Day or Next Day Apt")},
+      {label:"Prescreened", pct:pct(countAc("Prescreened"), acPool.length), n:countAc("Prescreened")},
+    ],
+    vc: [
+      {label:"Knew solar involved", pct:pct(countVc("knew_solar"), vcPool.length), n:countVc("knew_solar")},
+      {label:"Autopay input", pct:pct(countVc("autopay_input"), vcPool.length), n:countVc("autopay_input")},
+      {label:"Let closer inside", pct:pct(countVc("closer_inside"), vcPool.length), n:countVc("closer_inside")},
+      {label:"All decision makers present", pct:pct(countVc("decision_makers"), vcPool.length), n:countVc("decision_makers")},
+    ],
+  };
+}
+
 function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap}) {
   const dark=useDark();
   const [hygieneOpen,setHygieneOpen]=useState(false);
+  const [convOpen,setConvOpen]=useState(false);
   const [staleDays,setStaleDays]=useState(14);
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
@@ -3464,6 +3520,10 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",marginTop:4,padding:"14px",textAlign:"center",color:"#94a3b8",fontSize:13,zIndex:300}}>No leads found</div>
           )}
         </div>
+        <button onClick={()=>setConvOpen(true)} title="Conversions"
+          style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
+          📊
+        </button>
         <button onClick={()=>setHygieneOpen(true)} title="Pipeline hygiene"
           style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
           🩺
@@ -3586,9 +3646,67 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           </div>
         );
       })()}
+
+      {convOpen && (()=>{
+        const c = analyzeConversions(leads);
+        const Bar = ({label, pct, n, total})=>(
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:13,color:dark?"#e2e8f0":"#334155",fontWeight:600}}>{label}</span>
+              <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{pct==null?"—":`${pct}%`}<span style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginLeft:5}}>{pct==null?"":`(${n}/${total})`}</span></span>
+            </div>
+            <div style={{height:7,borderRadius:99,background:dark?"#0f172a":"#f1f5f9",overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct==null?0:pct}%`,borderRadius:99,background:"linear-gradient(90deg,#1a2456,#6b2d4e)",transition:"width 0.3s"}}/>
+            </div>
+          </div>
+        );
+        return (
+          <div onClick={()=>setConvOpen(false)}
+            style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:dark?"#1e293b":"#fff",width:"min(560px,100%)",maxHeight:"85vh",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.3)"}}>
+              <div style={{padding:"18px 20px 12px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+                <div>
+                  <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>📊 Conversions</div>
+                  <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Based on the leads in this view</div>
+                </div>
+                <button onClick={()=>setConvOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
+              </div>
+              <div style={{padding:"16px 20px 24px",overflowY:"auto",flex:1}}>
+                {/* Avg AC checklist score */}
+                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>Avg AC checklist score</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Accounts on AC / Scheduled or after</div>
+                  </div>
+                  <div style={{fontSize:26,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                    {c.avgScore==null?"—":c.avgScore.toFixed(1)}<span style={{fontSize:15,color:"#94a3b8",fontWeight:700}}>/10</span>
+                  </div>
+                </div>
+
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC or after</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.acTotal} account{c.acTotal===1?"":"s"}</span>
+                </div>
+                {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
+                  : c.ac.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.acTotal}/>)}
+
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>VC or after</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.vcTotal} account{c.vcTotal===1?"":"s"}</span>
+                </div>
+                {c.vcTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached VC in this view.</div>
+                  : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.vcTotal}/>)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
+
+// ── Dark mode helper ──────────────────────────────────────────────────
 function useDarkMode() {
   const [dark, setDark] = useState(() => localStorage.getItem("pp_dark")==="1");
   useEffect(()=>{
@@ -7610,6 +7728,29 @@ function App() {
     }
   };
 
+  // One-time migration: swap any legacy AC-checklist item names to current ones.
+  // We only WRITE back leads the current user owns (RLS safe); for others we still
+  // correct the in-memory copy so the UI is consistent, and the owner persists it
+  // on their own next load.
+  const applyAcMigration = async (leadsArr, uid) => {
+    if (!Array.isArray(leadsArr)) return leadsArr;
+    const toPersist = [];
+    const out = leadsArr.map(l=>{
+      const {list, changed} = migrateAcChecklist(l.ac_checklist);
+      if (!changed) return l;
+      const updated = {...l, ac_checklist:list};
+      if (l.owner_id === uid) toPersist.push(updated);
+      return updated;
+    });
+    if (toPersist.length) {
+      // Fire-and-forget; failures just mean it retries next load.
+      Promise.all(toPersist.map(l=>
+        sb.from("leads").update({ac_checklist:l.ac_checklist}).eq("id", l.id)
+      )).catch(e=>console.error("AC checklist migration write failed:", e));
+    }
+    return out;
+  };
+
   const loadData = async (u, prof) => {
     try {
       const p=prof||profile;
@@ -7627,7 +7768,7 @@ function App() {
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads(leadsRes.data||[]);
+        setLeads(await applyAcMigration(leadsRes.data||[], u.id));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
@@ -7674,7 +7815,7 @@ function App() {
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads(leadsRes.data||[]);
+        setLeads(await applyAcMigration(leadsRes.data||[], u.id));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
