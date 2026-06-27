@@ -98,10 +98,13 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 // Hierarchy: rep  <  closer  <  manager  <  owner
 // - "members" = anyone who carries leads and appears in rep lists: rep, closer, manager.
 // - isPrivileged (manager/owner) is unchanged — closers do NOT get manager powers.
-// - canBookCap = owner, manager, or closer (the CAP-appointment capability).
-function isMemberRole(role){ return role==="rep" || role==="closer" || role==="manager"; }
+// - canBookCap = owner, manager, closer, or self_gen (the CAP-appointment capability).
+// - "self_gen" is a rep in every way EXCEPT it can also book CAPs like a closer.
+//   It does NOT get closer/manager lead-visibility or privileged powers.
+function isMemberRole(role){ return role==="rep" || role==="self_gen" || role==="closer" || role==="manager"; }
 function isCloserRole(role){ return role==="closer"; }
-function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer"; }
+function isSelfGenRole(role){ return role==="self_gen"; }
+function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer" || role==="self_gen"; }
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
 const GCAL_CALENDAR_ID="c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com";
 // Team calendar map — add new teams here as they get calendars
@@ -1496,7 +1499,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{rep.name}</div>
-                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":rep.role==="closer"?"#ffedd5":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":rep.role==="closer"?"#9a3412":"#475569"}}>{rep.role}</span>
+                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":rep.role==="closer"?"#ffedd5":rep.role==="self_gen"?"#d1fae5":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":rep.role==="closer"?"#9a3412":rep.role==="self_gen"?"#065f46":"#475569"}}>{rep.role==="self_gen"?"self gen":rep.role}</span>
                 </div>
                 <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{rep.email}</div>
                 {repTeams.length>0 && (
@@ -1525,11 +1528,11 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                         {(isOwner || rep.role!=="manager") && (
                         <div style={{padding:"8px 14px",borderBottom:"1px solid #f1f5f9"}}>
                           <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Role</div>
-                          <div style={{display:"flex",gap:6}}>
-                            {(isOwner?["rep","closer","manager"]:["rep","closer"]).map(role=>(
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {(isOwner?["rep","self_gen","closer","manager"]:["rep","self_gen","closer"]).map(role=>(
                               <button key={role} onClick={()=>handleChangeRole(rep.id,role)}
-                                style={{flex:1,padding:"5px 0",borderRadius:6,border:`1.5px solid ${rep.role===role?"#3b82f6":"#e2e8f0"}`,background:rep.role===role?"#dbeafe":"#fff",color:rep.role===role?"#1e3a8a":"#64748b",fontWeight:rep.role===role?700:500,cursor:"pointer",fontSize:12,textTransform:"capitalize"}}>
-                                {role}
+                                style={{flex:"1 1 calc(50% - 3px)",padding:"5px 4px",borderRadius:6,border:`1.5px solid ${rep.role===role?"#3b82f6":"#e2e8f0"}`,background:rep.role===role?"#dbeafe":"#fff",color:rep.role===role?"#1e3a8a":"#64748b",fontWeight:rep.role===role?700:500,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>
+                                {role==="self_gen"?"Self Gen":role.charAt(0).toUpperCase()+role.slice(1)}
                               </button>
                             ))}
                           </div>
@@ -5015,7 +5018,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     const ms=(teamMembers&&teamMembers[t.id])||[];
     return ms.some(m=>m.user_id===currentUser?.id)||t.created_by===currentUser?.id;
   });
-  const repProfiles = (profiles||[]).filter(p=>(p.role==="rep"||p.role==="closer")&&p.id!==currentUser?.id);
+  const repProfiles = (profiles||[]).filter(p=>(p.role==="rep"||p.role==="self_gen"||p.role==="closer")&&p.id!==currentUser?.id);
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -6885,7 +6888,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const canManage = isOwner;
   const myRole = isOwner ? "owner" : (currentUser && currentUser.role) || "rep";
   // Access control: a material's `visible_to` is "all" or a comma-list of roles.
-  const ACCESS_ROLES = [["rep","Reps","👤"],["closer","Closers","🎯"],["manager","Managers","🧭"]];
+  const ACCESS_ROLES = [["rep","Reps","👤"],["self_gen","Self Gen","💪"],["closer","Closers","🎯"],["manager","Managers","🧭"]];
   const parseAccess = (v) => {
     if(!v || v==="all") return "all";
     const set = String(v).split(",").map(s=>s.trim()).filter(Boolean);
@@ -6895,6 +6898,9 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
     if(isOwner) return true; // owner sees everything
     const acc = parseAccess(material.visible_to);
     if(acc==="all") return true;
+    // self_gen is a rep with one extra power — it sees anything reps can see,
+    // plus anything explicitly shared with self_gen.
+    if(myRole==="self_gen" && (acc.includes("rep") || acc.includes("self_gen"))) return true;
     return acc.includes(myRole);
   };
   // Compact access badge shown on every card (visible to everyone).
@@ -8171,7 +8177,7 @@ function App() {
     return leads.filter(l=>l.owner_id===user.id); // rep
   })();
 
-  const repProfiles=profiles.filter(p=>(p.role==="rep"||p.role==="closer")&&p.id!==user.id);
+  const repProfiles=profiles.filter(p=>(p.role==="rep"||p.role==="self_gen"||p.role==="closer")&&p.id!==user.id);
   const detailLead=leads.find(l=>l.id===detailId)||null;
 
   const tabs=[
