@@ -552,6 +552,22 @@ function RepProfileModal({rep, teams, teamMembers, onClose}) {
     } catch(e) { return b; }
   };
 
+  // Relative "last active" string, e.g. "Active now", "12 min ago", "yesterday".
+  const lastSeenInfo = (() => {
+    if (!rep.last_seen) return null;
+    const d = new Date(rep.last_seen);
+    if (isNaN(d.getTime())) return null;
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    let text, recent = false;
+    if (mins < 5) { text = "Active now"; recent = true; }
+    else if (mins < 60) { text = `${mins} min ago`; recent = mins < 15; }
+    else if (mins < 1440) { const h = Math.floor(mins/60); text = `${h} hour${h===1?"":"s"} ago`; }
+    else if (mins < 2880) { text = "yesterday"; }
+    else if (mins < 10080) { const dd = Math.floor(mins/1440); text = `${dd} days ago`; }
+    else { text = d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+    return { text, recent, full: d.toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}) };
+  })();
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:4000}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={onClose}/>
@@ -574,6 +590,12 @@ function RepProfileModal({rep, teams, teamMembers, onClose}) {
                 <span key={t.id} style={{fontSize:11,fontWeight:600,padding:"2px 10px",borderRadius:20,background:"rgba(255,255,255,0.1)",color:"#e2e8f0"}}>{t.name}</span>
               ))}
             </div>
+            {lastSeenInfo && (
+              <div title={"Last active: "+lastSeenInfo.full} style={{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,padding:"3px 12px",borderRadius:20,background:"rgba(255,255,255,0.08)",color:lastSeenInfo.recent?"#4ade80":"#cbd5e1"}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:lastSeenInfo.recent?"#4ade80":"#94a3b8",flexShrink:0}}/>
+                {lastSeenInfo.recent ? lastSeenInfo.text : "Last active "+lastSeenInfo.text}
+              </div>
+            )}
           </div>
 
           {/* Details */}
@@ -7692,15 +7714,18 @@ function App() {
   const [calendarEventUrl,setCalendarEventUrl]=useState(null); // mine | team:id | rep:id | all
   // Persist team tab selection
   const [teamTabSelected,setTeamTabSelected]=useState("all");
-  // ── Team announcement banner ───────────────────────────────────
-  const [announcement,setAnnouncement]=useState(null);
-  const [announceDismissed,setAnnounceDismissed]=useState(false);
+  // ── Team announcement banners (multiple, team-targeted) ─────────
+  // Each announcement targets either everyone (target_teams = ["all"]) or a set
+  // of team IDs. A viewer sees an announcement if it's for "all" or for a team
+  // they belong to. Owner sees all. Multiple can be shown stacked at once.
+  const [announcements,setAnnouncements]=useState([]);
+  const [dismissedAnnouncements,setDismissedAnnouncements]=useState([]); // ids dismissed this session
   const loadAnnouncement = React.useCallback(async ()=>{
     try {
-      const {data} = await sb.from("announcements").select("*").order("updated_at",{ascending:false}).limit(1).maybeSingle();
-      setAnnouncement(data&&data.message&&data.active!==false ? data : null);
-      setAnnounceDismissed(false);
-    } catch(e){ /* table may not exist yet; fail quietly */ }
+      const {data} = await sb.from("announcements").select("*").eq("active",true).order("updated_at",{ascending:false});
+      setAnnouncements(Array.isArray(data) ? data.filter(a=>a&&a.message) : []);
+      setDismissedAnnouncements([]);
+    } catch(e){ /* table/column may not exist yet; fail quietly */ }
   },[]);
   React.useEffect(()=>{ if(user) loadAnnouncement(); },[user, loadAnnouncement]);
   // Persist stats tab selections
@@ -7810,6 +7835,9 @@ function App() {
   };
 
   const loadData = async (u, prof) => {
+    // Record that this user is active right now. Fire-and-forget so it never
+    // blocks or breaks the load; anyone can read it to see when a rep was last on.
+    try { sb.from("profiles").update({last_seen:new Date().toISOString()}).eq("id", u.id).then(()=>{},()=>{}); } catch(e){}
     try {
       const p=prof||profile;
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
