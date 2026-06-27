@@ -3939,21 +3939,21 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
                   : c.ac.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.acTotal}/>)}
 
-                {/* AC to Install Conversions — stage-to-stage progression rates */}
-                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
-                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC to Install Conversions</span>
-                </div>
-                {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
-                  : c.funnel.map(m=>(
-                      <Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.of}/>
-                    ))}
-
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>VC or after</span>
                   <span style={{fontSize:11,color:"#94a3b8"}}>{c.vcTotal} account{c.vcTotal===1?"":"s"}</span>
                 </div>
                 {c.vcTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached VC in this view.</div>
                   : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.vcTotal}/>)}
+
+                {/* AC to Install Conversions — stage-to-stage progression rates (current stage) */}
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC to Install Conversions</span>
+                </div>
+                {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached AC in this view.</div>
+                  : c.funnel.map(m=>(
+                      <Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.of}/>
+                    ))}
               </div>
             </div>
           </div>
