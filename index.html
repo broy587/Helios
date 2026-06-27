@@ -689,9 +689,9 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
       </div>
       <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{rangeLabel}</div>
 
-      {/* My Stats */}
+      {/* Personal Stats */}
       <div style={{marginBottom:28}}>
-        <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:14}}>My Stats</div>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:14}}>Personal</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
           <StatCard label="Leads" value={myLeadsInRange.length} color="#6b2d4e"/>
           <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
@@ -729,7 +729,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
         return (
           <div style={{marginBottom:28}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>
+              <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>
                 {viewingId===me?"My Goals":`${viewingName}'s Goals`}
               </div>
               {browsable.length>1 && (
@@ -754,7 +754,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
       {true && (
         <div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-            <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Team Stats</div>
+            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Team</div>
             {teams.length>0 && (
               <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
                 style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px"}}>
@@ -778,7 +778,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
 
       {/* By Rep */}
       <div style={{marginBottom:24}}>
-        <div style={{fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:12}}>By Rep</div>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:12}}>By Rep</div>
         <input
           placeholder="Search reps..."
           value={repSearch}
