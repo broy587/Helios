@@ -5844,6 +5844,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
   const [meetEnd, setMeetEnd] = React.useState("");
   const [meetSaving, setMeetSaving] = React.useState(false);
   const [meetMsg, setMeetMsg] = React.useState("");
+  // Recurrence: "none" | "daily" | "weekly" | "custom" (custom uses meetRepeatDays)
+  const [meetRepeat, setMeetRepeat] = React.useState("none");
+  const [meetRepeatDays, setMeetRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
+  const RRULE_DAYS = ["SU","MO","TU","WE","TH","FR","SA"];
   const MEETING_TYPES = ["Main Meeting","Boot Camp","Huddle","Hood Meet","Lunch"];
   // 30-min time options across the full day.
   const MEET_TIME_OPTIONS = React.useMemo(()=>{
@@ -5862,7 +5866,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
       setMeetEnd(`${String(end.getHours()).padStart(2,"0")}:${String(end.getMinutes()).padStart(2,"0")}`);
     }
   };
-  const resetMeet = () => { setMeetType("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg(""); };
+  const resetMeet = () => { setMeetType("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg("");setMeetRepeat("none");setMeetRepeatDays([]); };
   const submitMeeting = async (calendarId) => {
     if(!meetType || !meetDate || !meetStart || !meetEnd) return;
     setMeetSaving(true); setMeetMsg("");
@@ -5873,7 +5877,18 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
       const startD = new Date(yy,mm-1,dd,sh,sm,0);
       const endD = new Date(yy,mm-1,dd,eh,em,0);
       if(endD <= startD){ setMeetMsg("End time must be after the start time."); setMeetSaving(false); return; }
-      await GCal.createMeeting(meetType, startD.toISOString(), endD.toISOString(), calendarId);
+      // Build an RRULE for recurring meetings (Google Calendar format).
+      let recurrence = null;
+      if(meetRepeat==="daily"){
+        recurrence = ["RRULE:FREQ=DAILY"];
+      } else if(meetRepeat==="weekly"){
+        recurrence = ["RRULE:FREQ=WEEKLY"]; // repeats on the start date's weekday
+      } else if(meetRepeat==="custom"){
+        if(meetRepeatDays.length===0){ setMeetMsg("Pick at least one day to repeat on."); setMeetSaving(false); return; }
+        const days = meetRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
+        recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
+      }
+      await GCal.createMeeting(meetType, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setMeetSaving(false);
       setMeetOpen(false);
       resetMeet();
@@ -6033,6 +6048,34 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
               </div>
             </div>
 
+            {/* Repeat */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>🔁 Repeat</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:meetRepeat==="custom"?10:18}}>
+              {[["none","Does not repeat"],["daily","Daily"],["weekly","Weekly"],["custom","Custom"]].map(([val,lab])=>(
+                <button key={val} type="button" onClick={()=>setMeetRepeat(val)}
+                  style={{flex:"1 1 calc(50% - 3px)",padding:"9px 8px",borderRadius:10,border:`2px solid ${meetRepeat===val?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:meetRepeat===val?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),color:meetRepeat===val?"#6b2d4e":(dark?"#94a3b8":"#475569"),fontWeight:meetRepeat===val?700:500,cursor:"pointer",fontSize:13}}>
+                  {lab}
+                </button>
+              ))}
+            </div>
+            {meetRepeat==="custom" && (
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Repeat on these days:</div>
+                <div style={{display:"flex",gap:5,justifyContent:"space-between"}}>
+                  {[["S",0],["M",1],["T",2],["W",3],["T",4],["F",5],["S",6]].map(([lab,idx])=>{
+                    const on = meetRepeatDays.includes(idx);
+                    return (
+                      <button key={idx} type="button"
+                        onClick={()=>setMeetRepeatDays(d=>on?d.filter(x=>x!==idx):[...d,idx])}
+                        style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#6b2d4e":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontWeight:700,cursor:"pointer",fontSize:13,flexShrink:0}}>
+                        {lab}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {meetMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{meetMsg}</div>}
 
             <button onClick={()=>submitMeeting(teamCfg&&teamCfg.calendarId)}
@@ -6127,7 +6170,7 @@ const GCal = {
 
   // Create a meeting event on a specific team calendar.
   // title = the meeting name; startISO/endISO = ISO datetime strings.
-  async createMeeting(title, startISO, endISO, calendarId) {
+  async createMeeting(title, startISO, endISO, calendarId, recurrence) {
     const token = await this.signIn();
     const event = {
       summary: title,
@@ -6135,6 +6178,7 @@ const GCal = {
       end:   { dateTime: endISO,   timeZone: "America/Chicago" },
       colorId: "5", // banana
     };
+    if (Array.isArray(recurrence) && recurrence.length) event.recurrence = recurrence;
     const res = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events`,
       { method:"POST", headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"}, body:JSON.stringify(event) }
