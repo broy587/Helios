@@ -5671,9 +5671,21 @@ function PersonalApptButton({onSelect, label, lead}) {
   const [adding, setAdding] = React.useState(false);
   const dark = useDark();
   const iStyle = {width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+  // All 30-minute slots across the full day (00:00 → 23:30) as { value:"HH:MM", label:"h:mm AM/PM" }.
+  const TIME_OPTIONS = React.useMemo(()=>{
+    const out=[];
+    for(let h=0;h<24;h++){
+      for(const mm of [0,30]){
+        const ap = h>=12?"PM":"AM";
+        const h12 = h%12||12;
+        out.push({ value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`, label:`${h12}:${String(mm).padStart(2,"0")} ${ap}` });
+      }
+    }
+    return out;
+  },[]);
 
   const handleConfirm = async () => {
-    if(!date) return;
+    if(!date || !time) return;
     const d = new Date(date);
     const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const dateStr = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
@@ -5734,11 +5746,14 @@ function PersonalApptButton({onSelect, label, lead}) {
               <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={iStyle}/>
             </div>
             <div style={{marginBottom:22}}>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time (optional)</label>
-              <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={iStyle}/>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time</label>
+              <select value={time} onChange={e=>setTime(e.target.value)} style={{...iStyle, appearance:"auto", cursor:"pointer"}}>
+                <option value="">Select a time…</option>
+                {TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
             </div>
-            <button onClick={handleConfirm} disabled={!date||adding}
-              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&!adding)?"pointer":"default"}}>
+            <button onClick={handleConfirm} disabled={!date||!time||adding}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&time&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&time&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&time&&!adding)?"pointer":"default"}}>
               {adding?"Adding to your calendar…":"Set Comeback"}
             </button>
             <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",textAlign:"center",marginTop:10,lineHeight:1.4}}>
