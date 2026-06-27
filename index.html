@@ -2784,7 +2784,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   handleUpdate({...lead,appointment:val,gcal_event_id:null});
                 }}/>
               </div>
-              {canBookCap && lead.stage==="VC / SRA" && (
+              {canBookCap && (lead.stage==="VC / SRA" || lead.stage==="CAP") && (
                 <div style={{marginTop:8}}>
                   <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="📋 Book CAP Appointment"/>
                 </div>
@@ -3070,7 +3070,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
             {/* Personal Callback */}
             <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val,gcal_event_id:""}))} label="↩️ Personal CB"/>
           </div>
-          {canBookCap && form.stage==="VC / SRA" && (
+          {canBookCap && (form.stage==="VC / SRA" || form.stage==="CAP") && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
               <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 Book CAP Appointment</div>
               <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
