@@ -3568,7 +3568,7 @@ function HelpTip({text, dark}) {
       {open && (
         <>
           <div onClick={(e)=>{e.stopPropagation();setOpen(false);}} style={{position:"fixed",inset:0,zIndex:4000}}/>
-          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"22px",right:0,zIndex:4001,width:230,background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",padding:"10px 12px",fontSize:12,fontWeight:500,color:dark?"#cbd5e1":"#475569",lineHeight:1.45,textAlign:"left",whiteSpace:"normal"}}>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"24px",right:"-4px",zIndex:4001,width:"min(240px, 72vw)",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",padding:"10px 12px",fontSize:12,fontWeight:500,color:dark?"#cbd5e1":"#475569",lineHeight:1.45,textAlign:"left",whiteSpace:"normal",wordBreak:"break-word"}}>
             {text}
           </div>
         </>
@@ -3600,7 +3600,7 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
         <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>Dark Mode</div>
+              <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>🌙 Dark Mode</div>
               <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Switch to a darker color scheme</div>
             </div>
             <div onClick={()=>setDark(d=>!d)}
