@@ -2750,10 +2750,15 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       <button title="Remove appointment"
                         onClick={async()=>{
                           if(!window.confirm("Remove this appointment? This clears the date/time from the lead."))return;
+                          // If this was a personal comeback on the rep's calendar, remove it there too.
+                          if(lead.cb_event_id){
+                            try { await GCal.deletePersonalCB(lead.cb_event_id); }
+                            catch(e){ console.error("Couldn't delete comeback from calendar:",e); }
+                          }
                           const entry={ts:formatTs(),changes:[`Appointment removed (was: ${lead.appointment})`]};
                           const nextHistory=[entry,...(lead.history||[])];
-                          await sb.from("leads").update({appointment:"",updated_at:new Date().toISOString(),history:nextHistory}).eq("id",lead.id);
-                          handleUpdate({...lead,appointment:"",history:nextHistory});
+                          await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString(),history:nextHistory}).eq("id",lead.id);
+                          handleUpdate({...lead,appointment:"",cb_event_id:null,history:nextHistory});
                         }}
                         style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:dark?"#3f1d2b":"#fee2e2",border:"none",fontSize:15,cursor:"pointer",color:dark?"#fca5a5":"#b91c1c"}}>✕</button>
                     )}
@@ -2779,9 +2784,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{lead.appointment?"Rebook / Change Appointment":"Appointment"}</div>
               <div style={{display:"flex",gap:8}}>
                 <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot" creatorName={creatorName}/>
-                <PersonalApptButton lead={lead} label="↩️ Personal CB" onSelect={async(val)=>{
-                  await sb.from("leads").update({appointment:val,gcal_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  handleUpdate({...lead,appointment:val,gcal_event_id:null});
+                <PersonalApptButton lead={lead} label="↩️ Personal CB" onSelect={async(val,cbEventId)=>{
+                  // Replacing an old comeback? Remove the previous calendar event.
+                  if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
+                    try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
+                  }
+                  await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                  handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null});
                 }}/>
               </div>
               {canBookCap && (lead.stage==="VC / SRA" || lead.stage==="CAP") && (
@@ -3052,7 +3061,10 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            {form.appointment&&!form.gcal_event_id&&<button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
+            {form.appointment&&!form.gcal_event_id&&<button onClick={async()=>{
+              if(form.cb_event_id){ try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); } }
+              setForm(f=>({...f,appointment:"",gcal_event_id:"",cb_event_id:null}));
+            }} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
           </div>
           {form.appointment && (
             <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46",marginBottom:8}}>
@@ -3068,7 +3080,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
               else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
             }} label="📅 Book Closer Slot" creatorName={creatorName}/>
             {/* Personal Callback */}
-            <PersonalApptButton lead={{...form}} onSelect={val=>setForm(f=>({...f,appointment:val,gcal_event_id:""}))} label="↩️ Personal CB"/>
+            <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
           </div>
           {canBookCap && (form.stage==="VC / SRA" || form.stage==="CAP") && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
@@ -5550,6 +5562,18 @@ const GCal = {
     return await res.json();
   },
 
+  // Delete a personal-comeback event from the rep's OWN (primary) Google Calendar.
+  async deletePersonalCB(eventId) {
+    if(!eventId) return;
+    const token = await this.signIn();
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+      { method:"DELETE", headers:{Authorization:`Bearer ${token}`} }
+    );
+    // 410 = already deleted; treat as success.
+    if(!res.ok && res.status!==410 && res.status!==404) throw new Error(await res.text());
+  },
+
   async updateEvent(eventId, lead, calendarId) {
     const token = await this.signIn();
     const times = this.parseAppointment(lead.appointment);
@@ -5713,15 +5737,15 @@ function PersonalApptButton({onSelect, label, lead}) {
     // Add to the rep's OWN Google Calendar (private). Surface failures so the
     // rep knows if it didn't make it onto their calendar.
     setAdding(true);
-    let calOk = false, calErr = "";
+    let calOk = false, calErr = "", cbEventId = null;
     try {
-      if(lead) { await GCal.createPersonalCB(lead, times); calOk = true; }
+      if(lead) { const ev = await GCal.createPersonalCB(lead, times); cbEventId = ev && ev.id; calOk = true; }
     } catch(e){
       calErr = (e && e.message) || "unknown error";
       console.error("Personal comeback calendar add failed:", e);
     }
     setAdding(false);
-    onSelect(apptStr);
+    onSelect(apptStr, cbEventId);
     setShow(false);
     if(lead && !calOk){
       alert("The comeback was saved to the lead, but it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted.");
@@ -5900,6 +5924,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
       );
       if(!res.ok) throw new Error(await res.text());
+      // If the lead had a personal comeback on the rep's own calendar, remove it
+      // — a real booked slot/CAP is replacing it.
+      if(lead.cb_event_id){
+        try { await GCal.deletePersonalCB(lead.cb_event_id); }
+        catch(e){ console.error("Couldn't delete old comeback from calendar:",e); }
+      }
       // Save appointment to lead
       const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
@@ -5908,11 +5938,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
         await sb.from("leads").update({
           appointment:apptStr,
           gcal_event_id:selectedSlot.id,
+          cb_event_id:null,
           stage:bookedStage,
           updated_at:new Date().toISOString()
         }).eq("id",lead.id);
       }
-      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:bookedStage});
+      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,cb_event_id:null,stage:bookedStage});
       setDoneMsg("booked");
       setDone(true);
     } catch(e){
@@ -7036,7 +7067,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -7063,7 +7094,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
