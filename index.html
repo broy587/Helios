@@ -93,6 +93,15 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ── YOUR owner user ID – set this to your actual Supabase auth user id ──
 // To find it: Supabase → Authentication → Users → copy your UUID
 const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
+
+// ── Role helpers ───────────────────────────────────────────────────────
+// Hierarchy: rep  <  closer  <  manager  <  owner
+// - "members" = anyone who carries leads and appears in rep lists: rep, closer, manager.
+// - isPrivileged (manager/owner) is unchanged — closers do NOT get manager powers.
+// - canBookCap = owner, manager, or closer (the CAP-appointment capability).
+function isMemberRole(role){ return role==="rep" || role==="closer" || role==="manager"; }
+function isCloserRole(role){ return role==="closer"; }
+function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer"; }
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
 const GCAL_CALENDAR_ID="c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com";
 // Team calendar map — add new teams here as they get calendars
@@ -599,7 +608,7 @@ class StatsErrorBoundary extends React.Component {
 }
 
 // ── Stats View ────────────────────────────────────────────────────────
-function StatsView({leads, profiles, currentUser, teams, teamMembers,
+function StatsView({leads, teamStatLeads, currentUserId, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const dark=useDark();
@@ -621,13 +630,30 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
   // Helper: milestone count with time range
   const mc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
 
-  const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner";
-  const teamOptions = [{id:"all",name:"All Teams"},...teams];
+  const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner" || currentUser.role==="closer";
+  // Teams this user belongs to (for scoping non-privileged/team-stat views).
+  const myTeamIds = Object.keys(teamMembers||{}).filter(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===(currentUserId||currentUser.id)));
+  const myTeams = (teams||[]).filter(t=>myTeamIds.includes(t.id));
+  // Owner sees an "All Teams" option + every team; everyone else is scoped to
+  // their own team(s) so they can't browse other teams' stats.
+  const teamOptions = currentUser.role==="owner"
+    ? [{id:"all",name:"All Teams"},...teams]
+    : (myTeams.length?myTeams:teams).map(t=>({id:t.id,name:t.name}));
+  // Make sure the selected team is one this user is allowed to see.
+  React.useEffect(()=>{
+    if(currentUser.role==="owner") return;
+    if(!teamOptions.some(t=>t.id===selectedTeamId) && teamOptions[0]){
+      setSelectedTeamId(teamOptions[0].id);
+    }
+  },[selectedTeamId, teamOptions.length]);
 
+  // Team stats draw from the (possibly slim/PII-free) teamStatLeads dataset so
+  // that plain reps can see team numbers without teammates' lead details.
+  const teamStatSource = Array.from(new Map(((teamStatLeads&&teamStatLeads.length)?teamStatLeads:leads||[]).map(l=>[l.owner_id+"|"+(l.id||l.created_at),l])).values());
   const getTeamLeads = () => {
-    if (selectedTeamId==="all") return uniqueLeads;
+    if (selectedTeamId==="all") return teamStatSource;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
-    return uniqueLeads.filter(l=>memberIds.includes(l.owner_id));
+    return teamStatSource.filter(l=>memberIds.includes(l.owner_id));
   };
   const teamLeads = getTeamLeads();
   const teamLeadsInRange = leadsInRange(teamLeads, range);
@@ -639,8 +665,12 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
     return getFilterLabel(timeFilter,customRange);
   })();
 
-  // All reps visible to this user (exclude soft-deleted)
-  const allReps = profiles.filter(p=>(p.role==="rep"||p.role==="manager")&&!p.deleted_at);
+  // All reps visible to this user (exclude soft-deleted). Owner sees all members;
+  // everyone else sees only members of their own team(s).
+  const allReps = (currentUser.role==="owner"
+    ? profiles
+    : profiles.filter(p=>myTeamIds.some(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===p.id)))
+  ).filter(p=>isMemberRole(p.role)&&!p.deleted_at);
   const getTeamReps = () => {
     if (selectedTeamId==="all") return allReps;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
@@ -673,8 +703,8 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         </div>
       </div>
 
-      {/* Manager/Owner: Team Stats */}
-      {isPrivileged && (
+      {/* Team Stats — visible to everyone (aggregate numbers only) */}
+      {true && (
         <div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Team Stats</div>
@@ -710,7 +740,7 @@ function StatsView({leads, profiles, currentUser, teams, teamMembers,
         {filteredReps.length===0 && <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"10px 0"}}>No reps found.</div>}
         {filteredReps.map(rep=>{
           const isSelected = selectedRepId===rep.id;
-          const rLeads = uniqueLeads.filter(l=>l.owner_id===rep.id);
+          const rLeads = teamStatSource.filter(l=>l.owner_id===rep.id);
           const rInRange = leadsInRange(rLeads, range);
           const rAC = milestoneCountInRange(rLeads,"AC",range);
           const rVC = milestoneCountInRange(rLeads,"VC",range);
@@ -1034,6 +1064,7 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
 function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamGoals, setTeamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
   const dark=useDark();
   const isOwner = currentUser.id === OWNER_ID;
+  const isManager = currentUser.role==="manager";
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -1052,8 +1083,8 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   const selectedTeam = teams.find(t=>t.id===selectedTeamId);
   const members = selectedTeamId && selectedTeamId!=="all" ? (teamMembers[selectedTeamId]||[]) : [];
   const memberIds = members.map(m=>m.user_id);
-  const allReps = profiles.filter(p=>(p.role==="rep"||p.role==="manager")&&!p.deleted_at);
-  const deletedReps = profiles.filter(p=>(p.role==="rep"||p.role==="manager")&&p.deleted_at);
+  const allReps = profiles.filter(p=>isMemberRole(p.role)&&!p.deleted_at);
+  const deletedReps = profiles.filter(p=>isMemberRole(p.role)&&p.deleted_at);
   const nonMembers = allReps.filter(r=>!memberIds.includes(r.id));
 
   // Get teams a rep belongs to
@@ -1273,7 +1304,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{rep.name}</div>
-                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":"#475569"}}>{rep.role}</span>
+                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":rep.role==="closer"?"#ffedd5":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":rep.role==="closer"?"#9a3412":"#475569"}}>{rep.role}</span>
                 </div>
                 <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{rep.email}</div>
                 {repTeams.length>0 && (
@@ -1289,7 +1320,7 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                   <button onClick={()=>handleRemoveMember(rep.id)}
                     style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 8px",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
                 )}
-                {isOwner && (
+                {(isOwner || isManager) && (
                   <div style={{position:"relative"}}>
                     <button onClick={()=>setRepActionOpen(isOpen?null:rep.id)}
                       style={{background:isOpen?"#f1f5f9":"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 10px",color:"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>
@@ -1297,11 +1328,13 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                     </button>
                     {isOpen && (
                       <div style={{position:"absolute",right:0,top:"100%",marginTop:4,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",zIndex:200,minWidth:180,overflow:"hidden"}}>
-                        {/* Role toggle */}
+                        {/* Role toggle — managers can set rep/closer; owner can also set manager.
+                            Managers cannot change someone who is already a manager. */}
+                        {(isOwner || rep.role!=="manager") && (
                         <div style={{padding:"8px 14px",borderBottom:"1px solid #f1f5f9"}}>
                           <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Role</div>
                           <div style={{display:"flex",gap:6}}>
-                            {["rep","manager"].map(role=>(
+                            {(isOwner?["rep","closer","manager"]:["rep","closer"]).map(role=>(
                               <button key={role} onClick={()=>handleChangeRole(rep.id,role)}
                                 style={{flex:1,padding:"5px 0",borderRadius:6,border:`1.5px solid ${rep.role===role?"#3b82f6":"#e2e8f0"}`,background:rep.role===role?"#dbeafe":"#fff",color:rep.role===role?"#1e3a8a":"#64748b",fontWeight:rep.role===role?700:500,cursor:"pointer",fontSize:12,textTransform:"capitalize"}}>
                                 {role}
@@ -1309,16 +1342,21 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                             ))}
                           </div>
                         </div>
-                        {/* Assign to team */}
+                        )}
+                        {/* Assign to team — owner only */}
+                        {isOwner && (
                         <button onClick={()=>{setRepActionOpen(null);setAssignTeamOpen(rep.id);}}
                           style={{width:"100%",padding:"10px 14px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",color:"#0f172a",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
                           Assign to Team
                         </button>
-                        {/* Delete rep */}
+                        )}
+                        {/* Delete rep — owner only */}
+                        {isOwner && (
                         <button onClick={()=>handleDeleteRep(rep.id,rep.name)}
                           style={{width:"100%",padding:"10px 14px",border:"none",background:"#fff",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
                           Delete Rep
                         </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1706,7 +1744,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   recruitsRepDropOpen, setRecruitsRepDropOpen}) {
   const dark=useDark();
   const isOwner = currentUser && currentUser.id===OWNER_ID;
-  const isPrivileged = isOwner || currentUser.role==="manager";
+  const isPrivileged = isOwner || currentUser.role==="manager" || currentUser.role==="closer";
   const [recruits,setRecruits]=useState([]);
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState({open:false,recruit:null});
@@ -1738,7 +1776,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   const activeTeamId = recruitsFilter.startsWith("team:") ? recruitsFilter.replace("team:","") : (visibleTeams.length>0?visibleTeams[0].id:"");
   const activeRepId = recruitsFilter.startsWith("rep:") ? recruitsFilter.replace("rep:","") : "";
   const visibleReps = isOwner
-    ? profiles.filter(p=>p.id!==currentUser.id&&(p.role==="rep"||p.role==="manager"))
+    ? profiles.filter(p=>p.id!==currentUser.id&&isMemberRole(p.role))
     : profiles.filter(p=>{
         if(p.id===currentUser.id) return false;
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
@@ -2388,7 +2426,7 @@ function CopyIcon({value}) {
   );
 }
 
-function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, JSON.stringify(leadProp?.ac_checklist)]);
@@ -2598,6 +2636,15 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             initialChecked={lead.ac_checklist||[]}
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
+          {canBookCap && lead.stage==="VC / SRA" && (
+            <div style={{background:dark?"#2a1505":"#fff7ed",border:"1.5px solid #ea580c",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#ea580c",marginBottom:3}}>📋 Ready to CAP?</div>
+              <div style={{fontSize:12.5,color:dark?"#fdba74":"#9a3412",lineHeight:1.45,marginBottom:12}}>
+                Book a CAP appointment for this lead. It'll show orange on the calendar and move the lead to the CAP stage.
+              </div>
+              <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="Book CAP Appointment"/>
+            </div>
+          )}
           <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
@@ -2746,7 +2793,7 @@ function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
   );
 }
 
-function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName}) {
+function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}) {
   const dark=useDark();
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
@@ -2842,6 +2889,14 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName}) {
               }} label="📅 Book Closer Slot" creatorName={creatorName}/>
               {/* Personal Callback */}
               <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val}))} label="↩️ Personal CB"/>
+            </div>
+          )}
+          {canBookCap && form.stage==="VC / SRA" && !form.appointment && (
+            <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 Book CAP Appointment</div>
+              <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+                if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
+              }} label="Book CAP Appointment" creatorName={creatorName} capMode={true}/>
             </div>
           )}
         </div>
@@ -3090,7 +3145,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap}) {
   const dark=useDark();
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
@@ -3215,7 +3270,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
-          repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles}
+          repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
           onSwitchToCalendar={onSwitchToCalendar}/>
@@ -4229,12 +4284,13 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, ca
 function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds}) {
   const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
   const isManager = myProfile&&myProfile.role==="manager";
-  const isPrivileged = isOwner||isManager;
+  const isCloser = myProfile&&myProfile.role==="closer";
+  const isPrivileged = isOwner||isManager||isCloser;
   const visibleTeams = isOwner ? (teams||[]) : (teams||[]).filter(t=>{
     const ms=(teamMembers&&teamMembers[t.id])||[];
     return ms.some(m=>m.user_id===currentUser?.id)||t.created_by===currentUser?.id;
   });
-  const repProfiles = (profiles||[]).filter(p=>p.role==="rep"&&p.id!==currentUser?.id);
+  const repProfiles = (profiles||[]).filter(p=>(p.role==="rep"||p.role==="closer")&&p.id!==currentUser?.id);
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -5364,7 +5420,7 @@ const TeamCalendars = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead, onUpdate, label, creatorName}) {
+function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
   // Sync when the lead's calendar OR identifying fields change (so a brand-new, unsaved lead's typed name/address/notes flow into the booking)
@@ -5376,11 +5432,11 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName}) {
   };
   return (
     <>
-      <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title={isBooked?"Manage calendar booking":"Book a slot"}
-        style={label?{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #1a2456",background:"#f0f4ff",color:"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      <button onClick={e=>{e.stopPropagation();setShowModal(true);}} title={capMode?"Book CAP appointment":isBooked?"Manage calendar booking":"Book a slot"}
+        style={label?{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${capMode?"#ea580c":"#1a2456"}`,background:capMode?"#fff7ed":"#f0f4ff",color:capMode?"#ea580c":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         {label||(isBooked?"✅":"📅")}
       </button>
-      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName}/>}
+      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName} capMode={capMode}/>}
     </>
   );
 }
@@ -5442,7 +5498,7 @@ function PersonalApptButton({onSelect, label}) {
   );
 }
 
-function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
+function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
   const dark = useDark();
   const isBooked = !!lead.gcal_event_id;
   // Resolve which team calendar this booking should use.
@@ -5559,10 +5615,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
         } catch(e){ console.error("Error restoring old slot:",e); }
       }
       // Update the event with lead info
+      const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       const updatedEvent = {
-        summary: `AC - ${lead.name||"Lead"}`,
-        description: `BOOKED:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
-        colorId: "10", // basil green = booked
+        summary: capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`,
+        description: `${capMode?"CAP BOOKED":"BOOKED"}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        colorId: capMode ? "6" : "10", // CAP = tangerine (orange), AC = basil green
       };
       const res = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
@@ -5577,11 +5634,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName}) {
         await sb.from("leads").update({
           appointment:apptStr,
           gcal_event_id:selectedSlot.id,
-          stage:"AC / Scheduled",
+          stage:bookedStage,
           updated_at:new Date().toISOString()
         }).eq("id",lead.id);
       }
-      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:"AC / Scheduled"});
+      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,stage:bookedStage});
       setDoneMsg("booked");
       setDone(true);
     } catch(e){
@@ -6517,6 +6574,9 @@ function App() {
   const [dark,setDark]=useDarkMode();
   const [loading,setLoading]=useState(true);
   const [leads,setLeads]=useState([]);
+  // Slim, PII-free team leads used ONLY for Team Stats aggregates (so reps can
+  // see team numbers without their teammates' names/addresses/phones loading).
+  const [teamStatLeads,setTeamStatLeads]=useState([]);
   const [profiles,setProfiles]=useState([]);
   const [teams,setTeams]=useState([]);  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
   // Keep the team-calendar registry in sync so deeply-nested booking components
@@ -6669,8 +6729,27 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at";
+        const isCloser = p && p.role==="closer";
+        // Closers see leads from everyone on their team(s); reps see only their own.
+        let leadQuery;
+        if (isCloser) {
+          // Need team membership first to know whose leads to pull.
+          const myMemRes = await sb.from("team_members").select("team_id").eq("user_id",u.id);
+          const myTeamIds = (myMemRes.data||[]).map(m=>m.team_id);
+          if (myTeamIds.length) {
+            const teamMemRes = await sb.from("team_members").select("user_id").in("team_id",myTeamIds);
+            const memberIds = Array.from(new Set([u.id, ...((teamMemRes.data||[]).map(m=>m.user_id))]));
+            leadQuery = sb.from("leads").select(LEAD_COLS).in("owner_id",memberIds).order("created_at",{ascending:false});
+          } else {
+            // Closer not on any team yet → just their own leads.
+            leadQuery = sb.from("leads").select(LEAD_COLS).eq("owner_id",u.id).order("created_at",{ascending:false});
+          }
+        } else {
+          leadQuery = sb.from("leads").select(LEAD_COLS).eq("owner_id",u.id).order("created_at",{ascending:false});
+        }
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,history,created_at,updated_at").eq("owner_id",u.id).order("created_at",{ascending:false}),
+          leadQuery,
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -6707,6 +6786,30 @@ function App() {
     if (!user) return;
     await sb.from("profiles").update({ ui_state: patch }).eq("id", user.id);
   };
+
+  // Populate PII-free team-stat leads. Managers/closers/owner already hold full
+  // team leads, so reuse those. Plain reps fetch a slim, no-PII projection of
+  // their team's leads just for the Team Stats numbers.
+  React.useEffect(()=>{
+    if(!user||!profile) return;
+    const ownerNow = user.id===OWNER_ID;
+    const hasTeamLeads = ownerNow || profile.role==="manager" || profile.role==="closer";
+    if(hasTeamLeads){ setTeamStatLeads(leads); return; }
+    // plain rep → slim fetch
+    let cancelled=false;
+    (async()=>{
+      const myTeamIds = Object.keys(teamMembers).filter(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===user.id));
+      if(!myTeamIds.length){ if(!cancelled) setTeamStatLeads(leads); return; }
+      const memberIds = Array.from(new Set(myTeamIds.flatMap(tid=>(teamMembers[tid]||[]).map(m=>m.user_id))));
+      // No name/address/phone/email/notes — only what the stat math needs.
+      const {data,error} = await sb.from("leads")
+        .select("owner_id,stage,is_arc,arc_stage,created_at,updated_at,history")
+        .in("owner_id",memberIds);
+      if(error){ console.error("team stat leads error:",error); return; }
+      if(!cancelled) setTeamStatLeads(data||[]);
+    })();
+    return ()=>{cancelled=true;};
+  },[user,profile,teamMembers,leads]);
 
   const buildUIState = (overrides={}) => ({
     tab: overrides.tab ?? tab,
@@ -6857,6 +6960,8 @@ function App() {
 
   const isOwner = user.id===OWNER_ID;
   const isPrivileged = profile.role==="manager" || isOwner;
+  const isCloser = profile.role==="closer";
+  const canBookCap = canBookCapRole(profile.role, isOwner);
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
   // pipelineFilter state already declared at top
@@ -6878,7 +6983,7 @@ function App() {
 
   // Reps visible to this user
   const visibleReps = isOwner
-    ? profiles.filter(p=>p.id!==user.id&&(p.role==="rep"||p.role==="manager"))
+    ? profiles.filter(p=>p.id!==user.id&&isMemberRole(p.role))
     : profiles.filter(p=>{
         if (p.id===user.id) return false;
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
@@ -6910,7 +7015,7 @@ function App() {
 
   const vaultLeads = (()=>{
     if (isOwner) return leads;
-    if (isPrivileged) { // manager: own leads + their teams' members' leads
+    if (isPrivileged || isCloser) { // manager/closer: own leads + their teams' members' leads
       const myTeamIds = (teams||[]).filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===user.id)).map(t=>t.id);
       const memberIds = new Set([user.id]);
       myTeamIds.forEach(tid=>(teamMembers[tid]||[]).forEach(m=>memberIds.add(m.user_id)));
@@ -6919,7 +7024,7 @@ function App() {
     return leads.filter(l=>l.owner_id===user.id); // rep
   })();
 
-  const repProfiles=profiles.filter(p=>p.role==="rep"&&p.id!==user.id);
+  const repProfiles=profiles.filter(p=>(p.role==="rep"||p.role==="closer")&&p.id!==user.id);
   const detailLead=leads.find(l=>l.id===detailId)||null;
 
   const tabs=[
@@ -6984,7 +7089,7 @@ function App() {
         {tab==="pipeline" && (
           <>
             {/* Pipeline sub-tab bar */}
-            {isPrivileged && (
+            {(isPrivileged || isCloser) && (
               <div style={{background:dark?"#0f172a":"#ede3d6",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderTop:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
@@ -7036,7 +7141,7 @@ function App() {
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </div>
             )}
-            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
@@ -7124,7 +7229,7 @@ function App() {
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
-          <StatsView leads={leads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
             timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
             customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
             selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
@@ -7136,11 +7241,11 @@ function App() {
           <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
         {tab==="vault"&&(
-          <VaultView currentUser={profile} userId={user.id} isOwner={isOwner} isPrivileged={isPrivileged} dark={dark} leads={vaultLeads}/>
+          <VaultView currentUser={profile} userId={user.id} isOwner={isOwner} isPrivileged={isPrivileged || isCloser} dark={dark} leads={vaultLeads}/>
         )}
       </div>
 
-      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
         initial={modal.lead?{...modal.lead,email:modal.lead.email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
@@ -7148,10 +7253,9 @@ function App() {
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
           onEdit={l=>{setDetailId(null);setModal({open:true,lead:l});}}
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
-          repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles}
+          repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles} canBookCap={canBookCap}
           onUpdate={updated=>{
             setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l));
-            // Also update modal.lead if it's open for this lead
             setModal(m=>m.open&&m.lead?.id===updated.id?{...m,lead:{...m.lead,...updated}}:m);
           }}
           onViewInCanvass={lead=>{
