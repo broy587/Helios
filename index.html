@@ -3596,7 +3596,8 @@ function HelpTip({text, dark}) {
   );
 }
 
-function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner}) {
+function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner, isPrivileged, onAnnouncementChange}) {
+  const [subPage, setSubPage] = React.useState("main"); // main | password | announcement
   const [savingGhost, setSavingGhost] = React.useState(false);
   const ghostOn = !!(profile && profile.ghost_mode);
   const toggleGhost = async () => {
@@ -3609,6 +3610,14 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
     catch(e){ console.error("ghost toggle failed:",e); if(setProfile) setProfile(p=>({...p, ghost_mode:ghostOn})); }
     setSavingGhost(false);
   };
+
+  if(subPage==="password"){
+    return <ChangePasswordPage dark={dark} user={user} onBack={()=>setSubPage("main")}/>;
+  }
+  if(subPage==="announcement"){
+    return <AnnouncementEditorPage dark={dark} user={user} onBack={()=>setSubPage("main")} onChange={onAnnouncementChange}/>;
+  }
+
   return (
     <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
@@ -3650,6 +3659,218 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
               </div>
             </div>
           </div>
+
+        {/* Change Password — opens a secure sub-page */}
+        <div onClick={()=>setSubPage("password")}
+          style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>🔒 Change Password</div>
+            <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Update the password for your account</div>
+          </div>
+          <span style={{fontSize:20,color:"#94a3b8"}}>›</span>
+        </div>
+
+        {isPrivileged && (
+          <div onClick={()=>setSubPage("announcement")}
+            style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>📣 Team Announcement</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Post a banner everyone sees at the top of the app</div>
+            </div>
+            <span style={{fontSize:20,color:"#94a3b8"}}>›</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Team Announcement Editor (owner/manager only) ─────────────────────
+function AnnouncementEditorPage({dark, user, onBack, onChange}) {
+  const [message, setMessage] = React.useState("");
+  const [active, setActive] = React.useState(true);
+  const [existingId, setExistingId] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(()=>{
+    (async ()=>{
+      try {
+        const {data} = await sb.from("announcements").select("*").order("updated_at",{ascending:false}).limit(1).maybeSingle();
+        if(data){ setExistingId(data.id); setMessage(data.message||""); setActive(data.active!==false); }
+      } catch(e){ setErr("Couldn't load the current announcement."); }
+      setLoading(false);
+    })();
+  },[]);
+
+  const field = {width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit",background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",resize:"vertical",minHeight:90};
+  const labelStyle = {display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"};
+
+  const save = async () => {
+    setErr("");
+    setBusy(true);
+    const payload = { message: message.trim(), active, updated_at: new Date().toISOString(), updated_by: user.id };
+    try {
+      if(existingId){
+        const {error} = await sb.from("announcements").update(payload).eq("id", existingId);
+        if(error) throw error;
+      } else {
+        const {data,error} = await sb.from("announcements").insert(payload).select().single();
+        if(error) throw error;
+        if(data) setExistingId(data.id);
+      }
+      setSaved(true);
+      setTimeout(()=>setSaved(false),2000);
+      if(onChange) onChange();
+    } catch(e){
+      setErr("Couldn't save. Make sure the announcements table exists in Supabase.");
+    }
+    setBusy(false);
+  };
+
+  const clearBanner = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      if(existingId){
+        const {error} = await sb.from("announcements").update({active:false, updated_at:new Date().toISOString(), updated_by:user.id}).eq("id", existingId);
+        if(error) throw error;
+      }
+      setActive(false);
+      if(onChange) onChange();
+    } catch(e){
+      setErr("Couldn't clear the banner. Please try again.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
+      <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Team Announcement</div>
+      </div>
+      <div style={{padding:"0 20px"}}>
+        {loading ? (
+          <div style={{fontSize:13,color:"#94a3b8"}}>Loading...</div>
+        ) : (
+          <>
+            <div style={{marginBottom:6}}>
+              <label style={labelStyle}>Message</label>
+              <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="e.g. Blitz this Saturday — doors at 8am, meet at the office." maxLength={280} style={field}/>
+              <div style={{fontSize:11,color:"#94a3b8",textAlign:"right",marginTop:2}}>{message.length}/280</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"12px 14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:600,color:dark?"#f1f5f9":"#0f172a"}}>Show banner to the team</div>
+              <div onClick={()=>setActive(a=>!a)}
+                style={{width:50,height:28,borderRadius:99,background:active?"#6b2d4e":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:3,left:active?22:3,width:22,height:22,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+              </div>
+            </div>
+            {err && <div style={{fontSize:13,color:"#dc2626",background:dark?"#3f1d1d":"#fef2f2",border:`1px solid ${dark?"#7f1d1d":"#fecaca"}`,borderRadius:8,padding:"8px 12px",marginBottom:14}}>{err}</div>}
+            <button onClick={save} disabled={busy||!message.trim()}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:message.trim()?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:message.trim()?"#fff":"#94a3b8",fontWeight:700,cursor:(busy||!message.trim())?"default":"pointer",fontSize:15,opacity:busy?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              {busy?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:saved?"✓ Saved!":"Save Announcement"}
+            </button>
+            {existingId && active && (
+              <button onClick={clearBanner} disabled={busy}
+                style={{width:"100%",padding:"10px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"none",color:"#64748b",fontWeight:600,cursor:busy?"default":"pointer",fontSize:14,marginTop:10}}>
+                Take banner down
+              </button>
+            )}
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:12,lineHeight:1.5}}>
+              The banner appears at the top of the app for everyone. Each person can dismiss it for their session; it reappears after a refresh until you take it down.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+function ChangePasswordPage({dark, user, onBack}) {
+  const [current, setCurrent] = React.useState("");
+  const [next, setNext] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [showCurrent, setShowCurrent] = React.useState(false);
+  const [showNext, setShowNext] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [done, setDone] = React.useState(false);
+
+  const field = {width:"100%",padding:"10px 40px 10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit",background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a"};
+  const labelStyle = {display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"};
+  const eyeBtn = {position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:15,padding:4,color:"#94a3b8"};
+
+  const submit = async () => {
+    setErr("");
+    if(!current){ setErr("Please enter your current password."); return; }
+    if(next.length < 8){ setErr("New password must be at least 8 characters."); return; }
+    if(next !== confirm){ setErr("New passwords don't match."); return; }
+    if(next === current){ setErr("New password must be different from your current one."); return; }
+    setBusy(true);
+    try {
+      // Re-authenticate by signing in with the current password to verify it.
+      const { error: signInErr } = await sb.auth.signInWithPassword({ email: user.email, password: current });
+      if(signInErr){ setErr("Current password is incorrect."); setBusy(false); return; }
+      // Now update to the new password.
+      const { error: updErr } = await sb.auth.updateUser({ password: next });
+      if(updErr){ setErr(updErr.message || "Could not update password. Please try again."); setBusy(false); return; }
+      setDone(true);
+      setCurrent(""); setNext(""); setConfirm("");
+    } catch(e){
+      setErr("Something went wrong. Please try again.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
+      <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
+        <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Change Password</div>
+      </div>
+      <div style={{padding:"0 20px"}}>
+        {done ? (
+          <div style={{background:dark?"#0f172a":"#f0fdf4",borderRadius:12,padding:"20px",border:`1.5px solid ${dark?"#166534":"#86efac"}`,textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>✓</div>
+            <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#166534",marginBottom:4}}>Password updated</div>
+            <div style={{fontSize:13,color:"#94a3b8"}}>Your new password is now active. You'll use it the next time you sign in.</div>
+            <button onClick={onBack} style={{marginTop:16,padding:"10px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Back to Settings</button>
+          </div>
+        ) : (
+          <>
+            <div style={{marginBottom:14}}>
+              <label style={labelStyle}>Current Password</label>
+              <div style={{position:"relative"}}>
+                <input type={showCurrent?"text":"password"} value={current} onChange={e=>setCurrent(e.target.value)} autoComplete="current-password" placeholder="Enter current password" style={field}/>
+                <button type="button" onClick={()=>setShowCurrent(s=>!s)} style={eyeBtn} title={showCurrent?"Hide":"Show"}>{showCurrent?"🙈":"👁️"}</button>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={labelStyle}>New Password</label>
+              <div style={{position:"relative"}}>
+                <input type={showNext?"text":"password"} value={next} onChange={e=>setNext(e.target.value)} autoComplete="new-password" placeholder="At least 8 characters" style={field}/>
+                <button type="button" onClick={()=>setShowNext(s=>!s)} style={eyeBtn} title={showNext?"Hide":"Show"}>{showNext?"🙈":"👁️"}</button>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={labelStyle}>Confirm New Password</label>
+              <div style={{position:"relative"}}>
+                <input type={showNext?"text":"password"} value={confirm} onChange={e=>setConfirm(e.target.value)} autoComplete="new-password" placeholder="Re-enter new password" style={field}/>
+              </div>
+            </div>
+            {err && <div style={{fontSize:13,color:"#dc2626",background:dark?"#3f1d1d":"#fef2f2",border:`1px solid ${dark?"#7f1d1d":"#fecaca"}`,borderRadius:8,padding:"8px 12px",marginBottom:14}}>{err}</div>}
+            <button onClick={submit} disabled={busy}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:busy?"default":"pointer",fontSize:15,opacity:busy?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              {busy?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Updating...</>:"Update Password"}
+            </button>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:12,lineHeight:1.5}}>
+              For security, we ask for your current password to confirm it's you. Passwords are stored encrypted and can never be viewed — only changed.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -3996,7 +4217,7 @@ function ReportIssuePage({onBack, user, profile, isOwner, onTicketsChanged}) {
 }
 
 // ── Hamburger Drawer ──────────────────────────────────────────────────
-function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner, unreadTickets, onTicketRead}) {
+function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamMembers, dark, setDark, onSignOut, isOwner, isPrivileged, onAnnouncementChange, unreadTickets, onTicketRead}) {
   const darkCtx=useDark();
   const [page, setPage] = useState("menu"); // menu | profile | settings | report
 
@@ -4059,7 +4280,7 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
         )}
 
         {page==="settings" && (
-          <SettingsPage onBack={()=>setPage("menu")} dark={dark} setDark={setDark} user={user} profile={profile} setProfile={setProfile} isOwner={isOwner}/>
+          <SettingsPage onBack={()=>setPage("menu")} dark={dark} setDark={setDark} user={user} profile={profile} setProfile={setProfile} isOwner={isOwner} isPrivileged={isPrivileged} onAnnouncementChange={onAnnouncementChange}/>
         )}
 
         {page==="report" && (
@@ -7182,6 +7403,17 @@ function App() {
   const [calendarEventUrl,setCalendarEventUrl]=useState(null); // mine | team:id | rep:id | all
   // Persist team tab selection
   const [teamTabSelected,setTeamTabSelected]=useState("all");
+  // ── Team announcement banner ───────────────────────────────────
+  const [announcement,setAnnouncement]=useState(null);
+  const [announceDismissed,setAnnounceDismissed]=useState(false);
+  const loadAnnouncement = React.useCallback(async ()=>{
+    try {
+      const {data} = await sb.from("announcements").select("*").order("updated_at",{ascending:false}).limit(1).maybeSingle();
+      setAnnouncement(data&&data.message&&data.active!==false ? data : null);
+      setAnnounceDismissed(false);
+    } catch(e){ /* table may not exist yet; fail quietly */ }
+  },[]);
+  React.useEffect(()=>{ if(user) loadAnnouncement(); },[user, loadAnnouncement]);
   // Persist stats tab selections
   const [statsTimeFilter,setStatsTimeFilter]=useState("today");
   const [statsCustomRange,setStatsCustomRange]=useState(null);
@@ -7680,6 +7912,15 @@ function App() {
         </div>
       </div>
 
+      {announcement && !announceDismissed && (
+        <div style={{background:dark?"#3a2a16":"#fef3c7",borderBottom:`1.5px solid ${dark?"#92400e":"#f59e0b"}`,padding:"10px 16px",display:"flex",alignItems:"flex-start",gap:10}}>
+          <span style={{fontSize:16,lineHeight:1.3,flexShrink:0}}>📣</span>
+          <div style={{flex:1,minWidth:0,fontSize:13,lineHeight:1.4,color:dark?"#fde68a":"#92400e",fontWeight:600,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{announcement.message}</div>
+          <button onClick={()=>setAnnounceDismissed(true)} title="Dismiss"
+            style={{background:"none",border:"none",cursor:"pointer",fontSize:16,lineHeight:1,color:dark?"#fde68a":"#92400e",flexShrink:0,padding:"0 2px"}}>×</button>
+        </div>
+      )}
+
       <div style={{background:dark?"#1e293b":"#fff",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",padding:"0 16px",overflowX:"auto"}}>
         {tabs.map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
@@ -7886,6 +8127,8 @@ function App() {
         setDark={setDark}
         onSignOut={handleSignOut}
         isOwner={isOwner}
+        isPrivileged={isPrivileged}
+        onAnnouncementChange={loadAnnouncement}
         unreadTickets={unreadTickets}
         onTicketRead={(count)=>setUnreadTickets(typeof count==="number"?count:0)}
       />
