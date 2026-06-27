@@ -3568,7 +3568,11 @@ function HelpTip({text, dark}) {
       {open && (
         <>
           <div onClick={(e)=>{e.stopPropagation();setOpen(false);}} style={{position:"fixed",inset:0,zIndex:4000}}/>
-          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"24px",right:"-4px",zIndex:4001,width:"min(240px, 72vw)",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",padding:"10px 12px",fontSize:12,fontWeight:500,color:dark?"#cbd5e1":"#475569",lineHeight:1.45,textAlign:"left",whiteSpace:"normal",wordBreak:"break-word"}}>
+          <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:4001,width:"min(300px, calc(100vw - 48px))",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,boxShadow:"0 12px 32px rgba(0,0,0,0.3)",padding:"16px 18px",fontSize:13,fontWeight:500,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,textAlign:"left",whiteSpace:"normal",wordBreak:"break-word"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
+              <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>👻 Ghost Mode</span>
+              <button onClick={(e)=>{e.stopPropagation();setOpen(false);}} style={{background:"none",border:"none",fontSize:18,color:"#94a3b8",cursor:"pointer",lineHeight:1,padding:0,flexShrink:0}}>✕</button>
+            </div>
             {text}
           </div>
         </>
