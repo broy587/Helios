@@ -7612,9 +7612,13 @@ function App() {
     const onTouchStart=(e)=>{ const t=e.touches&&e.touches[0]; if(t) startAt(t.clientY, e.target); };
     const onTouchMove=(e)=>{ const t=e.touches&&e.touches[0]; if(t) moveTo(t.clientY, e); };
     // Mouse (laptop / desktop)
-    const onMouseDown=(e)=>{ if(e.button!==0) return; mouseDown=true; startAt(e.clientY, e.target); };
-    const onMouseMove=(e)=>{ if(!mouseDown) return; moveTo(e.clientY, e); };
-    const onMouseUp=()=>{ if(!mouseDown) return; mouseDown=false; endPull(); };
+    // NOTE: mouse-drag pull-to-refresh is intentionally disabled. On desktop a
+    // click-drag near the top of the page (or accidental cursor drags) kept
+    // showing the pull indicator. Cmd/Ctrl+R and the browser refresh button
+    // already cover refresh on desktop. Pull-to-refresh remains active for touch.
+    const onMouseDown=()=>{};
+    const onMouseMove=()=>{};
+    const onMouseUp=()=>{};
     // Wheel / trackpad scroll-up at top (laptop / desktop)
     // NOTE: trackpad/mouse-wheel pull-to-refresh is intentionally disabled.
     // A trackpad gives no reliable "gesture end" signal, so momentum scrolling
@@ -7627,14 +7631,11 @@ function App() {
     document.addEventListener("touchmove",onTouchMove,{passive:false});
     document.addEventListener("touchend",endPull);
     document.addEventListener("touchcancel",endPull);
-    document.addEventListener("mousedown",onMouseDown);
-    document.addEventListener("mousemove",onMouseMove);
-    document.addEventListener("mouseup",onMouseUp);
+    // Mouse listeners intentionally NOT attached — pull-to-refresh is touch-only.
     document.addEventListener("wheel",onWheel,{passive:true});
     return ()=>{
       if(wheelTimer) clearTimeout(wheelTimer);
       document.removeEventListener("touchstart",onTouchStart); document.removeEventListener("touchmove",onTouchMove); document.removeEventListener("touchend",endPull); document.removeEventListener("touchcancel",endPull);
-      document.removeEventListener("mousedown",onMouseDown); document.removeEventListener("mousemove",onMouseMove); document.removeEventListener("mouseup",onMouseUp);
       document.removeEventListener("wheel",onWheel);
     };
   }, [refreshing]);
