@@ -179,6 +179,11 @@ function getEffectiveStageIndex(lead) {
     if (lead.arc_stage) return STAGE_PROGRESSION.indexOf(lead.arc_stage);
     return -1; // no arc_stage = don't count
   }
+  // On Hold leads: count only up to the stage they were in before being held
+  if (lead.on_hold) {
+    if (lead.on_hold_stage) return STAGE_PROGRESSION.indexOf(lead.on_hold_stage);
+    return -1; // no on_hold_stage = don't count
+  }
   return STAGE_PROGRESSION.indexOf(lead.stage);
 }
 function milestoneCount(leads, milestone) {
@@ -229,8 +234,10 @@ function parseHistoryDate(ts) {
 
 // For a lead, find when it first reached minStageIdx
 function getStageReachedAt(lead, minStageIdx) {
-  // For ARC leads, use arc_stage as the effective stage
-  const effectiveStage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage : lead.stage;
+  // For ARC / On-Hold leads, use the remembered stage as the effective stage
+  const effectiveStage = (lead.is_arc && lead.arc_stage) ? lead.arc_stage
+    : (lead.on_hold && lead.on_hold_stage) ? lead.on_hold_stage
+    : lead.stage;
   const effectiveIdx = STAGE_PROGRESSION.indexOf(effectiveStage);
 
   // If lead never reached this milestone, return null immediately
@@ -306,7 +313,7 @@ const emptyForm = {
   name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
-  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
+  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -2738,6 +2745,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
+              {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                 {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
                 {lead.confirmed && <span style={{fontSize:11,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
@@ -3295,6 +3303,33 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
 
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
 
+        {/* On Hold toggle */}
+        <div style={{marginBottom:18,background:form.onHold?"#fef3e2":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.onHold?"#fcd34d":"#e2e8f0"}`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:form.onHold?"#b45309":"#0f172a"}}>⏸️ On Hold</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Pause this lead. Stats will reflect the stage it was in when put on hold.</div>
+            </div>
+            <div onClick={()=>setForm(f=>{
+              const turningOn = !f.onHold;
+              return {
+                ...f,
+                onHold: turningOn,
+                onHoldStage: turningOn ? f.stage : ""
+                // stage does NOT change — On Hold is a flag, not a stage
+              };
+            })}
+              style={{width:46,height:26,borderRadius:99,background:form.onHold?"#f59e0b":"#e2e8f0",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:12}}>
+              <div style={{position:"absolute",top:3,left:form.onHold?20:3,width:20,height:20,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 3px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+            </div>
+          </div>
+          {form.onHold && (
+            <div style={{marginTop:10,fontSize:12,color:"#92400e",background:"#fef3c7",borderRadius:8,padding:"6px 10px"}}>
+              This lead will appear in the On Hold column. Stats will count up to: <strong>{form.onHoldStage||form.stage}</strong>
+            </div>
+          )}
+        </div>
+
         {/* ARC / Cancel toggle */}
         <div style={{marginBottom:18,background:form.isArc?"#f5e8ed":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.isArc?"#fca5a5":"#e2e8f0"}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -3410,11 +3445,12 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   const isDrag=isDragging;
   return (
     <div ref={cardRef}
-      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDrag?0.3:lead.is_arc?0.65:1}}>
+      style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":lead.on_hold?"#f59e0b":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDrag?0.3:lead.is_arc?0.65:lead.on_hold?0.8:1}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
+          {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
         </div>
         {lead.appointment && (()=>{
           try {
@@ -3650,7 +3686,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
         {/* Main pipeline stages — no ARC */}
         {STAGES.map(stage=>{
-          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc),isOver=dragOver===stage;
+          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#faf6f0",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#c8b8a2"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
@@ -3680,6 +3716,25 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {arcLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No cancelled leads</div>
                 ):arcLeads.map(lead=>(
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+        {/* On Hold — separate column, no drag-drop (ARC takes priority if both) */}
+        {(()=>{
+          const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
+          return (
+            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #f59e0b`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fde68a"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#2a2114":"#fffbeb",borderRadius:"12px 12px 0 0"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#b45309",lineHeight:1.3}}>⏸️ On Hold</div>
+                <span style={{fontSize:9,fontWeight:700,color:"#b45309",opacity:0.8,background:"#fef3c7",padding:"2px 6px",borderRadius:4}}>NO DRAG</span>
+              </div>
+              <div style={{padding:"10px 10px 6px",minHeight:80}}>
+                {holdLeads.length===0?(
+                  <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads on hold</div>
+                ):holdLeads.map(lead=>(
                   <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
@@ -8044,7 +8099,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -8071,7 +8126,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -8177,7 +8232,7 @@ function App() {
       const memberIds = Array.from(new Set(myTeamIds.flatMap(tid=>(teamMembers[tid]||[]).map(m=>m.user_id))));
       // No name/address/phone/email/notes — only what the stat math needs.
       const {data,error} = await sb.from("leads")
-        .select("owner_id,stage,is_arc,arc_stage,created_at,updated_at,history")
+        .select("owner_id,stage,is_arc,arc_stage,on_hold,on_hold_stage,created_at,updated_at,history")
         .in("owner_id",memberIds);
       if(error){ console.error("team stat leads error:",error); return; }
       if(!cancelled) setTeamStatLeads(data||[]);
@@ -8219,7 +8274,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -8664,7 +8719,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
