@@ -3340,8 +3340,58 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
   );
 }
 
+// ── Pipeline hygiene analysis ─────────────────────────────────────────
+// Stages we consider "done/closed" — these should never be flagged as stale
+// or missing an appointment, since they're terminal outcomes.
+const HYGIENE_DONE_STAGES = ["Install Scheduled","Install","PTO / REP","Failed Credit","No Show / No Contact","Stale / No Reschedule"];
+// Early stages where an appointment is genuinely expected.
+const HYGIENE_NEEDS_APPT_STAGES = ["Lead: Need Bill/Appointment","AC / Scheduled","No Show / In Contact"];
+
+function getLeadLastActivity(lead) {
+  // Newest history entry timestamp, else updated_at, else created_at.
+  const hist = Array.isArray(lead.history) ? lead.history : [];
+  for (const entry of hist) { // history is newest-first
+    const d = parseHistoryDate(entry && entry.ts);
+    if (d) return d;
+  }
+  if (lead.updated_at) { const u = new Date(lead.updated_at); if (!isNaN(u.getTime())) return u; }
+  if (lead.created_at) { const c = new Date(lead.created_at); if (!isNaN(c.getTime())) return c; }
+  return null;
+}
+
+function analyzeHygiene(leads, staleDays) {
+  const now = Date.now();
+  const staleMs = staleDays * 24 * 60 * 60 * 1000;
+  const stale = [], noAppt = [], badCloseDate = [];
+  for (const lead of (leads||[])) {
+    const isDone = HYGIENE_DONE_STAGES.includes(lead.stage);
+    // Stale: not in a done stage, and no activity within the window.
+    if (!isDone) {
+      const last = getLeadLastActivity(lead);
+      if (last && (now - last.getTime()) > staleMs) {
+        stale.push({lead, days: Math.floor((now - last.getTime()) / (24*60*60*1000))});
+      }
+    }
+    // Missing appointment in a stage that expects one.
+    if (HYGIENE_NEEDS_APPT_STAGES.includes(lead.stage) && !(lead.appointment && String(lead.appointment).trim())) {
+      noAppt.push({lead});
+    }
+    // Bad appointment date: a scheduled/AC lead whose appointment is in the past.
+    if (lead.appointment) {
+      const ap = new Date(lead.appointment);
+      if (!isNaN(ap.getTime()) && ap.getTime() < now && (lead.stage === "AC / Scheduled" || lead.stage === "Lead: Need Bill/Appointment")) {
+        badCloseDate.push({lead, when: ap});
+      }
+    }
+  }
+  stale.sort((a,b)=>b.days-a.days);
+  return {stale, noAppt, badCloseDate};
+}
+
 function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap}) {
   const dark=useDark();
+  const [hygieneOpen,setHygieneOpen]=useState(false);
+  const [staleDays,setStaleDays]=useState(14);
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -3414,6 +3464,11 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",borderRadius:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",border:"1.5px solid #e2e8f0",marginTop:4,padding:"14px",textAlign:"center",color:"#94a3b8",fontSize:13,zIndex:300}}>No leads found</div>
           )}
         </div>
+        <button onClick={()=>setHygieneOpen(true)} title="Pipeline hygiene"
+          style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap",position:"relative"}}>
+          🩺
+          {(()=>{ const h=analyzeHygiene(leads,staleDays); const n=h.stale.length+h.noAppt.length+h.badCloseDate.length; return n>0 ? <span style={{position:"absolute",top:-6,right:-6,minWidth:17,height:17,padding:"0 4px",borderRadius:9,background:"#ef4444",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${dark?"#0f172a":"#f5ede0"}`}}>{n>99?"99+":n}</span> : null; })()}
+        </button>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
@@ -3470,12 +3525,71 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           onViewInCanvass={onViewInCanvass}
           onSwitchToCalendar={onSwitchToCalendar}/>
       )}
+
+      {hygieneOpen && (()=>{
+        const {stale, noAppt, badCloseDate} = analyzeHygiene(leads, staleDays);
+        const ownerName = (id)=>{ const p=(profiles||[]).find(x=>x.id===id); return p ? (p.nickname||p.name||p.email||"Unknown") : null; };
+        const total = stale.length + noAppt.length + badCloseDate.length;
+        const Row = ({lead, right})=>(
+          <div onClick={()=>{setHygieneOpen(false);setDetailId(lead.id);}}
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,cursor:"pointer",marginBottom:8}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lead.name||"Unnamed"}</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lead.stage}{ownerName(lead.owner_id)?` · ${ownerName(lead.owner_id)}`:""}</div>
+            </div>
+            {right}
+          </div>
+        );
+        const Section = ({icon, title, color, items, render})=> items.length===0 ? null : (
+          <div style={{marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:15}}>{icon}</span>
+              <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{title}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"#fff",background:color,borderRadius:10,padding:"1px 8px"}}>{items.length}</span>
+            </div>
+            {items.map(render)}
+          </div>
+        );
+        return (
+          <div onClick={()=>setHygieneOpen(false)}
+            style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:dark?"#1e293b":"#fff",width:"min(560px,100%)",maxHeight:"85vh",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.3)"}}>
+              <div style={{padding:"18px 20px 12px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+                <div>
+                  <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🩺 Pipeline Hygiene</div>
+                  <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{total===0?"Everything looks clean here.":`${total} item${total===1?"":"s"} to review in this view`}</div>
+                </div>
+                <button onClick={()=>setHygieneOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",flexShrink:0,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:"#94a3b8"}}>Stale after:</span>
+                {[14,21,30].map(d=>(
+                  <button key={d} onClick={()=>setStaleDays(d)}
+                    style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${staleDays===d?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:staleDays===d?"#6b2d4e":(dark?"#0f172a":"#fff"),color:staleDays===d?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{d}d</button>
+                ))}
+              </div>
+              <div style={{padding:"6px 20px 24px",overflowY:"auto",flex:1}}>
+                {total===0 && (
+                  <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}>
+                    <div style={{fontSize:36,marginBottom:8}}>✨</div>
+                    <div style={{fontSize:14,fontWeight:600}}>No hygiene issues in the current view.</div>
+                  </div>
+                )}
+                <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale}
+                  render={({lead,days})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:12,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{days}d</span>}/>)}/>
+                <Section icon="📅" title="Missing appointment" color="#3b82f6" items={noAppt}
+                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#3b82f6",whiteSpace:"nowrap"}}>No appt</span>}/>)}/>
+                <Section icon="⚠️" title="Appointment date passed" color="#ef4444" items={badCloseDate}
+                  render={({lead,when})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#ef4444",whiteSpace:"nowrap"}}>{when.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>}/>)}/>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
-
-
-// ── Dark mode helper ──────────────────────────────────────────────────
 function useDarkMode() {
   const [dark, setDark] = useState(() => localStorage.getItem("pp_dark")==="1");
   useEffect(()=>{
