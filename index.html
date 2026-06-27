@@ -6054,6 +6054,36 @@ function CopyTextButton({text, label}) {
 
 function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const canManage = isOwner;
+  const myRole = isOwner ? "owner" : (currentUser && currentUser.role) || "rep";
+  // Access control: a material's `visible_to` is "all" or a comma-list of roles.
+  const ACCESS_ROLES = [["rep","Reps","👤"],["closer","Closers","🎯"],["manager","Managers","🧭"]];
+  const parseAccess = (v) => {
+    if(!v || v==="all") return "all";
+    const set = String(v).split(",").map(s=>s.trim()).filter(Boolean);
+    return set.length ? set : "all";
+  };
+  const canRoleView = (material) => {
+    if(isOwner) return true; // owner sees everything
+    const acc = parseAccess(material.visible_to);
+    if(acc==="all") return true;
+    return acc.includes(myRole);
+  };
+  // Compact access badge shown on every card (visible to everyone).
+  const AccessBadge = ({value}) => {
+    const acc = parseAccess(value);
+    let label, icon;
+    if(acc==="all"){ label="Everyone"; icon="🌐"; }
+    else {
+      const names = acc.map(r=>{const f=ACCESS_ROLES.find(x=>x[0]===r);return f?f[1]:r;});
+      label = names.join(" · ");
+      icon = "🔒";
+    }
+    return (
+      <span title={"Visible to: "+label} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:acc==="all"?(dark?"#0c2a1a":"#ecfdf5"):(dark?"#2a1505":"#fff7ed"),color:acc==="all"?"#10b981":"#ea580c",whiteSpace:"nowrap"}}>
+        {icon} {label}
+      </span>
+    );
+  };
   const CATEGORIES = [
     {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
@@ -6183,8 +6213,8 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   };
   useEffect(()=>{ load(); },[]);
 
-  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:""}); setEditing("new"); };
-  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||""}); setEditing(m); };
+  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",visibleTo:"all"}); setEditing("new"); };
+  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||"",visibleTo:(m.visible_to&&m.visible_to!=="all")?m.visible_to:"all"}); setEditing(m); };
   const closeForm = () => { setEditing(null); setErrMsg(""); };
 
   const handleFile = async (e) => {
@@ -6238,7 +6268,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
     setSaving(true);
     let url = form.url.trim();
     if(url && !/^https?:\/\//i.test(url)) url = "https://"+url; // tolerate pasted links without scheme
-    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null};
+    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null, visible_to:form.visibleTo||"all"};
     try {
       if(editing==="new"){
         payload.created_by = userId;
@@ -6267,7 +6297,9 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   };
 
   const cat = CATEGORIES.find(c=>c.key===activeCat)||CATEGORIES[0];
-  const catMaterials = materials.filter(m=>m.category===activeCat);
+  // Materials this user is allowed to see (owner sees all).
+  const visibleMaterials = materials.filter(canRoleView);
+  const catMaterials = visibleMaterials.filter(m=>m.category===activeCat);
   const inputStyle = {width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
   return (
@@ -6284,7 +6316,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       <div style={{display:"flex",gap:8,overflowX:"auto",padding:"14px 0",marginBottom:4}}>
         {CATEGORIES.map(c=>{
           const active = c.key===activeCat;
-          const count = materials.filter(m=>m.category===c.key).length;
+          const count = visibleMaterials.filter(m=>m.category===c.key).length;
           return (
             <button key={c.key} onClick={()=>setActiveCat(c.key)}
               style={{display:"flex",alignItems:"center",gap:7,padding:"9px 15px",borderRadius:22,border:`1.5px solid ${active?"#6b2d4e":dark?"#334155":"#e2e8f0"}`,background:active?"#1a2456":dark?"#1e293b":"#fff",color:active?"#fff":dark?"#cbd5e1":"#1a2456",fontWeight:active?700:600,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
@@ -6350,7 +6382,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                     style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",marginTop:2}}>⠿</div>
                 )}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:m.description?4:0}}>{m.title}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:m.description?4:0}}>
+                    <span style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{m.title}</span>
+                    <AccessBadge value={m.visible_to}/>
+                  </div>
                   {m.description && <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45,whiteSpace:"pre-wrap"}}>{m.description}</div>}
                 </div>
               </div>
@@ -6581,6 +6616,30 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
             <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))} style={{...inputStyle,marginBottom:14}}>
               {CATEGORIES.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
+            {/* Who can view — owner only. "All" is exclusive; otherwise pick any combo. */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Who can view</label>
+            <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+              <button type="button" onClick={()=>setForm(f=>({...f,visibleTo:"all"}))}
+                style={{flex:"1 1 80px",padding:"8px 0",borderRadius:8,border:`2px solid ${form.visibleTo==="all"?"#10b981":(dark?"#334155":"#e2e8f0")}`,background:form.visibleTo==="all"?(dark?"#0c2a1a":"#ecfdf5"):(dark?"#0f172a":"#fff"),color:form.visibleTo==="all"?"#10b981":(dark?"#94a3b8":"#64748b"),fontWeight:form.visibleTo==="all"?700:500,cursor:"pointer",fontSize:13}}>
+                🌐 Everyone
+              </button>
+              {ACCESS_ROLES.map(([rk,rlabel,ricon])=>{
+                const selected = form.visibleTo!=="all" && String(form.visibleTo).split(",").includes(rk);
+                return (
+                  <button key={rk} type="button" onClick={()=>setForm(f=>{
+                    let cur = f.visibleTo==="all"?[]:String(f.visibleTo).split(",").filter(Boolean);
+                    if(cur.includes(rk)) cur = cur.filter(x=>x!==rk); else cur=[...cur,rk];
+                    return {...f, visibleTo: cur.length?cur.join(","):"all"};
+                  })}
+                    style={{flex:"1 1 80px",padding:"8px 0",borderRadius:8,border:`2px solid ${selected?"#ea580c":(dark?"#334155":"#e2e8f0")}`,background:selected?(dark?"#2a1505":"#fff7ed"):(dark?"#0f172a":"#fff"),color:selected?"#ea580c":(dark?"#94a3b8":"#64748b"),fontWeight:selected?700:500,cursor:"pointer",fontSize:13}}>
+                    {ricon} {rlabel}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:16,lineHeight:1.4}}>
+              {form.visibleTo==="all"?"Visible to everyone in the app.":"Owner always sees it. Visible to: "+String(form.visibleTo).split(",").map(r=>{const f=ACCESS_ROLES.find(x=>x[0]===r);return f?f[1]:r;}).join(", ")+"."}
+            </div>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Title</label>
             <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Front-door approach script" style={{...inputStyle,marginBottom:14}}/>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Description <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(optional)</span></label>
