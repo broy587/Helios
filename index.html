@@ -608,7 +608,7 @@ class StatsErrorBoundary extends React.Component {
 }
 
 // ── Stats View ────────────────────────────────────────────────────────
-function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPersonalGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
+function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPersonalGoals, teamGoals, setTeamGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const dark=useDark();
@@ -773,6 +773,20 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
             <StatCard label="Install" value={tmc(teamLeads,"Install")} color="#10b981"/>
             <StatCard label="PTO" value={tmc(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
+          {/* Team Goals tracker — visible to all; editable by owner/manager.
+              Progress uses the slim team source so reps don't load teammate PII. */}
+          {selectedTeamId!=="all" && teams.length>0 && (
+            <GoalsSection
+              teamId={selectedTeamId}
+              teamGoals={teamGoals||{}}
+              setTeamGoals={setTeamGoals}
+              leads={teamStatSource}
+              teamMemberIds={(teamMembers[selectedTeamId]||[]).map(m=>m.user_id)}
+              canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
+              currentUserId={currentUserId||currentUser.id}
+              onRefresh={()=>{}}
+            />
+          )}
         </div>
       )}
 
@@ -1411,17 +1425,6 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
               <button onClick={handleDeleteTeam} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>Delete</button>
             )}
           </div>
-          {/* Goals section */}
-          <GoalsSection
-            teamId={selectedTeamId}
-            teamGoals={teamGoals}
-            setTeamGoals={setTeamGoals}
-            leads={leads}
-            teamMemberIds={memberIds}
-            canEdit={isOwner || currentUser.role==="manager"}
-            currentUserId={currentUser.id}
-            onRefresh={onDataRefresh}
-          />
 
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Members</div>
@@ -7441,7 +7444,7 @@ function App() {
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
-          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} personalGoals={personalGoals} setPersonalGoals={setPersonalGoals} teamStatLeadsForGoals={teamStatLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} personalGoals={personalGoals} setPersonalGoals={setPersonalGoals} teamGoals={teamGoals} setTeamGoals={setTeamGoals} teamStatLeadsForGoals={teamStatLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
             timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
             customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
             selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
