@@ -650,7 +650,11 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
 
   // Team stats draw from the (possibly slim/PII-free) teamStatLeads dataset so
   // that plain reps can see team numbers without teammates' lead details.
-  const teamStatSource = Array.from(new Map(((teamStatLeads&&teamStatLeads.length)?teamStatLeads:leads||[]).map(l=>[l.owner_id+"|"+(l.id||l.created_at),l])).values());
+  // Ghost-mode users are excluded for everyone except the owner (and self).
+  const isOwnerViewer = currentUser.role==="owner" || currentUser.id===OWNER_ID;
+  const ghostedIds = new Set((profiles||[]).filter(p=>p.ghost_mode && p.id!==(currentUserId||currentUser.id)).map(p=>p.id));
+  const teamStatSource = Array.from(new Map(((teamStatLeads&&teamStatLeads.length)?teamStatLeads:leads||[]).map(l=>[l.owner_id+"|"+(l.id||l.created_at),l])).values())
+    .filter(l=> isOwnerViewer || !ghostedIds.has(l.owner_id));
   const getTeamLeads = () => {
     if (selectedTeamId==="all") return teamStatSource;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
@@ -670,7 +674,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   // everyone else sees only members of their own team(s).
   const allReps = (currentUser.role==="owner"
     ? profiles
-    : profiles.filter(p=>myTeamIds.some(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===p.id)))
+    : profiles.filter(p=>!p.ghost_mode && myTeamIds.some(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===p.id)))
   ).filter(p=>isMemberRole(p.role)&&!p.deleted_at);
   const getTeamReps = () => {
     if (selectedTeamId==="all") return allReps;
@@ -3554,7 +3558,38 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
 }
 
 // ── Settings Page ─────────────────────────────────────────────────────
-function SettingsPage({onBack, dark, setDark}) {
+// Tiny clickable "?" with a popup explanation.
+function HelpTip({text, dark}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <span style={{position:"relative",display:"inline-flex"}}>
+      <button onClick={(e)=>{e.stopPropagation();setOpen(o=>!o);}}
+        style={{width:16,height:16,borderRadius:"50%",border:"none",background:dark?"#334155":"#cbd5e1",color:dark?"#cbd5e1":"#475569",fontSize:11,fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:0}}>?</button>
+      {open && (
+        <>
+          <div onClick={(e)=>{e.stopPropagation();setOpen(false);}} style={{position:"fixed",inset:0,zIndex:4000}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"22px",right:0,zIndex:4001,width:230,background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",padding:"10px 12px",fontSize:12,fontWeight:500,color:dark?"#cbd5e1":"#475569",lineHeight:1.45,textAlign:"left",whiteSpace:"normal"}}>
+            {text}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
+function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner}) {
+  const [savingGhost, setSavingGhost] = React.useState(false);
+  const ghostOn = !!(profile && profile.ghost_mode);
+  const toggleGhost = async () => {
+    if(savingGhost) return;
+    const next = !ghostOn;
+    setSavingGhost(true);
+    // optimistic
+    if(setProfile) setProfile(p=>({...p, ghost_mode:next}));
+    try { await sb.from("profiles").update({ghost_mode:next}).eq("id", user.id); }
+    catch(e){ console.error("ghost toggle failed:",e); if(setProfile) setProfile(p=>({...p, ghost_mode:ghostOn})); }
+    setSavingGhost(false);
+  };
   return (
     <div style={{flex:1,overflowY:"auto",background:dark?"#1e293b":"#fff"}}>
       <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
@@ -3562,7 +3597,7 @@ function SettingsPage({onBack, dark, setDark}) {
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Settings</div>
       </div>
       <div style={{padding:"0 20px"}}>
-        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
               <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>Dark Mode</div>
@@ -3574,6 +3609,25 @@ function SettingsPage({onBack, dark, setDark}) {
             </div>
           </div>
         </div>
+
+        {/* Ghost Mode — hidden for owner (owner access can't be restricted) */}
+        {!isOwner && (
+          <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${ghostOn?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{flex:1,minWidth:0,paddingRight:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>👻 Ghost Mode</span>
+                  <HelpTip dark={dark} text={"Only allows you to view your pipeline. When flipped to ghost mode, this takes away access for any rep or manager to see your pipeline / leads. This does not apply to the owner — the owner can always see all users' pipelines."}/>
+                </div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{ghostOn?"On — only you (and the owner) can see your pipeline.":"Off — your team can see your pipeline as usual."}</div>
+              </div>
+              <div onClick={toggleGhost}
+                style={{width:50,height:28,borderRadius:99,background:ghostOn?"#6b2d4e":"#e2e8f0",cursor:savingGhost?"default":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:savingGhost?0.6:1}}>
+                <div style={{position:"absolute",top:3,left:ghostOn?22:3,width:22,height:22,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 4px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3983,7 +4037,7 @@ function HamburgerDrawer({open, onClose, user, profile, setProfile, teams, teamM
         )}
 
         {page==="settings" && (
-          <SettingsPage onBack={()=>setPage("menu")} dark={dark} setDark={setDark}/>
+          <SettingsPage onBack={()=>setPage("menu")} dark={dark} setDark={setDark} user={user} profile={profile} setProfile={setProfile} isOwner={isOwner}/>
         )}
 
         {page==="report" && (
@@ -7511,6 +7565,7 @@ function App() {
     ? profiles.filter(p=>p.id!==user.id&&isMemberRole(p.role))
     : profiles.filter(p=>{
         if (p.id===user.id) return false;
+        if (p.ghost_mode) return false; // ghosted users hidden from non-owners
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
       });
 
@@ -7536,7 +7591,14 @@ function App() {
     }
     return leads.filter(l=>l.owner_id===user.id);
   };
-  const visibleLeads = getVisibleLeads();
+  const visibleLeads = (()=>{
+    const raw = getVisibleLeads();
+    if(isOwner) return raw; // owner sees everything, always
+    // Hide leads owned by anyone in ghost mode (except the current user's own).
+    const ghostedIds = new Set((profiles||[]).filter(p=>p.ghost_mode && p.id!==user.id).map(p=>p.id));
+    if(ghostedIds.size===0) return raw;
+    return raw.filter(l=>!ghostedIds.has(l.owner_id));
+  })();
 
   const vaultLeads = (()=>{
     if (isOwner) return leads;
