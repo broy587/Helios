@@ -5298,10 +5298,58 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
-function CalendarView({newEventUrl, onEventUrlUsed}) {
+function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
   const [iframeUrl, setIframeUrl] = React.useState(null);
+  // Add Meeting modal state
+  const [meetOpen, setMeetOpen] = React.useState(false);
+  const [meetType, setMeetType] = React.useState("");
+  const [meetDate, setMeetDate] = React.useState("");
+  const [meetStart, setMeetStart] = React.useState("");
+  const [meetEnd, setMeetEnd] = React.useState("");
+  const [meetSaving, setMeetSaving] = React.useState(false);
+  const [meetMsg, setMeetMsg] = React.useState("");
+  const MEETING_TYPES = ["Main Meeting","Boot Camp","Huddle","Hood Meet","Lunch"];
+  // 30-min time options across the full day.
+  const MEET_TIME_OPTIONS = React.useMemo(()=>{
+    const out=[];
+    for(let h=0;h<24;h++){ for(const mm of [0,30]){ const ap=h>=12?"PM":"AM"; const h12=h%12||12; out.push({value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`,label:`${h12}:${String(mm).padStart(2,"0")} ${ap}`}); } }
+    return out;
+  },[]);
+  // When start time changes, auto-set end to +1 hour (but only nudge end forward;
+  // never override a manually chosen end on its own change).
+  const onStartChange = (val) => {
+    setMeetStart(val);
+    if(val){
+      const [h,m] = val.split(":").map(Number);
+      const end = new Date(2000,0,1,h,m,0);
+      end.setHours(end.getHours()+1);
+      setMeetEnd(`${String(end.getHours()).padStart(2,"0")}:${String(end.getMinutes()).padStart(2,"0")}`);
+    }
+  };
+  const resetMeet = () => { setMeetType("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg(""); };
+  const submitMeeting = async (calendarId) => {
+    if(!meetType || !meetDate || !meetStart || !meetEnd) return;
+    setMeetSaving(true); setMeetMsg("");
+    try {
+      const [yy,mm,dd] = meetDate.split("-").map(Number);
+      const [sh,sm] = meetStart.split(":").map(Number);
+      const [eh,em] = meetEnd.split(":").map(Number);
+      const startD = new Date(yy,mm-1,dd,sh,sm,0);
+      const endD = new Date(yy,mm-1,dd,eh,em,0);
+      if(endD <= startD){ setMeetMsg("End time must be after the start time."); setMeetSaving(false); return; }
+      await GCal.createMeeting(meetType, startD.toISOString(), endD.toISOString(), calendarId);
+      setMeetSaving(false);
+      setMeetOpen(false);
+      resetMeet();
+      setCalKey(k=>k+1); // refresh the embedded calendar to show it
+    } catch(e){
+      console.error("Meeting create failed:",e);
+      setMeetMsg("Couldn't add meeting: "+((e&&e.message)||"unknown error"));
+      setMeetSaving(false);
+    }
+  };
 
   // When a new event URL comes in, show it in the iframe
   React.useEffect(()=>{
@@ -5369,6 +5417,12 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
           <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{CALENDAR_NAME}</div>
         )}
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {canAddMeeting && (
+            <button onClick={()=>{resetMeet();setMeetOpen(true);}}
+              style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
+              + Add Meeting
+            </button>
+          )}
           <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
             style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:14,color:dark?"#94a3b8":"#6b2d4e"}}>
             🔄
@@ -5398,6 +5452,62 @@ function CalendarView({newEventUrl, onEventUrlUsed}) {
           scrolling="no"
           title={CALENDAR_NAME} key={calKey}
         />
+      )}
+      {/* Add Meeting modal */}
+      {meetOpen && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>!meetSaving&&setMeetOpen(false)}>
+          <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>+ Add Meeting</div>
+              <button onClick={()=>!meetSaving&&setMeetOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds to the <b>{CALENDAR_NAME}</b>.</div>
+
+            {/* Meeting type */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Meeting Type</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
+              {MEETING_TYPES.map(t=>(
+                <button key={t} type="button" onClick={()=>setMeetType(t)}
+                  style={{flex:"1 1 calc(50% - 4px)",padding:"10px 8px",borderRadius:10,border:`2px solid ${meetType===t?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:meetType===t?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),color:meetType===t?"#6b2d4e":(dark?"#94a3b8":"#475569"),fontWeight:meetType===t?700:500,cursor:"pointer",fontSize:13}}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Date */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
+            <input type="date" value={meetDate} onChange={e=>setMeetDate(e.target.value)}
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:14}}/>
+
+            {/* Start + End time */}
+            <div style={{display:"flex",gap:10,marginBottom:18}}>
+              <div style={{flex:1}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Start</label>
+                <select value={meetStart} onChange={e=>onStartChange(e.target.value)}
+                  style={{width:"100%",padding:"10px 8px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",boxSizing:"border-box",cursor:"pointer"}}>
+                  <option value="">Start…</option>
+                  {MEET_TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>End</label>
+                <select value={meetEnd} onChange={e=>setMeetEnd(e.target.value)}
+                  style={{width:"100%",padding:"10px 8px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",boxSizing:"border-box",cursor:"pointer"}}>
+                  <option value="">End…</option>
+                  {MEET_TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {meetMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{meetMsg}</div>}
+
+            <button onClick={()=>submitMeeting(teamCfg&&teamCfg.calendarId)}
+              disabled={!meetType||!meetDate||!meetStart||!meetEnd||meetSaving}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"pointer":"default"}}>
+              {meetSaving?"Adding…":"Add to Calendar"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -5479,6 +5589,24 @@ const GCal = {
         end: parseDateTime(datePart, endTime || startTime),
       };
     } catch(e) { return null; }
+  },
+
+  // Create a meeting event on a specific team calendar.
+  // title = the meeting name; startISO/endISO = ISO datetime strings.
+  async createMeeting(title, startISO, endISO, calendarId) {
+    const token = await this.signIn();
+    const event = {
+      summary: title,
+      start: { dateTime: startISO, timeZone: "America/Chicago" },
+      end:   { dateTime: endISO,   timeZone: "America/Chicago" },
+      colorId: "9", // blueberry
+    };
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events`,
+      { method:"POST", headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"}, body:JSON.stringify(event) }
+    );
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
   },
 
   async createEvent(lead, calendarId) {
@@ -7566,7 +7694,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner)&&(
-          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)}/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
