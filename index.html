@@ -5511,23 +5511,34 @@ const GCal = {
   // Google Calendar (the "primary" calendar). This never touches the shared
   // team calendar, so no one else sees it and it can't consume team slots.
   // `times` = { start, end } ISO strings, or null for an all-day event.
+  // `times` = { start, end } ISO strings for a timed block, OR
+  //           { allDayDate: "YYYY-MM-DD" } for an all-day event.
   async createPersonalCB(lead, times) {
     const token = await this.signIn();
+    let start, end;
+    if(times && times.start && times.end){
+      start = { dateTime: times.start, timeZone: "America/Chicago" };
+      end   = { dateTime: times.end,   timeZone: "America/Chicago" };
+    } else {
+      // All-day event: end.date must be the NEXT day (Google treats end as exclusive).
+      const base = (times && times.allDayDate) ? times.allDayDate : new Date().toISOString().split("T")[0];
+      const [yy,mm,dd] = base.split("-").map(Number);
+      const next = new Date(yy, mm-1, dd+1);
+      const pad = n=>String(n).padStart(2,"0");
+      start = { date: base };
+      end   = { date: `${next.getFullYear()}-${pad(next.getMonth()+1)}-${pad(next.getDate())}` };
+    }
     const event = {
-      summary: `Personal CB - ${lead.name || "Lead"}`,
+      summary: `Personal Comeback - ${lead.name || "Lead"}`,
       location: lead.address || "",
       description: [
         lead.phone ? `Phone: ${lead.phone}` : "",
         lead.address ? `Address: ${lead.address}` : "",
         lead.notes ? `Notes: ${lead.notes}` : "",
-        `Personal callback (Pipeline Push)`,
+        `Personal comeback (Pipeline Push)`,
       ].filter(Boolean).join("\n"),
-      start: times
-        ? { dateTime: times.start, timeZone: "America/Chicago" }
-        : { date: new Date().toISOString().split("T")[0] },
-      end: times
-        ? { dateTime: times.end, timeZone: "America/Chicago" }
-        : { date: new Date().toISOString().split("T")[0] },
+      start,
+      end,
       colorId: "5", // banana / yellow
       reminders: { useDefault: true },
     };
@@ -5667,7 +5678,8 @@ function PersonalApptButton({onSelect, label, lead}) {
     const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const dateStr = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
     let apptStr = dateStr;
-    // Build ISO start/end for the Google Calendar event (1-hour block if a time was given).
+    // Build ISO start/end for the Google Calendar event (1-hour block if a time
+    // was given; otherwise an all-day event on the selected date).
     let times = null;
     if(time){
       const [h,m] = time.split(":").map(Number);
@@ -5683,18 +5695,25 @@ function PersonalApptButton({onSelect, label, lead}) {
         return `${h12v}:${String(mn).padStart(2,"0")} ${ap}`;
       };
       apptStr = `${dateStr} - ${fmt(startD)} to ${fmt(endD)}`;
+    } else {
+      times = { allDayDate: date }; // all-day event on the chosen date
     }
-    // Add to the rep's OWN Google Calendar (private). Best-effort — if Google
-    // sign-in fails or is declined, we still save the CB to the lead.
+    // Add to the rep's OWN Google Calendar (private). Surface failures so the
+    // rep knows if it didn't make it onto their calendar.
     setAdding(true);
+    let calOk = false, calErr = "";
     try {
-      if(lead) await GCal.createPersonalCB(lead, times);
+      if(lead) { await GCal.createPersonalCB(lead, times); calOk = true; }
     } catch(e){
-      console.error("Personal CB calendar add failed:", e);
+      calErr = (e && e.message) || "unknown error";
+      console.error("Personal comeback calendar add failed:", e);
     }
     setAdding(false);
     onSelect(apptStr);
     setShow(false);
+    if(lead && !calOk){
+      alert("The comeback was saved to the lead, but it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted.");
+    }
   };
 
   return (
@@ -5707,7 +5726,7 @@ function PersonalApptButton({onSelect, label, lead}) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShow(false)}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>↩️ Personal Callback</div>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>↩️ Personal Comeback</div>
               <button onClick={()=>setShow(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{marginBottom:14}}>
@@ -5720,7 +5739,7 @@ function PersonalApptButton({onSelect, label, lead}) {
             </div>
             <button onClick={handleConfirm} disabled={!date||adding}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&!adding)?"pointer":"default"}}>
-              {adding?"Adding to your calendar…":"Set Callback"}
+              {adding?"Adding to your calendar…":"Set Comeback"}
             </button>
             <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",textAlign:"center",marginTop:10,lineHeight:1.4}}>
               Adds a private event to your own Google Calendar. Only you can see it — it won't appear on the team calendar.
@@ -5940,7 +5959,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
             <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.5,marginBottom:20}}>
               {TeamCalendars.isOwner
                 ? "No teams have a calendar configured yet. Add a calendar ID to a team in Supabase, then you can book slots here."
-                : "Booking isn't available until an owner connects a calendar to your team. You can still set a personal callback from the lead instead."}
+                : "Booking isn't available until an owner connects a calendar to your team. You can still set a personal comeback from the lead instead."}
             </div>
             <button onClick={onClose} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>Got it</button>
           </div>
