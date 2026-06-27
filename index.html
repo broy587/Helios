@@ -2784,6 +2784,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   handleUpdate({...lead,appointment:val});
                 }}/>
               </div>
+              {canBookCap && lead.stage==="VC / SRA" && (
+                <div style={{marginTop:8}}>
+                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="📋 Book CAP Appointment"/>
+                </div>
+              )}
             </div>
           )}
 
@@ -2818,15 +2823,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             initialChecked={lead.ac_checklist||[]}
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
-          {canBookCap && lead.stage==="VC / SRA" && (
-            <div style={{background:dark?"#2a1505":"#fff7ed",border:"1.5px solid #ea580c",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
-              <div style={{fontSize:13,fontWeight:800,color:"#ea580c",marginBottom:3}}>📋 Ready to CAP?</div>
-              <div style={{fontSize:12.5,color:dark?"#fdba74":"#9a3412",lineHeight:1.45,marginBottom:12}}>
-                Book a CAP appointment for this lead. It'll show orange on the calendar and move the lead to the CAP stage.
-              </div>
-              <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="Book CAP Appointment"/>
-            </div>
-          )}
           <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
@@ -3058,27 +3054,28 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
             {form.appointment&&!form.gcal_event_id&&<button onClick={()=>setForm(f=>({...f,appointment:"",gcal_event_id:""}))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
           </div>
-          {form.appointment ? (
-            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46"}}>
+          {form.appointment && (
+            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46",marginBottom:8}}>
               {form.appointment}
             </div>
-          ) : (
-            <div style={{display:"flex",gap:8}}>
-              {/* Book Closer Slot */}
-              <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
-                else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-              }} label="📅 Book Closer Slot" creatorName={creatorName}/>
-              {/* Personal Callback */}
-              <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val}))} label="↩️ Personal CB"/>
-            </div>
           )}
-          {canBookCap && form.stage==="VC / SRA" && !form.appointment && (
+          {/* Booking buttons are ALWAYS available — booking a new one replaces the
+              existing appointment date. */}
+          <div style={{display:"flex",gap:8}}>
+            {/* Book Closer Slot */}
+            <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+              if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
+              else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
+            }} label={form.appointment?"📅 Rebook Closer Slot":"📅 Book Closer Slot"} creatorName={creatorName}/>
+            {/* Personal Callback */}
+            <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val,gcal_event_id:""}))} label="↩️ Personal CB"/>
+          </div>
+          {canBookCap && form.stage==="VC / SRA" && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
               <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 Book CAP Appointment</div>
               <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
                 if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-              }} label="Book CAP Appointment" creatorName={creatorName} capMode={true}/>
+              }} label={form.appointment?"Rebook as CAP":"Book CAP Appointment"} creatorName={creatorName} capMode={true}/>
             </div>
           )}
         </div>
