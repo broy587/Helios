@@ -608,12 +608,13 @@ class StatsErrorBoundary extends React.Component {
 }
 
 // ── Stats View ────────────────────────────────────────────────────────
-function StatsView({leads, teamStatLeads, currentUserId, profiles, currentUser, teams, teamMembers,
+function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPersonalGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const dark=useDark();
   const [showDatePicker,setShowDatePicker]=useState(false);
   const [viewingRepProfile,setViewingRepProfile]=useState(null);
+  const [goalsRepId,setGoalsRepId]=useState(currentUserId||currentUser.id); // whose personal goals to view
 
   const handleFilterSelect = (key) => {
     if (key==="custom"){setShowDatePicker(true);return;}
@@ -702,6 +703,52 @@ function StatsView({leads, teamStatLeads, currentUserId, profiles, currentUser, 
           <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
         </div>
       </div>
+
+      {/* Personal Goals — rep sets own; manager/owner view others via dropdown */}
+      {(()=>{
+        const me = currentUserId||currentUser.id;
+        const isOwnerRole = currentUser.role==="owner";
+        const isManagerRole = currentUser.role==="manager";
+        // Who can this viewer browse? owner=all members; manager=their teams' members; rep/closer=just self
+        let browsable;
+        if(isOwnerRole){
+          browsable = profiles.filter(p=>isMemberRole(p.role)&&!p.deleted_at);
+        } else if(isManagerRole){
+          browsable = allReps; // already scoped to manager's teams above
+        } else {
+          browsable = profiles.filter(p=>p.id===me);
+        }
+        // Make sure self is first/available
+        if(!browsable.some(p=>p.id===me)){
+          const selfP = profiles.find(p=>p.id===me);
+          if(selfP) browsable = [selfP, ...browsable];
+        }
+        const viewingId = browsable.some(p=>p.id===goalsRepId)?goalsRepId:me;
+        const canEditThis = viewingId===me; // only the rep edits their own
+        const viewingName = (profiles.find(p=>p.id===viewingId)||{}).name || "This rep";
+        return (
+          <div style={{marginBottom:28}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
+              <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>
+                {viewingId===me?"My Goals":`${viewingName}'s Goals`}
+              </div>
+              {browsable.length>1 && (
+                <select value={viewingId} onChange={e=>setGoalsRepId(e.target.value)}
+                  style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"55%"}}>
+                  {browsable.map(p=><option key={p.id} value={p.id}>{p.id===me?"My Goals":p.name}</option>)}
+                </select>
+              )}
+            </div>
+            <PersonalGoalsSection
+              targetUserId={viewingId}
+              personalGoals={personalGoals||{}}
+              setPersonalGoals={setPersonalGoals}
+              leads={uniqueLeads}
+              canEdit={canEditThis}
+              currentUserId={me}/>
+          </div>
+        );
+      })()}
 
       {/* Team Stats — visible to everyone (aggregate numbers only) */}
       {true && (
@@ -966,6 +1013,138 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             {[["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+              <div key={k} style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={form[k]===0?"":form[k]}
+                  placeholder="0"
+                  onFocus={e=>e.target.select()}
+                  onChange={e=>{
+                    const val=e.target.value.replace(/[^0-9]/g,"");
+                    setForm(f=>({...f,[k]:val===""?0:parseInt(val)}));
+                  }}
+                  style={{...inputStyle,borderColor:c}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button onClick={()=>setEditing(null)} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick={handleSave} disabled={saving}
+                style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                {saving?"Saving...":"Save Goals"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Personal Goals tracker (VC / CAP / Install — no PTO) ──────────────
+function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, leads, canEdit, currentUserId}) {
+  const dark=useDark();
+  const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
+  const [form, setForm] = useState({vc_goal:0,cap_goal:0,install_goal:0});
+  const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState("weekly");
+
+  const weeklyGoal = personalGoals[targetUserId]?.weekly || {};
+  const quarterlyGoal = personalGoals[targetUserId]?.quarterly || {};
+
+  // Progress is measured against this user's own leads only.
+  const memberIds = [targetUserId];
+  const weeklyLeads = getWeeklyProgress(leads, memberIds);
+  const quarterlyLeads = getQuarterlyProgress(leads, memberIds);
+
+  const weeklyVC = milestoneCount(weeklyLeads,"VC");
+  const weeklyCAP = milestoneCount(weeklyLeads,"CAP");
+  const weeklyInstall = milestoneCount(weeklyLeads,"Install");
+  const quarterlyVC = milestoneCount(quarterlyLeads,"VC");
+  const quarterlyCAP = milestoneCount(quarterlyLeads,"CAP");
+  const quarterlyInstall = milestoneCount(quarterlyLeads,"Install");
+
+  const openEdit = (p) => {
+    const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
+    setForm({vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0});
+    setEditing(p);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const existing = editing==="weekly" ? weeklyGoal : quarterlyGoal;
+    // Optimistic local update
+    setPersonalGoals(prev => ({
+      ...prev,
+      [targetUserId]: {
+        ...(prev[targetUserId]||{}),
+        [editing]: {...(prev[targetUserId]?.[editing]||{}), ...form}
+      }
+    }));
+    setEditing(null);
+    setSaving(false);
+    // Persist
+    if (existing && existing.id) {
+      await sb.from("personal_goals").update({...form, updated_at:new Date().toISOString()}).eq("id", existing.id);
+    } else {
+      const {data:inserted} = await sb.from("personal_goals").insert({user_id:targetUserId, period:editing, ...form, created_by:currentUserId, updated_at:new Date().toISOString()}).select().single();
+      if (inserted) setPersonalGoals(prev=>({...prev,[targetUserId]:{...(prev[targetUserId]||{}),[editing]:inserted}}));
+    }
+  };
+
+  const tabs = [{key:"weekly",label:`This Week`},{key:"quarterly",label:getQuarterLabel(new Date())}];
+  const isWeekly = period==="weekly";
+  const vc = isWeekly?weeklyVC:quarterlyVC;
+  const cap = isWeekly?weeklyCAP:quarterlyCAP;
+  const inst = isWeekly?weeklyInstall:quarterlyInstall;
+  const goal = isWeekly?weeklyGoal:quarterlyGoal;
+
+  return (
+    <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:14,padding:"16px",marginBottom:16,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Personal Goals</div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>
+            {tabs.map(t=>(
+              <button key={t.key} onClick={()=>setPeriod(t.key)}
+                style={{padding:"4px 10px",borderRadius:6,border:"none",background:period===t.key?"#fff":"transparent",color:period===t.key?"#0f172a":"#94a3b8",fontWeight:period===t.key?700:500,cursor:"pointer",fontSize:11,boxShadow:period===t.key?"0 1px 3px rgba(0,0,0,0.1)":"none",transition:"all 0.15s"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {canEdit && (
+            <button onClick={()=>openEdit(period)}
+              style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:14,color:"#64748b"}}>
+              ✏️
+            </button>
+          )}
+        </div>
+      </div>
+
+      {goal.vc_goal||goal.cap_goal||goal.install_goal ? (
+        <div>
+          <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
+          <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
+          <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
+        </div>
+      ) : (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"12px 0"}}>
+          {canEdit ? "Tap ✏️ to set your goals for this period." : "No goals set yet."}
+        </div>
+      )}
+
+      {editing && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setEditing(null)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>
+                {editing==="weekly"?"Weekly":"Quarterly"} Personal Goals
+              </div>
+              <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            {[["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -6591,6 +6770,7 @@ function App() {
     });
   },[user, teams, teamMembers]);
   const [teamGoals,setTeamGoals]=useState({}); // { teamId: { weekly: {...}, quarterly: {...} } }
+  const [personalGoals,setPersonalGoals]=useState({}); // { userId: { weekly: {...}, quarterly: {...} } }
   const [tab,setTab]=useState("pipeline");
   const [modal,setModal]=useState({open:false,lead:null});
   const [detailId,setDetailId]=useState(null);
@@ -6786,6 +6966,38 @@ function App() {
     if (!user) return;
     await sb.from("profiles").update({ ui_state: patch }).eq("id", user.id);
   };
+
+  // Load personal goals the current user is allowed to see:
+  //  - owner: everyone's
+  //  - manager: their team members' (+ own)
+  //  - rep/closer: only their own
+  React.useEffect(()=>{
+    if(!user||!profile) return;
+    let cancelled=false;
+    (async()=>{
+      const ownerNow = user.id===OWNER_ID;
+      let q = sb.from("personal_goals").select("*");
+      if(ownerNow){
+        // all rows
+      } else if(profile.role==="manager"){
+        const myTeamIds = Object.keys(teamMembers).filter(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===user.id));
+        const memberIds = Array.from(new Set([user.id, ...myTeamIds.flatMap(tid=>(teamMembers[tid]||[]).map(m=>m.user_id))]));
+        q = q.in("user_id", memberIds);
+      } else {
+        q = q.eq("user_id", user.id);
+      }
+      const {data,error} = await q;
+      if(error){ console.error("personal goals error:",error); return; }
+      if(cancelled) return;
+      const grouped={};
+      (data||[]).forEach(g=>{
+        if(!grouped[g.user_id]) grouped[g.user_id]={};
+        grouped[g.user_id][g.period]=g;
+      });
+      setPersonalGoals(grouped);
+    })();
+    return ()=>{cancelled=true;};
+  },[user,profile,teamMembers]);
 
   // Populate PII-free team-stat leads. Managers/closers/owner already hold full
   // team leads, so reuse those. Plain reps fetch a slim, no-PII projection of
@@ -7229,7 +7441,7 @@ function App() {
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
-          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} personalGoals={personalGoals} setPersonalGoals={setPersonalGoals} teamStatLeadsForGoals={teamStatLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
             timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
             customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
             selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
