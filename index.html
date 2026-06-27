@@ -3490,6 +3490,8 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
   const dark=useDark();
   const [nickname, setNickname] = useState(profile.nickname||"");
   const [phone, setPhone] = useState(profile.phone||"");
+  const [bio, setBio] = useState(profile.bio||"");
+  const [startDate, setStartDate] = useState(profile.start_date||"");
   const [birthday, setBirthday] = useState(profile.birthday||"");
   const [avatar, setAvatar] = useState(profile.avatar_url||"");
   const [saving, setSaving] = useState(false);
@@ -3507,10 +3509,10 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
 
   const handleSave = async () => {
     setSaving(true);
-    await sb.from("profiles").update({nickname:nickname.trim()||null, phone:phone.trim()||null, birthday:birthday||null, avatar_url:avatar||null}).eq("id",user.id);
+    await sb.from("profiles").update({nickname:nickname.trim()||null, phone:phone.trim()||null, bio:bio.trim()||null, start_date:startDate||null, birthday:birthday||null, avatar_url:avatar||null}).eq("id",user.id);
     setSaving(false); setSaved(true);
     setTimeout(()=>setSaved(false),2000);
-    onSave({...profile, nickname:nickname.trim()||null, phone:phone.trim()||null, birthday:birthday||null, avatar_url:avatar||null});
+    onSave({...profile, nickname:nickname.trim()||null, phone:phone.trim()||null, bio:bio.trim()||null, start_date:startDate||null, birthday:birthday||null, avatar_url:avatar||null});
   };
 
   return (
@@ -3548,6 +3550,14 @@ function ProfilePage({profile, user, teams, teamMembers, onBack, onSave}) {
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Phone</label>
           <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(555) 000-0000" style={inputStyle}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Bio</label>
+          <textarea value={bio} onChange={e=>setBio(e.target.value)} placeholder="A little about you..." rows={3} style={{...inputStyle,resize:"vertical",minHeight:72}}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Rep Since</label>
+          <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputStyle}/>
         </div>
         <div style={{marginBottom:24}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Birthday</label>
