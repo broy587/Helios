@@ -5763,16 +5763,22 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
          body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
       );
-      // Clear gcal_event_id AND appointment from lead, revert stage
+      // Clear gcal_event_id AND appointment from lead. Only revert the stage
+      // back to the first stage if the lead is currently in "AC / Scheduled".
+      // In any other stage, removing the booking leaves the stage unchanged.
+      const revertStage = lead.stage==="AC / Scheduled";
+      const update = {
+        gcal_event_id:null,
+        appointment:null,
+        updated_at:new Date().toISOString()
+      };
+      if(revertStage) update.stage = "Lead: Need Bill/Appointment";
       if(lead.id){
-        await sb.from("leads").update({
-          gcal_event_id:null,
-          appointment:null,
-          stage:"Lead: Need Bill/Appointment",
-          updated_at:new Date().toISOString()
-        }).eq("id",lead.id);
+        await sb.from("leads").update(update).eq("id",lead.id);
       }
-      if(onUpdate) onUpdate({gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"});
+      if(onUpdate) onUpdate(revertStage
+        ? {gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"}
+        : {gcal_event_id:null,appointment:null});
       setDoneMsg("removed");
       setDone(true);
     } catch(e){console.error(e);alert("Error removing: "+e.message);}
