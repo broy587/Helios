@@ -3610,16 +3610,20 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
           </div>
         </div>
 
-        {/* Ghost Mode — hidden for owner (owner access can't be restricted) */}
-        {!isOwner && (
-          <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${ghostOn?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`}}>
+        {/* Ghost Mode — shown to everyone. For the owner it's informational only:
+            owner access can never be restricted. */}
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${ghostOn?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{flex:1,minWidth:0,paddingRight:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>👻 Ghost Mode</span>
                   <HelpTip dark={dark} text={"Only allows you to view your pipeline. When flipped to ghost mode, this takes away access for any rep or manager to see your pipeline / leads. This does not apply to the owner — the owner can always see all users' pipelines."}/>
                 </div>
-                <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{ghostOn?"On — only you (and the owner) can see your pipeline.":"Off — your team can see your pipeline as usual."}</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>
+                  {isOwner
+                    ? "As owner, your access is never restricted — this is here for reference."
+                    : (ghostOn?"On — only you (and the owner) can see your pipeline.":"Off — your team can see your pipeline as usual.")}
+                </div>
               </div>
               <div onClick={toggleGhost}
                 style={{width:50,height:28,borderRadius:99,background:ghostOn?"#6b2d4e":"#e2e8f0",cursor:savingGhost?"default":"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,opacity:savingGhost?0.6:1}}>
@@ -3627,7 +3631,6 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
               </div>
             </div>
           </div>
-        )}
       </div>
     </div>
   );
