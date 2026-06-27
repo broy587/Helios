@@ -3465,9 +3465,8 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           )}
         </div>
         <button onClick={()=>setHygieneOpen(true)} title="Pipeline hygiene"
-          style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap",position:"relative"}}>
+          style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
           🩺
-          {(()=>{ const h=analyzeHygiene(leads,staleDays); const n=h.stale.length+h.noAppt.length+h.badCloseDate.length; return n>0 ? <span style={{position:"absolute",top:-6,right:-6,minWidth:17,height:17,padding:"0 4px",borderRadius:9,background:"#ef4444",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${dark?"#0f172a":"#f5ede0"}`}}>{n>99?"99+":n}</span> : null; })()}
         </button>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
