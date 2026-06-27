@@ -5848,7 +5848,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
   const [meetRepeat, setMeetRepeat] = React.useState("none");
   const [meetRepeatDays, setMeetRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
   const RRULE_DAYS = ["SU","MO","TU","WE","TH","FR","SA"];
-  const MEETING_TYPES = ["Main Meeting","Boot Camp","Huddle","Hood Meet","Lunch"];
+  const MEETING_TYPES = ["Main Meeting","Boot Camp","Huddle","Hood Meet","Lunch","Call","Drip and Drive Call"];
   // 30-min time options across the full day.
   const MEET_TIME_OPTIONS = React.useMemo(()=>{
     const out=[];
