@@ -3621,7 +3621,7 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
               <div style={{flex:1,minWidth:0,paddingRight:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>👻 Ghost Mode</span>
-                  <HelpTip dark={dark} text={"Only allows you to view your pipeline. When flipped to ghost mode, this takes away access for any rep or manager to see your pipeline / leads. This does not apply to the owner — the owner can always see all users' pipelines."}/>
+                  <HelpTip dark={dark} text={"Only allows you to view your pipeline. When flipped to ghost mode, this takes away access for any rep, closer, or manager to see your pipeline / leads."}/>
                 </div>
                 <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>
                   {isOwner
