@@ -169,6 +169,7 @@ const MILESTONE_INDEX = {
   "AC":      STAGE_PROGRESSION.indexOf("AC / Scheduled"),
   "VC":      STAGE_PROGRESSION.indexOf("VC / SRA"),
   "CAP":     STAGE_PROGRESSION.indexOf("CAP"),
+  "Permits": STAGE_PROGRESSION.indexOf("Permitting"),
   "Install": STAGE_PROGRESSION.indexOf("Install Scheduled"),
   "PTO":     STAGE_PROGRESSION.indexOf("PTO / REP")
 };
@@ -3612,6 +3613,21 @@ function analyzeConversions(leads) {
   const avgScore = acPool.length === 0 ? null
     : (acPool.reduce((s,l)=>s + (Array.isArray(l.ac_checklist)?l.ac_checklist.length:0), 0) / acPool.length);
 
+  // Stage-to-stage conversions based on where each account CURRENTLY is.
+  // An account counts as having "reached" stage Y if its current stage is at or
+  // past Y in the progression. For ARC / On Hold / Needs Cancel Save leads, the
+  // remembered (pre-flag) stage is used — getEffectiveStageIndex handles that.
+  const atOrPast = (lead, ms) => {
+    const idx = getEffectiveStageIndex(lead);
+    return idx >= 0 && idx >= MILESTONE_INDEX[ms];
+  };
+  const poolAt = (ms) => (leads||[]).filter(l=>atOrPast(l, ms));
+  const acAt = poolAt("AC");
+  const vcAt = poolAt("VC");
+  const convPct = (fromPool, toMs) => fromPool.length === 0 ? null
+    : Math.round((fromPool.filter(l=>atOrPast(l, toMs)).length / fromPool.length) * 100);
+  const convN = (fromPool, toMs) => fromPool.filter(l=>atOrPast(l, toMs)).length;
+
   return {
     acTotal: acPool.length,
     vcTotal: vcPool.length,
@@ -3627,6 +3643,12 @@ function analyzeConversions(leads) {
       {label:"Autopay input", pct:pct(countVc("autopay_input"), vcPool.length), n:countVc("autopay_input")},
       {label:"Let closer inside", pct:pct(countVc("closer_inside"), vcPool.length), n:countVc("closer_inside")},
       {label:"All decision makers present", pct:pct(countVc("decision_makers"), vcPool.length), n:countVc("decision_makers")},
+    ],
+    funnel: [
+      {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
+      {label:"VC → Permits", pct:convPct(vcAt,"Permits"), n:convN(vcAt,"Permits"), of:vcAt.length},
+      {label:"VC → Install", pct:convPct(vcAt,"Install"), n:convN(vcAt,"Install"), of:vcAt.length},
+      {label:"AC → Install", pct:convPct(acAt,"Install"), n:convN(acAt,"Install"), of:acAt.length},
     ],
   };
 }
@@ -3916,6 +3938,15 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 </div>
                 {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
                   : c.ac.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.acTotal}/>)}
+
+                {/* AC to Install Conversions — stage-to-stage progression rates */}
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC to Install Conversions</span>
+                </div>
+                {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
+                  : c.funnel.map(m=>(
+                      <Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.of}/>
+                    ))}
 
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>VC or after</span>
