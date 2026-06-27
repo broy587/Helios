@@ -2779,7 +2779,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{lead.appointment?"Rebook / Change Appointment":"Appointment"}</div>
               <div style={{display:"flex",gap:8}}>
                 <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot" creatorName={creatorName}/>
-                <PersonalApptButton label="↩️ Personal CB" onSelect={async(val)=>{
+                <PersonalApptButton lead={lead} label="↩️ Personal CB" onSelect={async(val)=>{
                   await sb.from("leads").update({appointment:val,gcal_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                   handleUpdate({...lead,appointment:val,gcal_event_id:null});
                 }}/>
@@ -3068,7 +3068,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
               else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
             }} label="📅 Book Closer Slot" creatorName={creatorName}/>
             {/* Personal Callback */}
-            <PersonalApptButton onSelect={val=>setForm(f=>({...f,appointment:val,gcal_event_id:""}))} label="↩️ Personal CB"/>
+            <PersonalApptButton lead={{...form}} onSelect={val=>setForm(f=>({...f,appointment:val,gcal_event_id:""}))} label="↩️ Personal CB"/>
           </div>
           {canBookCap && (form.stage==="VC / SRA" || form.stage==="CAP") && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
@@ -5507,6 +5507,38 @@ const GCal = {
     return await res.json();
   },
 
+  // Create a PRIVATE personal-callback event on the signed-in rep's OWN
+  // Google Calendar (the "primary" calendar). This never touches the shared
+  // team calendar, so no one else sees it and it can't consume team slots.
+  // `times` = { start, end } ISO strings, or null for an all-day event.
+  async createPersonalCB(lead, times) {
+    const token = await this.signIn();
+    const event = {
+      summary: `Personal CB - ${lead.name || "Lead"}`,
+      location: lead.address || "",
+      description: [
+        lead.phone ? `Phone: ${lead.phone}` : "",
+        lead.address ? `Address: ${lead.address}` : "",
+        lead.notes ? `Notes: ${lead.notes}` : "",
+        `Personal callback (Pipeline Push)`,
+      ].filter(Boolean).join("\n"),
+      start: times
+        ? { dateTime: times.start, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+      end: times
+        ? { dateTime: times.end, timeZone: "America/Chicago" }
+        : { date: new Date().toISOString().split("T")[0] },
+      colorId: "5", // banana / yellow
+      reminders: { useDefault: true },
+    };
+    const res = await fetch(
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+      { method:"POST", headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"}, body:JSON.stringify(event) }
+    );
+    if(!res.ok) throw new Error(await res.text());
+    return await res.json();
+  },
+
   async updateEvent(eventId, lead, calendarId) {
     const token = await this.signIn();
     const times = this.parseAppointment(lead.appointment);
@@ -5621,26 +5653,46 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode}) {
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label}) {
+function PersonalApptButton({onSelect, label, lead}) {
   const [show, setShow] = React.useState(false);
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
+  const [adding, setAdding] = React.useState(false);
   const dark = useDark();
   const iStyle = {width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if(!date) return;
     const d = new Date(date);
     const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const dateStr = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
     let apptStr = dateStr;
+    // Build ISO start/end for the Google Calendar event (1-hour block if a time was given).
+    let times = null;
     if(time){
       const [h,m] = time.split(":").map(Number);
-      const ampm = h>=12?"PM":"AM";
-      const h12 = h%12||12;
-      const timeStr = `${h12}:${String(m).padStart(2,"0")} ${ampm}`;
-      apptStr = `${dateStr} - ${timeStr} to ${h12+1}:${String(m).padStart(2,"0")} ${ampm}`;
+      const [yy,mm,dd] = date.split("-").map(Number);
+      const startD = new Date(yy, mm-1, dd, h, m, 0);
+      const endD = new Date(startD.getTime() + 60*60*1000);
+      times = { start:startD.toISOString(), end:endD.toISOString() };
+      // Format both ends from the real Date objects so the label always matches
+      // the 1-hour block (handles 11AM→12PM, 12:30PM→1:30PM, etc.).
+      const fmt = (dt) => {
+        let hr = dt.getHours(); const mn = dt.getMinutes();
+        const ap = hr>=12?"PM":"AM"; const h12v = hr%12||12;
+        return `${h12v}:${String(mn).padStart(2,"0")} ${ap}`;
+      };
+      apptStr = `${dateStr} - ${fmt(startD)} to ${fmt(endD)}`;
     }
+    // Add to the rep's OWN Google Calendar (private). Best-effort — if Google
+    // sign-in fails or is declined, we still save the CB to the lead.
+    setAdding(true);
+    try {
+      if(lead) await GCal.createPersonalCB(lead, times);
+    } catch(e){
+      console.error("Personal CB calendar add failed:", e);
+    }
+    setAdding(false);
     onSelect(apptStr);
     setShow(false);
   };
@@ -5666,10 +5718,13 @@ function PersonalApptButton({onSelect, label}) {
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time (optional)</label>
               <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={iStyle}/>
             </div>
-            <button onClick={handleConfirm} disabled={!date}
-              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:date?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:date?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:date?"pointer":"default"}}>
-              Set Callback
+            <button onClick={handleConfirm} disabled={!date||adding}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&!adding)?"pointer":"default"}}>
+              {adding?"Adding to your calendar…":"Set Callback"}
             </button>
+            <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",textAlign:"center",marginTop:10,lineHeight:1.4}}>
+              Adds a private event to your own Google Calendar. Only you can see it — it won't appear on the team calendar.
+            </div>
           </div>
         </div>
       )}
