@@ -317,7 +317,7 @@ const TIME_SLOTS = [
 ];
 
 const emptyForm = {
-  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",
+  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",commission:"",
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
   decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
@@ -2907,6 +2907,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               Open ›
             </button>
           </div>
+          {lead.commission && String(lead.commission).trim() && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
+              <div style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857"}}>${String(lead.commission).trim()}</div>
+            </div>
+          )}
           {/* Appointment booking — always visible; booking a new one replaces the old. */}
           {repProfiles!==undefined&&(
             <div style={{marginBottom:14}}>
@@ -3282,6 +3288,16 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
             style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
             Open ›
           </button>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</label>
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+            <input type="text" inputMode="decimal" placeholder="0.00"
+              value={form.commission||""}
+              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,commission:v})); }}
+              style={{...inputStyle,paddingLeft:24}}/>
+          </div>
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
@@ -5288,6 +5304,16 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 if(missing.length>0){
                   window.alert("Can't move this account forward yet. Please complete the following:\n\n• "+missing.join("\n• "));
                   e.target.value=linkedLead.stage||""; // revert the dropdown
+                  return;
+                }
+              }
+              // VC/SRA or after: all closer notes must be answered (everyone).
+              const vcIdx=STAGE_PROGRESSION.indexOf("VC / SRA");
+              if(targetIdx>=vcIdx){
+                const closerDone=!!(linkedLead.autopay_input&&linkedLead.knew_solar&&linkedLead.closer_inside&&linkedLead.decision_makers);
+                if(!closerDone){
+                  window.alert("Must complete all Closer Notes to move this account to VC/SRA or after. Every closer question must be answered.");
+                  e.target.value=linkedLead.stage||"";
                   return;
                 }
               }
@@ -8286,7 +8312,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -8313,7 +8339,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -8469,6 +8495,16 @@ function App() {
         return; // block the save
       }
     }
+    // Guard: moving to VC/SRA or after (from before VC) requires all closer notes (everyone).
+    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
+    const movingIntoVcPlus = newStageIdx >= vcIdx && prevStageIdx < vcIdx;
+    if (movingIntoVcPlus) {
+      const closerDone = !!(form.autopayInput && form.knewSolar && form.closerInside && form.decisionMakers);
+      if (!closerDone) {
+        window.alert("Must complete all Closer Notes to move this account to VC/SRA or after. Every closer question must be answered.");
+        return; // block the save
+      }
+    }
     const changes=[];
     if(existing){
       const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage",is_arc:"ARC Status"};
@@ -8483,7 +8519,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",commission:form.commission||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -8569,6 +8605,15 @@ function App() {
       }
       if (missing.length > 0) {
         setAcWarning({ id, missing });
+        return;
+      }
+    }
+    // Guard: moving to VC/SRA or after requires ALL closer notes answered (everyone).
+    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
+    if (targetIdx >= vcIdx) {
+      const closerDone = !!(lead.autopay_input && lead.knew_solar && lead.closer_inside && lead.decision_makers);
+      if (!closerDone) {
+        setAcWarning({ id, missing: ["Complete all Closer Notes (every question must be answered)"] });
         return;
       }
     }
@@ -8953,7 +8998,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
