@@ -6957,7 +6957,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
       ) : (
         <iframe
           src={CALENDAR_EMBED}
-          style={{flex:1,border:"none",width:"100%"}}
+          style={{flex:1,border:"none",width:"100%",filter:dark?"invert(0.9) hue-rotate(180deg)":"none",background:dark?"#0f172a":"transparent"}}
           frameBorder="0"
           scrolling="no"
           title={CALENDAR_NAME} key={calKey}
