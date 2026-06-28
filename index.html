@@ -881,7 +881,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   const allReps = (currentUser.role==="owner"
     ? profiles
     : profiles.filter(p=>!p.ghost_mode && myTeamIds.some(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===p.id)))
-  ).filter(p=>isMemberRole(p.role)&&!p.deleted_at);
+  ).filter(p=>(isMemberRole(p.role)||p.id===OWNER_ID)&&!p.deleted_at);
   const getTeamReps = () => {
     if (selectedTeamId==="all") return allReps;
     const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
@@ -1551,8 +1551,8 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   const selectedTeam = teams.find(t=>t.id===selectedTeamId);
   const members = selectedTeamId && selectedTeamId!=="all" ? (teamMembers[selectedTeamId]||[]) : [];
   const memberIds = members.map(m=>m.user_id);
-  const allReps = profiles.filter(p=>isMemberRole(p.role)&&!p.deleted_at);
-  const deletedReps = profiles.filter(p=>isMemberRole(p.role)&&p.deleted_at);
+  const allReps = profiles.filter(p=>(isMemberRole(p.role)||p.id===OWNER_ID)&&!p.deleted_at);
+  const deletedReps = profiles.filter(p=>(isMemberRole(p.role)||p.id===OWNER_ID)&&p.deleted_at);
   const nonMembers = allReps.filter(r=>!memberIds.includes(r.id));
 
   // Get teams a rep belongs to
@@ -1657,9 +1657,18 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   };
 
   // Reps to show in current view
-  const displayReps = selectedTeamId==="all"
-    ? allReps
-    : allReps.filter(r=>memberIds.includes(r.id));
+  // The owner always appears in a team's roster (for perception/cohesion), even if
+  // they aren't an explicit team_members row.
+  const ownerProfile = profiles.find(p=>p.id===OWNER_ID && !p.deleted_at);
+  const displayReps = (()=>{
+    let list = selectedTeamId==="all"
+      ? allReps
+      : allReps.filter(r=>memberIds.includes(r.id));
+    if(ownerProfile && !list.some(r=>r.id===OWNER_ID)){
+      list = [ownerProfile, ...list]; // surface the owner at the top
+    }
+    return list;
+  })();
 
   return (
     <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f5ede0",minHeight:"100%"}}>
@@ -1761,7 +1770,14 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{rep.name}</div>
-                  <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":rep.role==="closer"?"#ffedd5":rep.role==="self_gen"?"#d1fae5":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":rep.role==="closer"?"#9a3412":rep.role==="self_gen"?"#065f46":"#475569"}}>{rep.role==="self_gen"?"self gen":rep.role}</span>
+                  {rep.id===OWNER_ID ? (
+                    <>
+                      <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:"#dbeafe",color:"#1e3a8a"}}>manager</span>
+                      <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:"#fde68a",color:"#78350f"}}>Owner</span>
+                    </>
+                  ) : (
+                    <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20,background:rep.role==="manager"?"#dbeafe":rep.role==="closer"?"#ffedd5":rep.role==="self_gen"?"#d1fae5":"#f1f5f9",color:rep.role==="manager"?"#1e3a8a":rep.role==="closer"?"#9a3412":rep.role==="self_gen"?"#065f46":"#475569"}}>{rep.role==="self_gen"?"self gen":rep.role}</span>
+                  )}
                 </div>
                 <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{rep.email}</div>
                 {repTeams.length>0 && (
@@ -1773,11 +1789,11 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
                 )}
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                {selectedTeamId!=="all" && (
+                {selectedTeamId!=="all" && rep.id!==OWNER_ID && (
                   <button onClick={()=>handleRemoveMember(rep.id)}
                     style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 8px",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
                 )}
-                {(isOwner || isManager) && (
+                {(isOwner || isManager) && rep.id!==OWNER_ID && (
                   <div style={{position:"relative"}}>
                     <button onClick={()=>setRepActionOpen(isOpen?null:rep.id)}
                       style={{background:isOpen?"#f1f5f9":"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 10px",color:"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>
