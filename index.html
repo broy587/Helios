@@ -545,6 +545,36 @@ function TimeFilterBar({active,onSelect}) {
   );
 }
 
+// Single-dropdown version of the time filter (used by the Leaderboard).
+function TimeFilterDropdown({active,onSelect,customRange,dark}) {
+  const [open,setOpen]=React.useState(false);
+  const label = (()=>{
+    if(active==="custom"&&customRange){const fmt=d=>`${MONTHS[d.getMonth()]} ${d.getDate()}`;return `${fmt(customRange.start)} – ${fmt(customRange.end)}`;}
+    return getFilterLabel(active,customRange);
+  })();
+  return (
+    <div style={{position:"relative"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"9px 16px",borderRadius:12,border:"none",background:"#3b82f6",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",whiteSpace:"nowrap"}}>
+        🗓️ {label} <span style={{fontSize:11,opacity:0.85}}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:50}}/>
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:51,background:dark?"#1e293b":"#fff",borderRadius:12,boxShadow:"0 10px 30px rgba(0,0,0,0.25)",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,overflow:"hidden",minWidth:180}}>
+            {TIME_FILTERS.map(f=>(
+              <button key={f.key} onClick={()=>{onSelect(f.key);setOpen(false);}}
+                style={{display:"block",width:"100%",textAlign:"left",padding:"11px 16px",border:"none",background:active===f.key?(dark?"#0f172a":"#eff6ff"):"transparent",color:active===f.key?"#3b82f6":(dark?"#e2e8f0":"#1e293b"),fontWeight:active===f.key?700:500,cursor:"pointer",fontSize:14}}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 
 // ── Rep Profile Modal ─────────────────────────────────────────────────
@@ -657,11 +687,137 @@ class StatsErrorBoundary extends React.Component {
   }
 }
 
+// ── Leaderboard View ──────────────────────────────────────────────────
+// Hype leaderboard: pick a stat (Leads / ACs / VCs / Permits / Installs) and a
+// timeframe; shows the top 3 reps as big profile bubbles, then the rest ranked.
+const LEADERBOARD_STATS = [
+  {key:"leads",   label:"Leads"},
+  {key:"AC",      label:"ACs"},
+  {key:"VC",      label:"VCs"},
+  {key:"Permits", label:"Permits"},
+  {key:"Install", label:"Installs"}, // literal Install stage or beyond (NOT Install Scheduled)
+];
+function LeaderboardView({reps, leadsByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
+  const [stat,setStat]=React.useState("leads");
+  const [statOpen,setStatOpen]=React.useState(false);
+  const [listOpen,setListOpen]=React.useState(true);
+  const LITERAL_INSTALL_IDX = STAGE_PROGRESSION.indexOf("Install");
+
+  const statValue = (rep) => {
+    const repLeads = leadsByOwner[rep.id] || [];
+    if(stat==="leads") return leadsInRange(repLeads, range).length;
+    if(stat==="Install"){
+      let count=0;
+      for(const l of repLeads){
+        if(getEffectiveStageIndex(l) < LITERAL_INSTALL_IDX) continue;
+        if(!range){ count++; continue; }
+        const at=getStageReachedAt(l, LITERAL_INSTALL_IDX);
+        if(at && at>=range.start && at<=range.end) count++;
+      }
+      return count;
+    }
+    return milestoneCountInRange(repLeads, stat, range);
+  };
+
+  const ranked = (reps||[]).map(r=>({rep:r, val:statValue(r)}))
+    .sort((a,b)=> b.val - a.val || (a.rep.name||"").localeCompare(b.rep.name||""));
+  const statLabel = (LEADERBOARD_STATS.find(s=>s.key===stat)||{}).label||"";
+  const top3 = ranked.slice(0,3);
+  const rest = ranked.slice(3);
+  const initials = (n)=> (n||"?").split(" ").map(w=>w[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
+
+  const Bubble = ({entry, rank}) => {
+    const size = rank===1?130:96;
+    const rankColors = {1:"#f59e0b",2:"#cbd5e1",3:"#d6a878"};
+    const r = entry.rep;
+    return (
+      <div onClick={()=>onViewRep&&onViewRep(r)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,cursor:"pointer",flex:rank===1?"0 0 auto":"1 1 0",minWidth:0,marginTop:rank===1?0:34}}>
+        <div style={{position:"relative"}}>
+          <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",background:r.avatar_url?"transparent":"linear-gradient(135deg,#94a3b8,#cbd5e1)",display:"flex",alignItems:"center",justifyContent:"center",border:`3px solid ${rankColors[rank]}`,boxShadow:rank===1?`0 0 30px ${dark?"rgba(245,158,11,0.35)":"rgba(245,158,11,0.4)"}`:"0 4px 14px rgba(0,0,0,0.25)"}}>
+            {r.avatar_url
+              ? <img src={r.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              : <span style={{fontSize:size*0.34,fontWeight:800,color:"#1e293b"}}>{initials(r.name)}</span>}
+          </div>
+          <div style={{position:"absolute",top:-6,left:"50%",transform:"translateX(-50%)",width:30,height:30,borderRadius:"50%",background:rankColors[rank],color:rank===2?"#1e293b":"#fff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${dark?"#0f172a":"#f5ede0"}`,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>{rank}</div>
+        </div>
+        <div style={{fontSize:rank===1?15:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",textAlign:"center",lineHeight:1.2,maxWidth:size+26,overflow:"hidden",textOverflow:"ellipsis"}}>{r.name||"Unknown"}</div>
+        <div style={{fontSize:rank===1?26:20,fontWeight:900,color:rank===1?"#f59e0b":(dark?"#e2e8f0":"#1e293b")}}>{entry.val}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:24,flexWrap:"wrap"}}>
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setStatOpen(o=>!o)}
+            style={{display:"flex",alignItems:"center",gap:8,padding:"9px 16px",borderRadius:12,border:"none",background:"#6366f1",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+            🏆 {statLabel} <span style={{fontSize:11,opacity:0.85}}>▼</span>
+          </button>
+          {statOpen && (
+            <>
+              <div onClick={()=>setStatOpen(false)} style={{position:"fixed",inset:0,zIndex:50}}/>
+              <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:51,background:dark?"#1e293b":"#fff",borderRadius:12,boxShadow:"0 10px 30px rgba(0,0,0,0.25)",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,overflow:"hidden",minWidth:160}}>
+                {LEADERBOARD_STATS.map(s=>(
+                  <button key={s.key} onClick={()=>{setStat(s.key);setStatOpen(false);}}
+                    style={{display:"block",width:"100%",textAlign:"left",padding:"11px 16px",border:"none",background:stat===s.key?(dark?"#0f172a":"#eef2ff"):"transparent",color:stat===s.key?"#6366f1":(dark?"#e2e8f0":"#1e293b"),fontWeight:stat===s.key?700:500,cursor:"pointer",fontSize:14}}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <TimeFilterDropdown active={timeFilter} onSelect={(k)=>{ if(k==="custom"){onPickCustom&&onPickCustom();} else setTimeFilter(k); }} customRange={customRange} dark={dark}/>
+      </div>
+
+      {ranked.length===0 ? (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:14,padding:"40px 0"}}>No reps to show for this team.</div>
+      ) : (
+        <>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"center",gap:10,marginBottom:28,minHeight:200}}>
+            {top3[1] && <Bubble entry={top3[1]} rank={2}/>}
+            {top3[0] && <Bubble entry={top3[0]} rank={1}/>}
+            {top3[2] && <Bubble entry={top3[2]} rank={3}/>}
+          </div>
+
+          {rest.length>0 && (
+            <div>
+              <button onClick={()=>setListOpen(o=>!o)}
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 16px",borderRadius:12,border:"none",background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1e293b",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+                <span>Rest of the team ({rest.length})</span>
+                <span style={{fontSize:12,opacity:0.7}}>{listOpen?"▲":"▼"}</span>
+              </button>
+              {listOpen && rest.map((entry,i)=>{
+                const r=entry.rep, rank=i+4;
+                return (
+                  <div key={r.id} onClick={()=>onViewRep&&onViewRep(r)}
+                    style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",borderRadius:12,background:dark?"#1e293b":"#fff",marginBottom:6,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+                    <div style={{width:30,height:30,borderRadius:"50%",background:dark?"#0f172a":"#f1f5f9",color:"#6366f1",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{rank}</div>
+                    <div style={{width:38,height:38,borderRadius:"50%",overflow:"hidden",background:r.avatar_url?"transparent":"linear-gradient(135deg,#94a3b8,#cbd5e1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {r.avatar_url
+                        ? <img src={r.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        : <span style={{fontSize:13,fontWeight:800,color:"#1e293b"}}>{initials(r.name)}</span>}
+                    </div>
+                    <div style={{flex:1,minWidth:0,fontSize:14,fontWeight:600,color:dark?"#f1f5f9":"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Unknown"}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:dark?"#e2e8f0":"#1e293b"}}>{entry.val}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Stats View ────────────────────────────────────────────────────────
 function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPersonalGoals, teamGoals, setTeamGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const dark=useDark();
+  const [lbTab,setLbTab]=useState("leaderboard"); // "leaderboard" | "stats"
   const [showDatePicker,setShowDatePicker]=useState(false);
   const [viewingRepProfile,setViewingRepProfile]=useState(null);
   const [goalsRepId,setGoalsRepId]=useState(currentUserId||currentUser.id); // whose personal goals to view
@@ -736,8 +892,56 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   // Filtered reps by search
   const filteredReps = teamReps.filter(r=>(r.name||"").toLowerCase().includes(repSearch.toLowerCase()));
 
+  // Map of owner_id → their leads (from the team stat source), for the leaderboard.
+  const leadsByOwner = (()=>{
+    const map={};
+    for(const l of teamStatSource){ (map[l.owner_id] = map[l.owner_id] || []).push(l); }
+    return map;
+  })();
+
   return (
     <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f5ede0",minHeight:"100%"}}>
+      {/* Leaderboard / Stats sub-tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:20,borderBottom:`1.5px solid ${dark?"#1e293b":"#e7dccd"}`}}>
+        {[["leaderboard","Leaderboard"],["stats","Stats"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setLbTab(key)}
+            style={{flex:1,padding:"11px 0",border:"none",background:"none",borderBottom:`2.5px solid ${lbTab===key?"#3b82f6":"transparent"}`,color:lbTab===key?(dark?"#f1f5f9":"#0f172a"):"#94a3b8",fontWeight:lbTab===key?800:600,fontSize:15,cursor:"pointer",marginBottom:-1.5}}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {lbTab==="leaderboard" ? (
+        <>
+          {/* Team selector (owner/multi-team) */}
+          {teamOptions.length>1 && (
+            <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:16,paddingBottom:2}}>
+              {teamOptions.map(t=>(
+                <button key={t.id} onClick={()=>setSelectedTeamId(t.id)}
+                  style={{flexShrink:0,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${selectedTeamId===t.id?"#3b82f6":(dark?"#334155":"#ede3d6")}`,background:selectedTeamId===t.id?"#3b82f6":(dark?"#1e293b":"#faf6f0"),color:selectedTeamId===t.id?"#fff":(dark?"#94a3b8":"#1a2456"),fontWeight:selectedTeamId===t.id?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <LeaderboardView
+            reps={teamReps}
+            leadsByOwner={leadsByOwner}
+            range={range}
+            timeFilter={timeFilter}
+            setTimeFilter={(k)=>{setTimeFilter(k);setCustomRange(null);}}
+            customRange={customRange}
+            onPickCustom={()=>setShowDatePicker(true)}
+            dark={dark}
+            onViewRep={(r)=>setViewingRepProfile(r)}
+          />
+          {viewingRepProfile && <RepProfileModal rep={viewingRepProfile} teams={teams} teamMembers={teamMembers} onClose={()=>setViewingRepProfile(null)}/>}
+          {showDatePicker && (
+            <DateRangePicker onConfirm={(r)=>{setCustomRange(r);setTimeFilter("custom");setShowDatePicker(false);}} onCancel={()=>setShowDatePicker(false)}/>
+          )}
+        </>
+      ) : (
+      <>
       <div style={{marginBottom:16}}>
         <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect}/>
       </div>
@@ -930,6 +1134,8 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
 
             {showDatePicker && <DateRangePicker onConfirm={r=>{setCustomRange(r);setTimeFilter("custom");setShowDatePicker(false);}} onCancel={()=>setShowDatePicker(false)}/>}
       {viewingRepProfile && <RepProfileModal rep={viewingRepProfile} teams={teams} teamMembers={teamMembers} onClose={()=>setViewingRepProfile(null)}/>}
+      </>
+      )}
     </div>
   );
 }
