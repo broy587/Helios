@@ -2752,6 +2752,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a"}}>
+          {acWarning && (
+            <div style={{background:"#fef3c7",border:"1.5px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"flex-start",gap:8}}>
+              <span style={{fontSize:16,flexShrink:0,lineHeight:1.2}}>⚠️</span>
+              <div style={{fontSize:13,fontWeight:600,color:"#92400e",lineHeight:1.5,whiteSpace:"pre-line"}}>{acWarning}</div>
+            </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
@@ -2948,12 +2954,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-          {acWarning && (
-            <div style={{background:"#fef3c7",border:"1.5px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"flex-start",gap:8}}>
-              <span style={{fontSize:16,flexShrink:0,lineHeight:1.2}}>⚠️</span>
-              <div style={{fontSize:13,fontWeight:600,color:"#92400e",lineHeight:1.5,whiteSpace:"pre-line"}}>{acWarning}</div>
             </div>
           )}
           <ACChecklist
@@ -3706,17 +3706,28 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
 
   const startDrag = (id, x, y, isMouse) => {
     setDragId(id); setDragPos({x,y});
+    // While dragging with the mouse, prevent the browser from selecting/highlighting
+    // any text the card is dragged over.
+    if(isMouse){
+      document.body.style.userSelect="none";
+      document.body.style.webkitUserSelect="none";
+      try{ window.getSelection&&window.getSelection().removeAllRanges(); }catch(e){}
+    }
     const EDGE=60,MAX_SPEED=12;
     const startScroll=dir=>{if(scrollAnim.current)return;const step=()=>{if(!boardRef.current)return;boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED;scrollAnim.current=requestAnimationFrame(step);};scrollAnim.current=requestAnimationFrame(step);};
     const stopScroll=()=>{if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;}};
     const getPos=ev=>isMouse?{x:ev.clientX,y:ev.clientY}:{x:ev.touches[0].clientX,y:ev.touches[0].clientY};
     const onMove=ev=>{
       if(!isMouse)ev.preventDefault();
+      else { ev.preventDefault(); try{ window.getSelection&&window.getSelection().removeAllRanges(); }catch(e){} } // keep selection cleared during mouse drag
       const {x,y}=getPos(ev); setDragPos({x,y});
       if(x<EDGE){stopScroll();startScroll("left");}else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}else stopScroll();
       let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);
     };
     const onEnd=()=>{
+      // Restore text selection.
+      document.body.style.userSelect="";
+      document.body.style.webkitUserSelect="";
       setDragId(null);setDragOver(over=>{
         // Prevent dragging into ARC column via drag-drop
         if(over && over!=="ARC / Cancels") onStageChange(id,over);
@@ -8436,6 +8447,28 @@ function App() {
     let ownerId=user.id;
     if(pipelineFilter.startsWith("rep:")){ownerId=pipelineFilter.replace("rep:","");}
     const existing=modal.lead&&modal.lead.id?leads.find(l=>l.id===modal.lead.id):null;
+    // Guard: if this save moves the lead TO AC or after (from a pre-AC stage, or a
+    // brand-new lead created at AC+), enforce the same requirements as a board move.
+    const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
+    const newStageIdx = STAGE_PROGRESSION.indexOf(form.stage);
+    const prevStageIdx = existing ? STAGE_PROGRESSION.indexOf(existing.stage) : -1;
+    const movingIntoAcPlus = newStageIdx >= acIdx && prevStageIdx < acIdx; // crossing into AC+
+    if (movingIntoAcPlus) {
+      const checklist = Array.isArray(form.acChecklist) ? form.acChecklist : [];
+      const isRep = profile && profile.role === "rep";
+      const missing = [];
+      if (checklist.length === 0) missing.push("Mark at least one AC checklist box");
+      if (isRep) {
+        if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number");
+        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the AC checklist");
+        const hasAppt = !!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id);
+        if (!hasAppt) missing.push("Schedule a closer slot or personal CB");
+      }
+      if (missing.length > 0) {
+        window.alert("Can't move this account to AC or beyond yet. Please complete the following:\n\n• " + missing.join("\n• "));
+        return; // block the save
+      }
+    }
     const changes=[];
     if(existing){
       const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage",is_arc:"ARC Status"};
