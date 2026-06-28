@@ -965,17 +965,14 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
         const viewingName = (profiles.find(p=>p.id===viewingId)||{}).name || "This rep";
         return (
           <div style={{marginBottom:24}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
-              <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>
-                {viewingId===me?"My Goals":`${viewingName}'s Goals`}
-              </div>
-              {browsable.length>1 && (
+            {browsable.length>1 && (
+              <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:12}}>
                 <select value={viewingId} onChange={e=>setGoalsRepId(e.target.value)}
-                  style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"55%"}}>
+                  style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"70%"}}>
                   {browsable.map(p=><option key={p.id} value={p.id}>{p.id===me?"My Goals":p.name}</option>)}
                 </select>
-              )}
-            </div>
+              </div>
+            )}
             <PersonalGoalsSection
               targetUserId={viewingId}
               personalGoals={personalGoals||{}}
@@ -988,24 +985,30 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
       })()}
 
       {/* Team Goals — visible to all; editable by owner/manager. */}
-      {teams.length>0 && (
+      {teams.length>0 && (()=>{
+        // Team goals are per-team; if the overall filter is "all", default the
+        // goals view to the first available team so the tracker always shows.
+        const teamOnlyOptions = teamOptions.filter(t=>t.id!=="all");
+        const goalsTeamId = (selectedTeamId!=="all" && teamOnlyOptions.some(t=>t.id===selectedTeamId))
+          ? selectedTeamId
+          : (teamOnlyOptions[0] ? teamOnlyOptions[0].id : "all");
+        return (
         <div style={{marginBottom:28}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
-            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Team Goals</div>
-            {teamOptions.length>0 && (
-              <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
-                style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"55%"}}>
-                {teamOptions.filter(t=>t.id!=="all").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          {teamOnlyOptions.length>0 && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:12}}>
+              <select value={goalsTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+                style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"70%"}}>
+                {teamOnlyOptions.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
-            )}
-          </div>
-          {selectedTeamId!=="all" ? (
+            </div>
+          )}
+          {goalsTeamId!=="all" ? (
             <GoalsSection
-              teamId={selectedTeamId}
+              teamId={goalsTeamId}
               teamGoals={teamGoals||{}}
               setTeamGoals={setTeamGoals}
               leads={teamStatSource}
-              teamMemberIds={(teamMembers[selectedTeamId]||[]).map(m=>m.user_id)}
+              teamMemberIds={(teamMembers[goalsTeamId]||[]).map(m=>m.user_id)}
               canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
               currentUserId={currentUserId||currentUser.id}
               onRefresh={()=>{}}
@@ -1014,7 +1017,8 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
             <div style={{fontSize:13,color:"#94a3b8"}}>Select a team to view its goals.</div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Timeline filter — applies to the stats below (not the goal trackers above). */}
       <div style={{marginBottom:16}}>
@@ -1247,7 +1251,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
     }
   };
 
-  const tabs = [{key:"weekly",label:`This Week`},{key:"quarterly",label:getQuarterLabel(new Date())}];
+  const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
@@ -1364,26 +1368,34 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
   const handleSave = async () => {
     setSaving(true);
     const existing = editing==="weekly" ? weeklyGoal : quarterlyGoal;
+    const editingPeriod = editing;
     // Optimistic local update
     setPersonalGoals(prev => ({
       ...prev,
       [targetUserId]: {
         ...(prev[targetUserId]||{}),
-        [editing]: {...(prev[targetUserId]?.[editing]||{}), ...form}
+        [editingPeriod]: {...(prev[targetUserId]?.[editingPeriod]||{}), ...form}
       }
     }));
     setEditing(null);
-    setSaving(false);
     // Persist
-    if (existing && existing.id) {
-      await sb.from("personal_goals").update({...form, updated_at:new Date().toISOString()}).eq("id", existing.id);
-    } else {
-      const {data:inserted} = await sb.from("personal_goals").insert({user_id:targetUserId, period:editing, ...form, created_by:currentUserId, updated_at:new Date().toISOString()}).select().single();
-      if (inserted) setPersonalGoals(prev=>({...prev,[targetUserId]:{...(prev[targetUserId]||{}),[editing]:inserted}}));
+    try {
+      if (existing && existing.id) {
+        const {error} = await sb.from("personal_goals").update({...form, updated_at:new Date().toISOString()}).eq("id", existing.id);
+        if(error) throw error;
+      } else {
+        const {data:inserted,error} = await sb.from("personal_goals").insert({user_id:targetUserId, period:editingPeriod, ...form, updated_at:new Date().toISOString()}).select().single();
+        if(error) throw error;
+        if (inserted) setPersonalGoals(prev=>({...prev,[targetUserId]:{...(prev[targetUserId]||{}),[editingPeriod]:inserted}}));
+      }
+    } catch(e) {
+      console.error("Personal goal save failed:", e);
+      window.alert("Couldn't save goal: "+((e&&(e.message||e.details||e.hint))||"unknown error")+"\n\nMake sure the personal_goals table exists in Supabase.");
     }
+    setSaving(false);
   };
 
-  const tabs = [{key:"weekly",label:`This Week`},{key:"quarterly",label:getQuarterLabel(new Date())}];
+  const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
@@ -2124,20 +2136,56 @@ function RecruitModal({open,onClose,onSave,initial}) {
   );
 }
 
-function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
+function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate}) {
   const dark=useDark();
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [photos,setPhotos]=useState(Array.isArray(recruit&&recruit.photos)?recruit.photos:[]);
+  const [uploading,setUploading]=useState(false);
+  const [imgOpen,setImgOpen]=useState(null);
+  const fileRef=React.useRef(null);
+  React.useEffect(()=>{ setPhotos(Array.isArray(recruit&&recruit.photos)?recruit.photos:[]); },[recruit&&recruit.id]);
   if(!recruit) return null;
   const colors=getRecruitStageColor(recruit.stage);
   const fullName=`${recruit.first_name||""} ${recruit.last_name||""}`.trim()||"Unnamed Recruit";
+  const creatorProfile=(profiles||[]).find(p=>p.id===recruit.owner_id);
+  const creatorName=creatorProfile?(creatorProfile.name||creatorProfile.email||"Unknown"):"";
+
+  const handlePhoto=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    const readAsDataUrl=(file)=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
+    try{
+      const dataUrls=[];
+      for(const f of files){ dataUrls.push(await readAsDataUrl(f)); }
+      const next=[...photos,...dataUrls];
+      setPhotos(next);
+      await sb.from("recruits").update({photos:next,updated_at:new Date().toISOString()}).eq("id",recruit.id);
+      if(onUpdate) onUpdate({...recruit,photos:next});
+    }catch(err){ console.error("Recruit photo upload failed:",err); }
+    setUploading(false);
+    if(fileRef.current) fileRef.current.value="";
+  };
+  const removePhoto=async(idx)=>{
+    const next=photos.filter((_,i)=>i!==idx);
+    setPhotos(next);
+    await sb.from("recruits").update({photos:next,updated_at:new Date().toISOString()}).eq("id",recruit.id);
+    if(onUpdate) onUpdate({...recruit,photos:next});
+  };
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete)onClose();}}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-        <div style={{background:"#fff",borderRadius:16,padding:26,width:"min(96vw,440px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
+        <div style={{background:dark?"#1e293b":"#fff",borderRadius:16,padding:26,width:"min(96vw,440px)",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
-              <div style={{fontSize:20,fontWeight:800,color:"#0f172a"}}>{fullName}</div>
+              {creatorName && (
+                <div style={{display:"inline-flex",alignItems:"center",gap:5,background:dark?"#0f172a":"#f1f5f9",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,color:dark?"#94a3b8":"#475569",marginBottom:8}}>
+                  👤 Created by {creatorName}
+                </div>
+              )}
+              <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{fullName}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{recruit.stage}</span>
             </div>
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>X</button>
@@ -2148,6 +2196,24 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
               <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
             </div>
           ):null)}
+          {/* Photos */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Photos</div>
+            {photos.length>0 && (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+                {photos.map((p,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={p} onClick={()=>setImgOpen(i)} style={{width:"100%",height:90,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,objectFit:"cover",cursor:"zoom-in"}}/>
+                    <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:3,right:3,background:"rgba(15,23,42,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div onClick={()=>fileRef.current&&fileRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:8,padding:"14px 16px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
+              <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:500}}>{uploading?"Uploading...":"Tap to add photos"}</div>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
+          </div>
           {recruit.notes&&(
             <div style={{marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Notes</div>
@@ -2182,6 +2248,11 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete}) {
           )}
         </div>
       </div>
+      {imgOpen!==null && photos[imgOpen] && (
+        <div onClick={()=>setImgOpen(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <img src={photos[imgOpen]} style={{maxWidth:"100%",maxHeight:"100%",borderRadius:8}}/>
+        </div>
+      )}
     </div>
   );
 }
@@ -2419,7 +2490,8 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       <RecruitModal open={modal.open} onClose={()=>setModal({open:false,recruit:null})} onSave={saveRecruit}
         initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],id:modal.recruit.id}:null}/>
       {detailId&&(
-        <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)}
+        <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
+          onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
           onEdit={r=>{setDetailId(null);setModal({open:true,recruit:r});}}
           onDelete={deleteRecruit}/>
       )}
