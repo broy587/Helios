@@ -947,45 +947,29 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
       </div>
       <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{rangeLabel}</div>
 
-      {/* Personal Stats */}
-      <div style={{marginBottom:28}}>
-        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:14}}>Personal</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-          <StatCard label="Leads" value={myLeadsInRange.length} color="#6b2d4e"/>
-          <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
-          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6"/>
-          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981"/>
-          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
-        </div>
-      </div>
-
+      {/* ── Goal Trackers (top of Stats) ── */}
       {/* Personal Goals — rep sets own; manager/owner view others via dropdown */}
       {(()=>{
         const me = currentUserId||currentUser.id;
         const isOwnerRole = currentUser.role==="owner";
         const isManagerRole = currentUser.role==="manager";
-        // Who can this viewer browse? owner=all members; manager=their teams' members; rep/closer=just self
         let browsable;
         if(isOwnerRole){
           browsable = profiles.filter(p=>isMemberRole(p.role)&&!p.deleted_at);
         } else if(isManagerRole){
-          browsable = allReps; // already scoped to manager's teams above
+          browsable = allReps;
         } else {
           browsable = profiles.filter(p=>p.id===me);
         }
-        // Make sure self is first/available
         if(!browsable.some(p=>p.id===me)){
           const selfP = profiles.find(p=>p.id===me);
           if(selfP) browsable = [selfP, ...browsable];
         }
         const viewingId = browsable.some(p=>p.id===goalsRepId)?goalsRepId:me;
-        const canEditThis = viewingId===me; // only the rep edits their own
+        const canEditThis = viewingId===me;
         const viewingName = (profiles.find(p=>p.id===viewingId)||{}).name || "This rep";
         return (
-          <div style={{marginBottom:28}}>
+          <div style={{marginBottom:24}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
               <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>
                 {viewingId===me?"My Goals":`${viewingName}'s Goals`}
@@ -1007,6 +991,50 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
           </div>
         );
       })()}
+
+      {/* Team Goals — visible to all; editable by owner/manager. */}
+      {teams.length>0 && (
+        <div style={{marginBottom:28}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:10}}>
+            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Team Goals</div>
+            {teamOptions.length>0 && (
+              <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+                style={{...inputStyle,width:"auto",fontSize:13,padding:"6px 10px",maxWidth:"55%"}}>
+                {teamOptions.filter(t=>t.id!=="all").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+          </div>
+          {selectedTeamId!=="all" ? (
+            <GoalsSection
+              teamId={selectedTeamId}
+              teamGoals={teamGoals||{}}
+              setTeamGoals={setTeamGoals}
+              leads={teamStatSource}
+              teamMemberIds={(teamMembers[selectedTeamId]||[]).map(m=>m.user_id)}
+              canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
+              currentUserId={currentUserId||currentUser.id}
+              onRefresh={()=>{}}
+            />
+          ) : (
+            <div style={{fontSize:13,color:"#94a3b8"}}>Select a team to view its goals.</div>
+          )}
+        </div>
+      )}
+
+      {/* Personal Stats */}
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:14}}>Personal</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+          <StatCard label="Leads" value={myLeadsInRange.length} color="#6b2d4e"/>
+          <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
+          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6"/>
+          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981"/>
+          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
+        </div>
+      </div>
 
       {/* Team Stats — visible to everyone (aggregate numbers only) */}
       {true && (
@@ -1031,20 +1059,6 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
             <StatCard label="Install" value={tmc(teamLeads,"Install")} color="#10b981"/>
             <StatCard label="PTO" value={tmc(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
-          {/* Team Goals tracker — visible to all; editable by owner/manager.
-              Progress uses the slim team source so reps don't load teammate PII. */}
-          {selectedTeamId!=="all" && teams.length>0 && (
-            <GoalsSection
-              teamId={selectedTeamId}
-              teamGoals={teamGoals||{}}
-              setTeamGoals={setTeamGoals}
-              leads={teamStatSource}
-              teamMemberIds={(teamMembers[selectedTeamId]||[]).map(m=>m.user_id)}
-              canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
-              currentUserId={currentUserId||currentUser.id}
-              onRefresh={()=>{}}
-            />
-          )}
         </div>
       )}
 
