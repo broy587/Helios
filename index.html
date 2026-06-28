@@ -841,18 +841,34 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   // Teams this user belongs to (for scoping non-privileged/team-stat views).
   const myTeamIds = Object.keys(teamMembers||{}).filter(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===(currentUserId||currentUser.id)));
   const myTeams = (teams||[]).filter(t=>myTeamIds.includes(t.id));
-  // Owner sees an "All Teams" option + every team; everyone else is scoped to
-  // their own team(s) so they can't browse other teams' stats.
-  const teamOptions = currentUser.role==="owner"
+  // Team visibility:
+  //  • Owner & Manager: "All Teams" + every team (can browse other teams' stats).
+  //  • Rep, Self Gen, Closer: ONLY the team(s) they're on — no other teams.
+  //    (No fallback to all teams; if they're on no team, they see none.)
+  const canViewAllTeams = currentUser.role==="owner" || currentUser.role==="manager";
+  const teamOptions = canViewAllTeams
     ? [{id:"all",name:"All Teams"},...teams]
-    : (myTeams.length?myTeams:teams).map(t=>({id:t.id,name:t.name}));
-  // Make sure the selected team is one this user is allowed to see.
+    : myTeams.map(t=>({id:t.id,name:t.name}));
+  // Make sure the selected team is one this user is allowed to see, and on first
+  // load default to the user's OWN team (for everyone, including the owner) rather
+  // than "All Teams". The owner can still switch to "All Teams" or any team after.
+  const didInitTeam = React.useRef(false);
   React.useEffect(()=>{
-    if(currentUser.role==="owner") return;
-    if(!teamOptions.some(t=>t.id===selectedTeamId) && teamOptions[0]){
+    // First load: if still on the default "all" and the user has a team, pick it.
+    if(!didInitTeam.current){
+      if(myTeams.length>0 && selectedTeamId==="all"){
+        setSelectedTeamId(myTeams[0].id);
+        didInitTeam.current = true;
+        return;
+      }
+      // No team to default to yet — wait until teams/memberships load.
+      if(myTeams.length>0 || teams.length>0) didInitTeam.current = true;
+    }
+    // Restricted roles (rep/self_gen/closer): never allow a team outside their own.
+    if(!canViewAllTeams && !teamOptions.some(t=>t.id===selectedTeamId) && teamOptions[0]){
       setSelectedTeamId(teamOptions[0].id);
     }
-  },[selectedTeamId, teamOptions.length]);
+  },[selectedTeamId, teamOptions.length, myTeams.length]);
 
   // Team stats draw from the (possibly slim/PII-free) teamStatLeads dataset so
   // that plain reps can see team numbers without teammates' lead details.
