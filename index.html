@@ -2515,9 +2515,14 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:9}}>
         <span style={labelStyle}>Commitment</span>
         <div style={{display:"flex",gap:6}}>
-          {["Solid","Soft"].map(opt=>(
-            <Pill key={opt} active={softSolid===opt} activeColor="#4338ca" activeBg={dark?"#312e81":"#e0e7ff"} onClick={()=>onChange("softSolid", softSolid===opt?"":opt)}>{opt}</Pill>
-          ))}
+          {["Solid","Soft"].map(opt=>{
+            const isSolid = opt==="Solid";
+            const aColor = isSolid ? "#047857" : "#b91c1c";       // green / red
+            const aBg = isSolid ? (dark?"#064e3b":"#d1fae5") : (dark?"#7f1d1d":"#fee2e2");
+            return (
+              <Pill key={opt} active={softSolid===opt} activeColor={aColor} activeBg={aBg} onClick={()=>onChange("softSolid", softSolid===opt?"":opt)}>{opt}</Pill>
+            );
+          })}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
@@ -2680,7 +2685,7 @@ function CopyIcon({value}) {
   );
 }
 
-function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, JSON.stringify(leadProp?.ac_checklist)]);
@@ -2755,7 +2760,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
               {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#6366f1",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🛟 NEEDS CANCEL SAVE</span>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
-                {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
+                {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
                 {lead.confirmed && <span style={{fontSize:11,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
               </div>
               {lead.owner_id && (()=>{
@@ -2943,6 +2948,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {acWarning && (
+            <div style={{background:"#fef3c7",border:"1.5px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"flex-start",gap:8}}>
+              <span style={{fontSize:16,flexShrink:0,lineHeight:1.2}}>⚠️</span>
+              <div style={{fontSize:13,fontWeight:600,color:"#92400e",lineHeight:1.5,whiteSpace:"pre-line"}}>{acWarning}</div>
             </div>
           )}
           <ACChecklist
@@ -3513,7 +3524,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         })()}
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-            {lead.soft_solid && <span style={{fontSize:10,fontWeight:600,color:"#4338ca",background:"#e0e7ff",borderRadius:20,padding:"1px 7px"}}>{lead.soft_solid}</span>}
+            {lead.soft_solid && <span style={{fontSize:10,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"1px 7px"}}>{lead.soft_solid}</span>}
             {lead.confirmed && <span style={{fontSize:10,fontWeight:600,color:lead.confirmed==="Yes"?"#065f46":"#7f1d1d",background:lead.confirmed==="Yes"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"1px 7px"}}>{lead.confirmed==="Yes"?"Confirmed":"Not Confirmed"}</span>}
           </div>
         )}
@@ -3661,7 +3672,7 @@ function analyzeConversions(leads) {
   };
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap}) {
+function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning}) {
   const dark=useDark();
   const [hygieneOpen,setHygieneOpen]=useState(false);
   const [convOpen,setConvOpen]=useState(false);
@@ -3670,6 +3681,20 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
   const [detailId,setDetailId]=useState(null);
+  const [acWarnMsg,setAcWarnMsg]=useState("");
+  // When the App blocks an AC+ move, open that lead in view mode and surface the
+  // specific list of what's missing.
+  React.useEffect(()=>{
+    if(acWarning && acWarning.id){
+      setDetailId(acWarning.id);
+      const items = (acWarning.missing||[]);
+      const msg = items.length
+        ? "Can't move this account forward yet. Please complete the following:\n• " + items.join("\n• ")
+        : "Must complete AC checklist to move account forward. Please mark all applicable boxes that apply";
+      setAcWarnMsg(msg);
+      if(onClearAcWarning) onClearAcWarning();
+    }
+  },[acWarning]);
   const [search,setSearch]=useState("");
   const [showDropdown,setShowDropdown]=useState(false);
   const columnRefs=useRef({});
@@ -3832,9 +3857,10 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         </div>
       )}
       {detailId && (
-        <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
-          onEdit={l=>{setDetailId(null);onLeadView(l,"edit");}}
-          onDelete={id=>{onLeadView(id,"delete");setDetailId(null);}}
+        <DetailModal lead={detailLead} onClose={()=>{setDetailId(null);setAcWarnMsg("");}}
+          acWarning={acWarnMsg}
+          onEdit={l=>{setDetailId(null);setAcWarnMsg("");onLeadView(l,"edit");}}
+          onDelete={id=>{onLeadView(id,"delete");setDetailId(null);setAcWarnMsg("");}}
           repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
@@ -5234,6 +5260,26 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           <div style={{background:"rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px"}}>
             <select value={linkedLead.stage||""} onChange={async e=>{
               const newStage=e.target.value;
+              // Guard: moving to AC or after has requirements (extra ones for reps).
+              const acIdx=STAGE_PROGRESSION.indexOf("AC / Scheduled");
+              const targetIdx=STAGE_PROGRESSION.indexOf(newStage);
+              if(targetIdx>=acIdx){
+                const checklist=Array.isArray(linkedLead.ac_checklist)?linkedLead.ac_checklist:[];
+                const isRep=currentUser&&currentUser.role==="rep";
+                const missing=[];
+                if(checklist.length===0) missing.push("Mark at least one AC checklist box");
+                if(isRep){
+                  if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number");
+                  if(!checklist.includes("Bill Acquired")) missing.push('Check "Bill Acquired" in the AC checklist');
+                  const hasAppt=!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id);
+                  if(!hasAppt) missing.push("Schedule a closer slot or personal CB");
+                }
+                if(missing.length>0){
+                  window.alert("Can't move this account forward yet. Please complete the following:\n\n• "+missing.join("\n• "));
+                  e.target.value=linkedLead.stage||""; // revert the dropdown
+                  return;
+                }
+              }
               const entry={ts:formatTs(),by:(currentUser&&(currentUser.name||currentUser.email))||"Unknown",changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
               await sb.from("leads").update({stage:newStage,history:[entry,...(linkedLead.history||[])],updated_at:new Date().toISOString()}).eq("id",linkedLead.id);
               if(onStageChange) onStageChange(linkedLead.id, newStage, entry);
@@ -8467,8 +8513,32 @@ function App() {
     await loadData(user,profile);
   };
 
+  const [acWarning,setAcWarning]=useState(null); // {id, missing:[...]} or null
   const handleStageChange=async(id,newStage)=>{
     const lead=leads.find(l=>l.id===id);if(!lead)return;
+    // Guard: moving a lead to AC or any later stage has requirements. Applies only
+    // to forward moves attempted from here on (existing AC+ leads are never touched
+    // unless someone moves them).
+    const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
+    const targetIdx = STAGE_PROGRESSION.indexOf(newStage);
+    if (targetIdx >= acIdx) {
+      const checklist = Array.isArray(lead.ac_checklist) ? lead.ac_checklist : [];
+      const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
+      const missing = [];
+      // Everyone: at least one AC checklist box checked.
+      if (checklist.length === 0) missing.push("Mark at least one AC checklist box");
+      // Reps only: meter #, Bill Acquired, and a scheduled closer slot / personal CB.
+      if (isRep) {
+        if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number");
+        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the AC checklist");
+        const hasAppt = !!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id);
+        if (!hasAppt) missing.push("Schedule a closer slot or personal CB");
+      }
+      if (missing.length > 0) {
+        setAcWarning({ id, missing });
+        return;
+      }
+    }
     const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
     await sb.from("leads").update({stage:newStage,history:[entry,...(lead.history||[])],updated_at:new Date().toISOString()}).eq("id",id);
     setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
@@ -8744,6 +8814,7 @@ function App() {
               </div>
             )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+              acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
@@ -8797,7 +8868,7 @@ function App() {
             })()}
             canvassLeadFilter={canvassLeadFilter}
             setCanvassLeadFilter={setCanvassLeadFilter}
-            currentUser={{...user, name:profile?.name}}
+            currentUser={{...user, name:profile?.name, role:profile?.role}}
             isOwner={isOwner}
             teams={teams}
             teamMembers={teamMembers}
