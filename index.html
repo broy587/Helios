@@ -2689,11 +2689,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, JSON.stringify(leadProp?.ac_checklist)]);
+  React.useEffect(()=>{ setShowCommission(false); },[leadProp?.id]); // re-hide commission each time a lead opens
   const dark=useDark();
   const _creatorProfile = (profiles||[]).find(p=>p.id===lead.owner_id);
   const creatorName = _creatorProfile ? (_creatorProfile.name||_creatorProfile.email||"") : "";
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [showCommission,setShowCommission]=useState(false);
   const [showTransfer,setShowTransfer]=useState(false);
   const [transferTo,setTransferTo]=useState("");
   const [photos,setPhotos]=useState([]);
@@ -2910,7 +2912,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
           {lead.commission && String(lead.commission).trim() && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
-              <div style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857"}}>${(()=>{ const raw=String(lead.commission).trim(); const [intPart,decPart]=raw.split("."); const withCommas=(intPart||"").replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}</div>
+              {showCommission ? (
+                <div onClick={()=>setShowCommission(false)} title="Tap to hide"
+                  style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857",cursor:"pointer"}}>
+                  ${(()=>{ const raw=String(lead.commission).trim(); const [intPart,decPart]=raw.split("."); const withCommas=(intPart||"").replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                </div>
+              ) : (
+                <button onClick={()=>setShowCommission(true)}
+                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 14px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#f1f5f9",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  👁 View
+                </button>
+              )}
             </div>
           )}
           {/* Appointment booking — always visible; booking a new one replaces the old. */}
