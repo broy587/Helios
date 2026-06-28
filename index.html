@@ -2100,14 +2100,25 @@ const RECRUIT_STAGE_COLORS = {
 };
 function getRecruitStageColor(stage){ return RECRUIT_STAGE_COLORS[stage]||{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"}; }
 
-const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0] };
+const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0],photos:[] };
 
 function RecruitModal({open,onClose,onSave,initial}) {
   const dark=useDark();
   const [form,setForm]=useState(initial||emptyRecruit);
+  const photoRef=React.useRef(null);
   useEffect(()=>{setForm(initial||emptyRecruit);},[initial,open]);
   if(!open) return null;
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const addPhotos=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    if(!files.length) return;
+    const readAsDataUrl=(file)=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
+    const urls=[];
+    for(const f of files){ try{ urls.push(await readAsDataUrl(f)); }catch(err){ console.error(err); } }
+    setForm(f=>({...f,photos:[...(Array.isArray(f.photos)?f.photos:[]),...urls]}));
+    if(photoRef.current) photoRef.current.value="";
+  };
+  const removePhoto=(idx)=>setForm(f=>({...f,photos:(f.photos||[]).filter((_,i)=>i!==idx)}));
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
@@ -2132,8 +2143,25 @@ function RecruitModal({open,onClose,onSave,initial}) {
           </div>
         ))}
         <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Notes about this recruit..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Photos</label>
+          {Array.isArray(form.photos)&&form.photos.length>0&&(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+              {form.photos.map((p,i)=>(
+                <div key={i} style={{position:"relative"}}>
+                  <img src={p} style={{width:"100%",height:80,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,objectFit:"cover"}}/>
+                  <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:3,right:3,background:"rgba(15,23,42,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onClick={()=>photoRef.current&&photoRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:8,padding:"14px 16px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
+            <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:500}}>Tap to add photos</div>
+          </div>
+          <input ref={photoRef} type="file" accept="image/*" multiple onChange={addPhotos} style={{display:"none"}}/>
         </div>
         <div style={{marginBottom:22}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Stage</label>
@@ -2371,7 +2399,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(formMap[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${formMap[key]||"-"}"`);}
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Recruit created"]}];
-    const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],history:newHistory,updated_at:new Date().toISOString()};
+    const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],photos:Array.isArray(form.photos)?form.photos:[],history:newHistory,updated_at:new Date().toISOString()};
     if(existing){await sb.from("recruits").update(payload).eq("id",existing.id);}
     else{await sb.from("recruits").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,recruit:null});
@@ -2504,7 +2532,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
         </div>
       )}
       <RecruitModal open={modal.open} onClose={()=>setModal({open:false,recruit:null})} onSave={saveRecruit}
-        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],id:modal.recruit.id}:null}/>
+        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id}:null}/>
       {detailId&&(
         <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
           onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
