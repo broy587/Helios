@@ -320,7 +320,7 @@ const emptyForm = {
   name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",commission:"",
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
-  decisionMakers:"",contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
+  decisionMakers:"",closerChecklist:[],contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
 };
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -2508,59 +2508,43 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   const followUpDate = readOnly ? (localVals["follow_up_date"]!==undefined?localVals["follow_up_date"]:(lead?.follow_up_date||"")) : (form?.followUpDate||"");
   const hasFollowUp = followUpAgreed==="Yes" || !!followUpDate;
   if (readOnly) {
-    const getValue = (q) => (lead && lead[q.db]) || "";
-    const Badge = ({val}) => {
-      const isYes = val==="Yes";
-      const isNo = val==="No";
-      return (
-        <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,
-          background:isYes?(dark?"#064e3b":"#d1fae5"):isNo?(dark?"#7f1d1d":"#fee2e2"):(dark?"#1e293b":"#f1f5f9"),
-          color:isYes?(dark?"#6ee7b7":"#047857"):isNo?(dark?"#fca5a5":"#b91c1c"):"#94a3b8"}}>
-          {isYes?"Yes":isNo?"No":"—"}
-        </span>
-      );
-    };
     return (
-      <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Closer Notes</div>
-        {questions.map(q=>(
-          <div key={q.key} style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>{q.label}</div>
-            <Badge val={getValue(q)}/>
+      <div>
+        {/* Closers VC Checklist — live-editable in view mode, collapsed by default */}
+        <CloserChecklist
+          leadId={lead?.id}
+          initialChecked={lead && Array.isArray(lead.closer_checklist) ? lead.closer_checklist : undefined}
+          lead={lead}
+          collapsible={true}
+          onUpdate={next=>{ if(onUpdate&&lead) onUpdate({...lead, closer_checklist:next}); }}
+        />
+        <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>Agreed to a Follow Up?</div>
+            <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,background:hasFollowUp?(dark?"#064e3b":"#d1fae5"):(dark?"#7f1d1d":"#fee2e2"),color:hasFollowUp?(dark?"#6ee7b7":"#047857"):(dark?"#fca5a5":"#b91c1c")}}>{hasFollowUp?"Yes":"No"}</span>
           </div>
-        ))}
-        <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-          <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4}}>Agreed to a Follow Up?</div>
-          <Badge val={hasFollowUp?"Yes":"No"}/>
+          {hasFollowUp && followUpDate && (
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
+              <span style={{fontSize:11,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
+              <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1a2456"}}>{followUpDate}</span>
+            </div>
+          )}
         </div>
-        {hasFollowUp && followUpDate && (
-          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
-            <span style={{fontSize:11,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
-            <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1a2456"}}>{followUpDate}</span>
-          </div>
-        )}
       </div>
     );
   }
   return (
-    <div style={{marginBottom:22,background:"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:"1.5px solid #e2e8f0"}}>
-      <label style={{display:"block",fontSize:12,fontWeight:700,color:"#475569",marginBottom:14,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
-      {questions.map((q,idx)=>(
-        <div key={q.key} style={{marginBottom:idx<questions.length-1?14:0}}>
-          <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>{q.label}</div>
-          <div style={{display:"flex",gap:10}}>
-            {["Yes","No"].map(opt=>(
-              <button key={opt} type="button" onClick={()=>setForm(f=>({...f,[q.key]:f[q.key]===opt?"":opt}))}
-                style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:form[q.key]===opt?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:form[q.key]===opt?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                <span style={{width:13,height:13,borderRadius:"50%",border:`2px solid ${form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:form[q.key]===opt?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-      <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid #e2e8f0"}}>
-        <div style={{fontSize:12,color:"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>Agreed to a Follow Up?</div>
+    <div>
+      {/* Closers VC Checklist — edit mode updates the form; live like AC checklist */}
+      <CloserChecklist
+        leadId={null}
+        initialChecked={Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({
+          autopay_input:form.autopayInput, knew_solar:form.knewSolar, closer_inside:form.closerInside, decision_makers:form.decisionMakers
+        })}
+        onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
+      />
+      <div style={{marginBottom:22,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>Agreed to a Follow Up?</div>
         <div style={{display:"flex",gap:10}}>
           {["Yes","No"].map(opt=>{
             const active = opt==="Yes" ? hasFollowUp : !hasFollowUp && form.followUpAgreed==="No";
@@ -2584,7 +2568,6 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
           </div>
         )}
       </div>
-
     </div>
   );
 }
@@ -2773,7 +2756,7 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
   );
 }
 
-function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
+function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:collapsibleProp}) {
   const dark = useDark();
   // Normalize any legacy item names to current ones so a renamed item still
   // shows as checked in both view and edit modes, regardless of data source.
@@ -2798,19 +2781,25 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
   };
 
   const scoreColor = score>=8?"#10b981":score>=5?"#f59e0b":"#ef4444";
+  // Collapse to just the title + score when collapsible; items expand on tap.
+  const collapsible = !!readOnly || !!collapsibleProp;
+  const [open,setOpen] = React.useState(false);
+  const showItems = collapsible ? open : true;
 
   return (
     <div style={{marginBottom:16,background:dark?"#0f172a":"#fef9ee",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#f0d080"}`}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
+        style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
         <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setters AC Checklist</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
           <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
             {score}/10
           </div>
+          {collapsible && <span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{open?"▲":"▼"}</span>}
         </div>
       </div>
-      {AC_CHECKLIST_ITEMS.map((item,i)=>{
+      {showItems && AC_CHECKLIST_ITEMS.map((item,i)=>{
         const isChecked = checked.includes(item);
         return (
           <div key={item} onClick={()=>toggle(item)}
@@ -2819,6 +2808,100 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly}) {
               {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
             </div>
             <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400,textDecoration:isChecked?"none":"none",transition:"all 0.15s"}}>
+              {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Closers VC Checklist (mirrors the Setters AC Checklist) ──────────────
+const VC_CHECKLIST_ITEMS = [
+  "Autopay Input",
+  "Homeowner knew solar was/could be involved",
+  "Homeowner let closer inside",
+  "Decision makers were present",
+  "Prepped homeowner for reviews",
+  "Sent intro email",
+  "Added phone number to homeowners contacts",
+  "Downloaded the app on homeowners phone",
+  "Set crystal clear expectations on the process",
+];
+
+// Build the initial checklist for a lead. If the lead has no closer_checklist
+// yet, migrate the legacy Yes/No closer fields: any field that was "Yes" becomes
+// a checked item; "No"/blank stays unchecked. Applies to all past + future leads.
+const LEGACY_CLOSER_MAP = [
+  {field:"autopay_input",   item:"Autopay Input"},
+  {field:"knew_solar",      item:"Homeowner knew solar was/could be involved"},
+  {field:"closer_inside",   item:"Homeowner let closer inside"},
+  {field:"decision_makers", item:"Decision makers were present"},
+];
+function deriveCloserChecklist(lead) {
+  if (lead && Array.isArray(lead.closer_checklist)) return lead.closer_checklist;
+  // No checklist stored yet → derive from the old Yes/No answers.
+  const derived = [];
+  for (const {field,item} of LEGACY_CLOSER_MAP) {
+    if (lead && lead[field]==="Yes") derived.push(item);
+  }
+  return derived;
+}
+
+function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, collapsible}) {
+  const dark = useDark();
+  // Seed from closer_checklist if present, else migrate legacy Yes/No answers.
+  const seed = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
+  const [checked, setChecked] = React.useState(seed);
+  const [saving, setSaving] = React.useState(false);
+  const score = checked.length;
+  React.useEffect(()=>{
+    const next = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
+    setChecked(next);
+  },[JSON.stringify(initialChecked), JSON.stringify(lead&&lead.closer_checklist), lead&&lead.autopay_input, lead&&lead.knew_solar, lead&&lead.closer_inside, lead&&lead.decision_makers]);
+
+  const toggle = async (item) => {
+    if (readOnly) return;
+    const next = checked.includes(item) ? checked.filter(i=>i!==item) : [...checked, item];
+    setChecked(next);
+    if (leadId) {
+      setSaving(true);
+      await sb.from("leads").update({closer_checklist:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+      setSaving(false);
+      if (onUpdate) onUpdate(next);
+    } else if (onUpdate) {
+      onUpdate(next);
+    }
+  };
+
+  const total = VC_CHECKLIST_ITEMS.length;
+  const scoreColor = score>=Math.ceil(total*0.8)?"#10b981":score>=Math.ceil(total*0.5)?"#f59e0b":"#ef4444";
+  const [open,setOpen] = React.useState(false);
+  const showItems = collapsible ? open : true;
+
+  return (
+    <div style={{marginBottom:16,background:dark?"#0f172a":"#eef4ff",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#9db8e8"}`}}>
+      <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
+        style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Closers VC Checklist</div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
+          <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
+            {score}/{total}
+          </div>
+          {collapsible && <span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{open?"▲":"▼"}</span>}
+        </div>
+      </div>
+      {showItems && VC_CHECKLIST_ITEMS.map((item,i)=>{
+        const isChecked = checked.includes(item);
+        return (
+          <div key={item} onClick={()=>toggle(item)}
+            style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px",cursor:readOnly?"default":"pointer",borderBottom:i<VC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#d6e2f5"}`:"none"}}>
+            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#a8bce0"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+              {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+            </div>
+            <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400}}>
               {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
             </span>
           </div>
@@ -3214,6 +3297,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
           <ACChecklist
             leadId={lead.id}
             initialChecked={lead.ac_checklist||[]}
+            collapsible={true}
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
           <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
@@ -3558,7 +3642,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
             {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={false}/>
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
             Utility Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
@@ -3573,8 +3657,8 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
               ))}
             </div>
           )}
-          <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:"2px dashed #cbd5e1",borderRadius:8,padding:"14px 16px",textAlign:"center",cursor:"pointer",background:"#f8fafc"}}>
-            <div style={{fontSize:13,color:"#64748b",fontWeight:500}}>Tap to add photos</div>
+          <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:8,padding:"14px 16px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
+            <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:500}}>Tap to add photos</div>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
         </div>
@@ -3588,10 +3672,10 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
 
         {/* Needs Cancel Save toggle */}
-        <div style={{marginBottom:18,background:form.needsCancelSave?"#eef2ff":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.needsCancelSave?"#a5b4fc":"#e2e8f0"}`}}>
+        <div style={{marginBottom:18,background:form.needsCancelSave?(dark?"#312e81":"#eef2ff"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.needsCancelSave?(dark?"#6366f1":"#a5b4fc"):(dark?"#334155":"#e2e8f0")}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:700,color:form.needsCancelSave?"#4338ca":"#0f172a"}}>🛟 Needs Cancel Save</div>
+              <div style={{fontSize:13,fontWeight:700,color:form.needsCancelSave?(dark?"#c7d2fe":"#4338ca"):(dark?"#f1f5f9":"#0f172a")}}>🛟 Needs Cancel Save</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Flag this lead for a cancel save. Stats will reflect the stage it was in when flagged.</div>
             </div>
             <div onClick={()=>setForm(f=>{
@@ -3615,10 +3699,10 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
         </div>
 
         {/* On Hold toggle */}
-        <div style={{marginBottom:18,background:form.onHold?"#fef3e2":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.onHold?"#fcd34d":"#e2e8f0"}`}}>
+        <div style={{marginBottom:18,background:form.onHold?(dark?"#422006":"#fef3e2"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.onHold?(dark?"#b45309":"#fcd34d"):(dark?"#334155":"#e2e8f0")}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:700,color:form.onHold?"#b45309":"#0f172a"}}>⏸️ On Hold</div>
+              <div style={{fontSize:13,fontWeight:700,color:form.onHold?(dark?"#fcd34d":"#b45309"):(dark?"#f1f5f9":"#0f172a")}}>⏸️ On Hold</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Pause this lead. Stats will reflect the stage it was in when put on hold.</div>
             </div>
             <div onClick={()=>setForm(f=>{
@@ -3642,10 +3726,10 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
         </div>
 
         {/* ARC / Cancel toggle */}
-        <div style={{marginBottom:18,background:form.isArc?"#f5e8ed":"#faf6f0",borderRadius:12,padding:"14px",border:`1.5px solid ${form.isArc?"#fca5a5":"#e2e8f0"}`}}>
+        <div style={{marginBottom:18,background:form.isArc?(dark?"#450a0a":"#f5e8ed"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.isArc?(dark?"#b91c1c":"#fca5a5"):(dark?"#334155":"#e2e8f0")}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:700,color:form.isArc?"#b91c1c":"#0f172a"}}>ARC / Cancel</div>
+              <div style={{fontSize:13,fontWeight:700,color:form.isArc?(dark?"#fca5a5":"#b91c1c"):(dark?"#f1f5f9":"#0f172a")}}>ARC / Cancel</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Mark this lead as cancelled. Stats will reflect the stage it was in when cancelled.</div>
             </div>
             <div onClick={()=>setForm(f=>{
@@ -3885,6 +3969,11 @@ function analyzeConversions(leads) {
   const pct = (count, total) => total === 0 ? null : Math.round((count/total)*100);
   const countAc = (item) => acPool.filter(l=>hasItem(l,item)).length;
   const countVc = (field) => vcPool.filter(l=>isYes(l,field)).length;
+  // Closers VC Checklist counts (works for legacy leads via deriveCloserChecklist).
+  const countCloser = (item) => vcPool.filter(l=>{
+    const cc = Array.isArray(l.closer_checklist) ? l.closer_checklist : deriveCloserChecklist(l);
+    return cc.includes(item);
+  }).length;
   const countAcYes = (field) => acPool.filter(l=>isYes(l,field)).length; // Yes/No field on AC pool
 
   const avgScore = acPool.length === 0 ? null
@@ -3925,10 +4014,15 @@ function analyzeConversions(leads) {
       {label:"Text/call confirmation", pct:pct(countAcYes("confirmed"), acPool.length), n:countAcYes("confirmed")},
     ],
     vc: [
-      {label:"Knew solar involved", pct:pct(countVc("knew_solar"), vcPool.length), n:countVc("knew_solar")},
-      {label:"Autopay input", pct:pct(countVc("autopay_input"), vcPool.length), n:countVc("autopay_input")},
-      {label:"Let closer inside", pct:pct(countVc("closer_inside"), vcPool.length), n:countVc("closer_inside")},
-      {label:"All decision makers present", pct:pct(countVc("decision_makers"), vcPool.length), n:countVc("decision_makers")},
+      {label:"Autopay input", pct:pct(countCloser("Autopay Input"), vcPool.length), n:countCloser("Autopay Input")},
+      {label:"Knew solar involved", pct:pct(countCloser("Homeowner knew solar was/could be involved"), vcPool.length), n:countCloser("Homeowner knew solar was/could be involved")},
+      {label:"Let closer inside", pct:pct(countCloser("Homeowner let closer inside"), vcPool.length), n:countCloser("Homeowner let closer inside")},
+      {label:"Decision makers present", pct:pct(countCloser("Decision makers were present"), vcPool.length), n:countCloser("Decision makers were present")},
+      {label:"Prepped for reviews", pct:pct(countCloser("Prepped homeowner for reviews"), vcPool.length), n:countCloser("Prepped homeowner for reviews")},
+      {label:"Sent intro email", pct:pct(countCloser("Sent intro email"), vcPool.length), n:countCloser("Sent intro email")},
+      {label:"Added to contacts", pct:pct(countCloser("Added phone number to homeowners contacts"), vcPool.length), n:countCloser("Added phone number to homeowners contacts")},
+      {label:"Downloaded the app", pct:pct(countCloser("Downloaded the app on homeowners phone"), vcPool.length), n:countCloser("Downloaded the app on homeowners phone")},
+      {label:"Set clear expectations", pct:pct(countCloser("Set crystal clear expectations on the process"), vcPool.length), n:countCloser("Set crystal clear expectations on the process")},
     ],
     funnel: [
       {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
@@ -5561,9 +5655,10 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
               // VC/SRA or after: all closer notes must be answered (everyone).
               const vcIdx=STAGE_PROGRESSION.indexOf("VC / SRA");
               if(targetIdx>=vcIdx){
-                const closerDone=!!(linkedLead.autopay_input&&linkedLead.knew_solar&&linkedLead.closer_inside&&linkedLead.decision_makers);
+                const cc = Array.isArray(linkedLead.closer_checklist) ? linkedLead.closer_checklist : deriveCloserChecklist(linkedLead);
+                const closerDone = VC_CHECKLIST_ITEMS.every(it=>cc.includes(it));
                 if(!closerDone){
-                  window.alert("Must complete all Closer Notes to move this account to VC/SRA or after. Every closer question must be answered.");
+                  window.alert("Complete the Closers VC Checklist to move this account to VC/SRA or after. All items must be checked.");
                   e.target.value=linkedLead.stage||"";
                   return;
                 }
@@ -8563,7 +8658,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -8590,7 +8685,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -8720,9 +8815,13 @@ function App() {
   });
 
   const saveLead = async (form) => {
-    // Determine owner: if viewing a specific rep's pipeline, add lead for that rep
+    // Determine owner: if viewing exactly ONE rep's pipeline, add the lead for that
+    // rep. If multiple reps are selected (or "all"), default to the current user.
     let ownerId=user.id;
-    if(pipelineFilter.startsWith("rep:")){ownerId=pipelineFilter.replace("rep:","");}
+    if(pipelineFilter.startsWith("rep:")){
+      const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
+      if(repIds.length===1) ownerId=repIds[0];
+    }
     const existing=modal.lead&&modal.lead.id?leads.find(l=>l.id===modal.lead.id):null;
     // Guard: if this save moves the lead TO AC or after (from a pre-AC stage, or a
     // brand-new lead created at AC+), enforce the same requirements as a board move.
@@ -8750,9 +8849,10 @@ function App() {
     const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
     const movingIntoVcPlus = newStageIdx >= vcIdx && prevStageIdx < vcIdx;
     if (movingIntoVcPlus) {
-      const closerDone = !!(form.autopayInput && form.knewSolar && form.closerInside && form.decisionMakers);
+      const ccForm = Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers});
+      const closerDone = VC_CHECKLIST_ITEMS.every(it=>ccForm.includes(it));
       if (!closerDone) {
-        window.alert("Must complete all Closer Notes to move this account to VC/SRA or after. Every closer question must be answered.");
+        window.alert("Complete the Closers VC Checklist to move this account to VC/SRA or after. All items must be checked.");
         return; // block the save
       }
     }
@@ -8770,7 +8870,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",commission:form.commission||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",commission:form.commission||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -8862,9 +8962,10 @@ function App() {
     // Guard: moving to VC/SRA or after requires ALL closer notes answered (everyone).
     const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
     if (targetIdx >= vcIdx) {
-      const closerDone = !!(lead.autopay_input && lead.knew_solar && lead.closer_inside && lead.decision_makers);
+      const ccLead = Array.isArray(lead.closer_checklist) ? lead.closer_checklist : deriveCloserChecklist(lead);
+      const closerDone = VC_CHECKLIST_ITEMS.every(it=>ccLead.includes(it));
       if (!closerDone) {
-        setAcWarning({ id, missing: ["Complete all Closer Notes (every question must be answered)"] });
+        setAcWarning({ id, missing: ["Complete the Closers VC Checklist (all items)"] });
         return;
       }
     }
@@ -8936,8 +9037,17 @@ function App() {
     return visibleTeams.length>0 ? visibleTeams[0].id : "";
   })();
 
-  // Active rep for "Reps" sub-tab
-  const activeRepId = pipelineFilter.startsWith("rep:") ? pipelineFilter.replace("rep:","") : "";
+  // Active rep(s) for "Reps" sub-tab — supports multiple (comma-separated IDs).
+  const activeRepIds = pipelineFilter.startsWith("rep:") ? pipelineFilter.replace("rep:","").split(",").filter(Boolean) : [];
+  const activeRepId = activeRepIds.length===1 ? activeRepIds[0] : ""; // kept for single-select labels
+  // Toggle a rep in/out of the multi-select. Removing the last one falls back to "mine".
+  const toggleRep = (repId) => {
+    const set = new Set(activeRepIds);
+    if(set.has(repId)) set.delete(repId); else set.add(repId);
+    const ids = Array.from(set);
+    if(ids.length===0){ setPipelineFilter("mine"); return; }
+    setPipelineFilter("rep:"+ids.join(","));
+  };
 
   // Reps visible to this user
   const visibleReps = (isOwner
@@ -8966,8 +9076,8 @@ function App() {
       return leads.filter(l=>memberIds.includes(l.owner_id));
     }
     if (pipelineFilter.startsWith("rep:")) {
-      const repId=pipelineFilter.replace("rep:","");
-      return leads.filter(l=>l.owner_id===repId);
+      const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
+      return leads.filter(l=>repIds.includes(l.owner_id));
     }
     return leads.filter(l=>l.owner_id===user.id);
   };
@@ -9120,7 +9230,7 @@ function App() {
                 <div style={{position:"relative"}}>
                   <button onClick={()=>{setRepDropOpen(o=>!o);setTeamDropOpen(false);if(!pipelineFilter.startsWith("rep:")&&pipelineFilter!=="all"&&visibleReps.length>0)setPipelineFilter(`rep:${visibleReps[0].id}`);}}
                     style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#6b2d4e":dark?"#334155":"#ede3d6"}`,background:(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#1a2456":dark?"#1e293b":"#faf6f0",color:(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#fff":dark?"#94a3b8":"#1a2456",fontWeight:(pipelineSubTab==="rep"||pipelineSubTab==="all")?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
-                    {pipelineSubTab==="all"?"All Reps":(pipelineSubTab==="rep"&&activeRepId?(visibleReps.find(r=>r.id===activeRepId)?.name||"Reps"):"Reps")}
+                    {pipelineSubTab==="all"?"All Reps":(pipelineSubTab==="rep"?(activeRepIds.length>1?`${activeRepIds.length} Reps`:(visibleReps.find(r=>r.id===activeRepIds[0])?.name||"Reps")):"Reps")}
                     <span style={{fontSize:9,opacity:0.7}}>{repDropOpen?"▲":"▼"}</span>
                   </button>
                   {repDropOpen&&visibleReps.length>0&&(
@@ -9131,12 +9241,20 @@ function App() {
                           👥 View All
                         </button>
                       )}
-                      {visibleReps.map(r=>(
-                        <button key={r.id} onClick={()=>{setPipelineFilter(`rep:${r.id}`);setRepDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeRepId===r.id?"#f0edf5":dark?"#1e293b":"#fff",color:activeRepId===r.id?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:activeRepId===r.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
-                          {r.name}
-                        </button>
-                      ))}
+                      {visibleReps.map(r=>{
+                        const sel=activeRepIds.includes(r.id);
+                        return (
+                          <button key={r.id} onClick={()=>toggleRep(r.id)}
+                            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,width:"100%",padding:"10px 14px",border:"none",background:sel?"#f0edf5":dark?"#1e293b":"#fff",color:sel?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:sel?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
+                            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span>
+                            <span style={{flexShrink:0,width:18,height:18,borderRadius:5,border:`1.5px solid ${sel?"#6b2d4e":dark?"#475569":"#cbd5e1"}`,background:sel?"#6b2d4e":"transparent",color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{sel?"✓":""}</span>
+                          </button>
+                        );
+                      })}
+                      <button onClick={()=>setRepDropOpen(false)}
+                        style={{display:"block",width:"100%",padding:"11px 14px",border:"none",background:dark?"#0f172a":"#1a2456",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"center",position:"sticky",bottom:0}}>
+                        Done
+                      </button>
                     </div>
                   )}
                 </div>
@@ -9250,7 +9368,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
