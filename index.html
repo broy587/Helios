@@ -942,11 +942,6 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
         </>
       ) : (
       <>
-      <div style={{marginBottom:16}}>
-        <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect}/>
-      </div>
-      <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{rangeLabel}</div>
-
       {/* ── Goal Trackers (top of Stats) ── */}
       {/* Personal Goals — rep sets own; manager/owner view others via dropdown */}
       {(()=>{
@@ -1020,6 +1015,12 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
           )}
         </div>
       )}
+
+      {/* Timeline filter — applies to the stats below (not the goal trackers above). */}
+      <div style={{marginBottom:16}}>
+        <TimeFilterBar active={timeFilter} onSelect={handleFilterSelect}/>
+      </div>
+      <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",marginBottom:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{rangeLabel}</div>
 
       {/* Personal Stats */}
       <div style={{marginBottom:28}}>
