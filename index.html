@@ -2520,7 +2520,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         />
         <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>Agreed to a Follow Up?</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>No close, agreed to follow up at a later date</div>
             <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,background:hasFollowUp?(dark?"#064e3b":"#d1fae5"):(dark?"#7f1d1d":"#fee2e2"),color:hasFollowUp?(dark?"#6ee7b7":"#047857"):(dark?"#fca5a5":"#b91c1c")}}>{hasFollowUp?"Yes":"No"}</span>
           </div>
           {hasFollowUp && followUpDate && (
@@ -2544,7 +2544,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
       />
       <div style={{marginBottom:22,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>Agreed to a Follow Up?</div>
+        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>No close, agreed to follow up at a later date</div>
         <div style={{display:"flex",gap:10}}>
           {["Yes","No"].map(opt=>{
             const active = opt==="Yes" ? hasFollowUp : !hasFollowUp && form.followUpAgreed==="No";
@@ -2823,6 +2823,7 @@ const VC_CHECKLIST_ITEMS = [
   "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
   "Decision makers were present",
+  "Found a problem that truly resonates with homeowner",
   "Prepped homeowner for reviews",
   "Sent intro email",
   "Added phone number to homeowners contacts",
@@ -4018,6 +4019,7 @@ function analyzeConversions(leads) {
       {label:"Knew solar involved", pct:pct(countCloser("Homeowner knew solar was/could be involved"), vcPool.length), n:countCloser("Homeowner knew solar was/could be involved")},
       {label:"Let closer inside", pct:pct(countCloser("Homeowner let closer inside"), vcPool.length), n:countCloser("Homeowner let closer inside")},
       {label:"Decision makers present", pct:pct(countCloser("Decision makers were present"), vcPool.length), n:countCloser("Decision makers were present")},
+      {label:"Problem resonated", pct:pct(countCloser("Found a problem that truly resonates with homeowner"), vcPool.length), n:countCloser("Found a problem that truly resonates with homeowner")},
       {label:"Prepped for reviews", pct:pct(countCloser("Prepped homeowner for reviews"), vcPool.length), n:countCloser("Prepped homeowner for reviews")},
       {label:"Sent intro email", pct:pct(countCloser("Sent intro email"), vcPool.length), n:countCloser("Sent intro email")},
       {label:"Added to contacts", pct:pct(countCloser("Added phone number to homeowners contacts"), vcPool.length), n:countCloser("Added phone number to homeowners contacts")},
