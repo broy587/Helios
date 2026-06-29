@@ -1570,7 +1570,7 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
   );
 }
 
-function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamGoals, setTeamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
+function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamMembers, setTeamMembers, teamGoals, setTeamGoals, onDataRefresh, selectedTeamId, setSelectedTeamId}) {
   const dark=useDark();
   const isOwner = currentUser.id === OWNER_ID;
   const isManager = currentUser.role==="manager";
@@ -1617,13 +1617,34 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   };
 
   const handleAddMember = async (userId) => {
-    await sb.from("team_members").insert({team_id:selectedTeamId,user_id:userId});
-    await onDataRefresh();
+    // Optimistically add the member to local state so the UI updates instantly.
+    setTeamMembers(prev=>{
+      const existing = prev[selectedTeamId]||[];
+      if(existing.some(m=>m.user_id===userId)) return prev;
+      return {...prev, [selectedTeamId]:[...existing, {user_id:userId, team_id:selectedTeamId}]};
+    });
+    setShowAddMember(false);
+    const {error} = await sb.from("team_members").insert({team_id:selectedTeamId,user_id:userId});
+    if(error){
+      // Roll back the optimistic add on failure.
+      setTeamMembers(prev=>({...prev,[selectedTeamId]:(prev[selectedTeamId]||[]).filter(m=>m.user_id!==userId)}));
+      window.alert("Couldn't add member: "+(error.message||"unknown error"));
+      return;
+    }
+    onDataRefresh();
   };
 
   const handleRemoveMember = async (userId) => {
-    await sb.from("team_members").delete().eq("team_id",selectedTeamId).eq("user_id",userId);
-    await onDataRefresh();
+    // Optimistic remove.
+    const prevMembers = teamMembers[selectedTeamId]||[];
+    setTeamMembers(prev=>({...prev,[selectedTeamId]:(prev[selectedTeamId]||[]).filter(m=>m.user_id!==userId)}));
+    const {error} = await sb.from("team_members").delete().eq("team_id",selectedTeamId).eq("user_id",userId);
+    if(error){
+      setTeamMembers(prev=>({...prev,[selectedTeamId]:prevMembers}));
+      window.alert("Couldn't remove member: "+(error.message||"unknown error"));
+      return;
+    }
+    onDataRefresh();
   };
 
   const handleDeleteTeam = async () => {
@@ -1656,9 +1677,17 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
   };
 
   const handleChangeRole = async (repId, newRole) => {
-    await sb.from("profiles").update({role:newRole}).eq("id",repId);
+    // Optimistically update the role locally so the badge changes color instantly.
+    const prevRole = (profiles.find(p=>p.id===repId)||{}).role;
+    setProfiles(prev=>prev.map(p=>p.id===repId?{...p,role:newRole}:p));
     setRepActionOpen(null);
-    await onDataRefresh();
+    const {error} = await sb.from("profiles").update({role:newRole}).eq("id",repId);
+    if(error){
+      setProfiles(prev=>prev.map(p=>p.id===repId?{...p,role:prevRole}:p));
+      window.alert("Couldn't change role: "+(error.message||"unknown error"));
+      return;
+    }
+    onDataRefresh();
   };
 
   const handleDeleteRep = async (repId, repName) => {
@@ -9492,7 +9521,7 @@ function App() {
           </StatsErrorBoundary>
         )}
         {tab==="team"&&(
-          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} leads={leads} teams={teams} teamMembers={teamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
+          <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} setProfiles={setProfiles} leads={leads} teams={teams} teamMembers={teamMembers} setTeamMembers={setTeamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
         {tab==="vault"&&(
           <VaultView currentUser={profile} userId={user.id} isOwner={isOwner} isPrivileged={isPrivileged || isCloser} dark={dark} leads={vaultLeads}/>
