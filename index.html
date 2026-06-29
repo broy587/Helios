@@ -1697,19 +1697,12 @@ function TeamManagement({currentUser, profiles, leads, teams, teamMembers, teamG
     await onDataRefresh();
   };
 
-  // Reps to show in current view
-  // The owner always appears in a team's roster (for perception/cohesion), even if
-  // they aren't an explicit team_members row.
-  const ownerProfile = profiles.find(p=>p.id===OWNER_ID && !p.deleted_at);
-  const displayReps = (()=>{
-    let list = selectedTeamId==="all"
-      ? allReps
-      : allReps.filter(r=>memberIds.includes(r.id));
-    if(ownerProfile && !list.some(r=>r.id===OWNER_ID)){
-      list = [ownerProfile, ...list]; // surface the owner at the top
-    }
-    return list;
-  })();
+  // Reps to show in current view. The owner appears in a team's roster only when
+  // they're an actual member of that team (a team_members row) — same as everyone
+  // else — so the owner isn't shown on every team.
+  const displayReps = selectedTeamId==="all"
+    ? allReps
+    : allReps.filter(r=>memberIds.includes(r.id));
 
   return (
     <div style={{padding:"20px 16px",background:dark?"#0f172a":"#f5ede0",minHeight:"100%"}}>
