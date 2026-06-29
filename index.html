@@ -2898,12 +2898,15 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
       ? checked.filter(i=>i!==item)
       : [...checked, item];
     setChecked(next);
+    // Always propagate the new checklist to the parent (so it lands in the form
+    // for brand-new leads that don't have a leadId yet). If the lead already
+    // exists, also persist the change to the database immediately.
     if (leadId) {
       setSaving(true);
       await sb.from("leads").update({ac_checklist:next, updated_at:new Date().toISOString()}).eq("id",leadId);
       setSaving(false);
-      if (onUpdate) onUpdate(next);
     }
+    if (onUpdate) onUpdate(next);
   };
 
   const scoreColor = score>=8?"#10b981":score>=5?"#f59e0b":"#ef4444";
@@ -5767,12 +5770,12 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 const checklist=Array.isArray(linkedLead.ac_checklist)?linkedLead.ac_checklist:[];
                 const isRep=currentUser&&currentUser.role==="rep";
                 const missing=[];
-                if(checklist.length===0) missing.push("Mark at least one AC checklist box");
+                if(checklist.length===0) missing.push("Mark at least one item in the Setters AC Checklist");
                 if(isRep){
-                  if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number");
-                  if(!checklist.includes("Bill Acquired")) missing.push('Check "Bill Acquired" in the AC checklist');
+                  if(!checklist.includes("Bill Acquired")) missing.push('Check "Bill Acquired" in the Setters AC Checklist');
+                  if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
                   const hasAppt=!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id);
-                  if(!hasAppt) missing.push("Schedule a closer slot or personal CB");
+                  if(!hasAppt) missing.push("Schedule a closer slot or personal callback");
                 }
                 if(missing.length>0){
                   window.alert("Can't move this account forward yet. Please complete the following:\n\n• "+missing.join("\n• "));
@@ -8961,15 +8964,17 @@ function App() {
       const checklist = Array.isArray(form.acChecklist) ? form.acChecklist : [];
       const isRep = profile && profile.role === "rep";
       const missing = [];
-      if (checklist.length === 0) missing.push("Mark at least one AC checklist box");
+      // Everyone must mark at least one checklist item.
+      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      // Reps have additional requirements before an account can reach AC.
       if (isRep) {
-        if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number");
-        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the AC checklist");
+        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
+        if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
         const hasAppt = !!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id);
-        if (!hasAppt) missing.push("Schedule a closer slot or personal CB");
+        if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
       }
       if (missing.length > 0) {
-        window.alert("Can't move this account to AC or beyond yet. Please complete the following:\n\n• " + missing.join("\n• "));
+        window.alert("This account can't move to AC or beyond yet. Please complete the following:\n\n• " + missing.join("\n• "));
         return; // block the save
       }
     }
@@ -9081,13 +9086,13 @@ function App() {
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
       const missing = [];
       // Everyone: at least one AC checklist box checked.
-      if (checklist.length === 0) missing.push("Mark at least one AC checklist box");
-      // Reps only: meter #, Bill Acquired, and a scheduled closer slot / personal CB.
+      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      // Reps only: Bill Acquired, meter #, and a scheduled closer slot / personal CB.
       if (isRep) {
-        if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number");
-        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the AC checklist");
+        if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
+        if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
         const hasAppt = !!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id);
-        if (!hasAppt) missing.push("Schedule a closer slot or personal CB");
+        if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
       }
       if (missing.length > 0) {
         setAcWarning({ id, missing });
