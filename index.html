@@ -9028,14 +9028,21 @@ function App() {
     (async()=>{
       try{
         if(isUpdate){
-          await sb.from("leads").update(payload).eq("id",viewId);
-          if(photosChanged) await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);
+          const {error}=await sb.from("leads").update(payload).eq("id",viewId);
+          if(error) throw error;
+          if(photosChanged){const {error:pe}=await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);if(pe) throw pe;}
         } else {
-          await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
+          const {error}=await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
+          if(error) throw error;
         }
         await loadData(user,profile);
       }catch(err){
         console.error("Save failed:",err);
+        // IMPORTANT: do NOT reload from the DB on failure — that would wipe the
+        // optimistic lead from view and make it look like it vanished. Keep it in
+        // local state and tell the user the save didn't reach the database.
+        const msg=(err&&(err.message||err.details||err.hint))||"unknown error";
+        window.alert("This lead did NOT save to the database and will be lost on refresh.\n\nReason: "+msg+"\n\nThis usually means a database column is missing. Take a screenshot of this message.");
       }
     })();
   };
