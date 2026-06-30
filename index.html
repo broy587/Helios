@@ -9213,10 +9213,12 @@ function App() {
 
   // Reps visible to this user
   // IDs of reps on the current user's OWN team(s) — these surface at the top.
+  // Based strictly on actual membership (team_members), NOT team creation — the
+  // owner creates every team, so using created_by would flag everyone.
   const myTeamMemberIds = new Set();
   teams.forEach(t=>{
     const ms = teamMembers[t.id]||[];
-    if (ms.some(m=>m.user_id===user.id) || t.created_by===user.id) {
+    if (ms.some(m=>m.user_id===user.id)) {
       ms.forEach(m=>myTeamMemberIds.add(m.user_id));
     }
   });
