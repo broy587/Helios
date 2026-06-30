@@ -147,8 +147,8 @@ const STAGE_COLORS = {
   "No Close / Offer Given":{bg:"#fde8d8",border:"#7f1d1d",badge:"#7c2d12"},
   "Failed Credit":{bg:"#fee2e2",border:"#2b0000",badge:"#7f1d1d"},
   "VC / SRA":{bg:"#e0e7ff",border:"#00bfff",badge:"#312e81"},
-  "CAP":{bg:"#e0e7ff",border:"#00bfff",badge:"#312e81"},
-  "Permitting":{bg:"#e0e7ff",border:"#00bfff",badge:"#312e81"},
+  "CAP":{bg:"#e0e7ff",border:"#33ccff",badge:"#312e81"},
+  "Permitting":{bg:"#e0e7ff",border:"#00ffff",badge:"#312e81"},
   "Install Scheduled":{bg:"#d1fae5",border:"#047857",badge:"#065f46"},
   "Install":{bg:"#d1fae5",border:"#39ff14",badge:"#065f46"},
   "PTO / REP":{bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
@@ -4322,7 +4322,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
         {(()=>{
           const ncsLeads=leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold);
           return (
-            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #6366f1`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
+            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7f1d1d`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
               <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#e0e7ff"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#1e1b3a":"#eef2ff",borderRadius:"12px 12px 0 0"}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#4338ca",lineHeight:1.3}}>🛟 Needs Cancel Save</div>
                 <span style={{fontSize:9,fontWeight:700,color:"#4338ca",opacity:0.8,background:"#e0e7ff",padding:"2px 6px",borderRadius:4}}>NO DRAG</span>
@@ -4331,6 +4331,26 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {ncsLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads need a cancel save</div>
                 ):ncsLeads.map(lead=>(
+                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+        {/* On Hold — separate column, no drag-drop (ARC takes priority if both).
+            Positioned between Needs Cancel Save and ARC / Cancels. */}
+        {(()=>{
+          const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
+          return (
+            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7c2d12`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
+              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fde68a"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#2a2114":"#fffbeb",borderRadius:"12px 12px 0 0"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#b45309",lineHeight:1.3}}>⏸️ On Hold</div>
+                <span style={{fontSize:9,fontWeight:700,color:"#b45309",opacity:0.8,background:"#fef3c7",padding:"2px 6px",borderRadius:4}}>NO DRAG</span>
+              </div>
+              <div style={{padding:"10px 10px 6px",minHeight:80}}>
+                {holdLeads.length===0?(
+                  <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads on hold</div>
+                ):holdLeads.map(lead=>(
                   <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
@@ -4350,25 +4370,6 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 {arcLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No cancelled leads</div>
                 ):arcLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-        {/* On Hold — separate column, no drag-drop (ARC takes priority if both) */}
-        {(()=>{
-          const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
-          return (
-            <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #f59e0b`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
-              <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fde68a"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#2a2114":"#fffbeb",borderRadius:"12px 12px 0 0"}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#b45309",lineHeight:1.3}}>⏸️ On Hold</div>
-                <span style={{fontSize:9,fontWeight:700,color:"#b45309",opacity:0.8,background:"#fef3c7",padding:"2px 6px",borderRadius:4}}>NO DRAG</span>
-              </div>
-              <div style={{padding:"10px 10px 6px",minHeight:80}}>
-                {holdLeads.length===0?(
-                  <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads on hold</div>
-                ):holdLeads.map(lead=>(
                   <LeadCard key={lead.id} lead={lead} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
