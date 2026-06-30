@@ -9097,12 +9097,20 @@ function App() {
 
   const [acWarning,setAcWarning]=useState(null); // {id, missing:[...]} or null
   const handleStageChange=async(id,newStage)=>{
-    const lead=leads.find(l=>l.id===id);if(!lead)return;
-    // Guard: moving a lead to AC or any later stage has requirements. Applies only
-    // to forward moves attempted from here on (existing AC+ leads are never touched
-    // unless someone moves them).
+    const localLead=leads.find(l=>l.id===id);if(!localLead)return;
     const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
     const targetIdx = STAGE_PROGRESSION.indexOf(newStage);
+    // The local leads array can be stale (e.g. checklist edits saved live from the
+    // detail modal). For guard checks, pull the lead's CURRENT values from the DB so
+    // we evaluate what's actually saved, not a stale copy.
+    let lead = localLead;
+    if (targetIdx >= acIdx) {
+      try {
+        const {data:fresh} = await sb.from("leads").select("ac_checklist,closer_checklist,meter,appointment,gcal_event_id,cb_event_id,autopay_input,knew_solar,closer_inside,decision_makers").eq("id",id).single();
+        if (fresh) lead = {...localLead, ...fresh};
+      } catch(e){ /* fall back to local copy if fetch fails */ }
+    }
+    // Guard: moving a lead to AC or any later stage has requirements.
     if (targetIdx >= acIdx) {
       const checklist = Array.isArray(lead.ac_checklist) ? lead.ac_checklist : [];
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
@@ -9127,7 +9135,7 @@ function App() {
       const ccLead = Array.isArray(lead.closer_checklist) ? lead.closer_checklist : deriveCloserChecklist(lead);
       const closerDone = VC_CHECKLIST_ITEMS.every(it=>ccLead.includes(it));
       if (!closerDone) {
-        setAcWarning({ id, missing: ["Complete the Closers VC Checklist (all items)"] });
+        setAcWarning({ id, missing: ["Complete the Closers VC Checklist (all items must be checked)"] });
         return;
       }
     }
