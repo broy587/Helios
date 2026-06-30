@@ -4862,27 +4862,46 @@ function AnnouncementEditorPage({dark, user, onBack, onChange, isOwner, teams, t
     setErr("");
     if(!canSave()){ setErr(isOwner?"Add a message and pick Everyone or at least one team.":"Add a message and pick at least one team."); return; }
     setBusy(true);
-    const payload = {
+    const basePayload = {
       message: message.trim(),
-      spotify_url: spotifyUrl.trim() || null,
       target_teams: buildTargets(),
       active: true,
       updated_at: new Date().toISOString(),
       updated_by: user.id,
     };
-    try {
+    const payload = { ...basePayload, spotify_url: spotifyUrl.trim() || null };
+    // Try saving WITH spotify_url; if that column doesn't exist yet, fall back to
+    // saving without it so the announcement still posts (and warn about the song).
+    const doSave = async (body)=>{
       if(editingId){
-        const {error} = await sb.from("announcements").update(payload).eq("id", editingId);
+        const {error} = await sb.from("announcements").update(body).eq("id", editingId);
         if(error) throw error;
       } else {
-        const {error} = await sb.from("announcements").insert(payload);
+        const {error} = await sb.from("announcements").insert(body);
         if(error) throw error;
+      }
+    };
+    try {
+      try {
+        await doSave(payload);
+      } catch(inner){
+        const msg = ((inner&&(inner.message||inner.details||""))+"").toLowerCase();
+        // Missing column → retry without the song field.
+        if(msg.includes("spotify_url") || msg.includes("column")){
+          await doSave(basePayload);
+          if(spotifyUrl.trim()){
+            setErr("Announcement posted, but the song couldn't be saved — the 'spotify_url' column is missing in Supabase. Add it, then edit this announcement to attach the song.");
+          }
+        } else {
+          throw inner;
+        }
       }
       resetComposer();
       await load();
       if(onChange) onChange();
     } catch(e){
-      setErr("Couldn't save. Make sure the announcements table has a 'target_teams' column.");
+      const msg = (e&&(e.message||e.details||e.hint))||"unknown error";
+      setErr("Couldn't save: "+msg);
     }
     setBusy(false);
   };
@@ -4927,7 +4946,8 @@ function AnnouncementEditorPage({dark, user, onBack, onChange, isOwner, teams, t
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"right",marginTop:2,marginBottom:10}}>{message.length}/280</div>
 
           <label style={labelStyle}>🎵 Song of the day (Spotify link)</label>
-          <input type="text" value={spotifyUrl} onChange={e=>setSpotifyUrl(e.target.value)} placeholder="https://open.spotify.com/track/..." style={{...field,minHeight:0,height:"auto",padding:"10px 12px"}}/>
+          <input type="text" value={spotifyUrl} onChange={e=>setSpotifyUrl(e.target.value)} placeholder="https://open.spotify.com/track/..."
+            style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit",background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a"}}/>
           <div style={{fontSize:11,color:"#94a3b8",marginTop:2,marginBottom:10}}>Paste a Spotify track link. In the app: tap a song → Share → Copy Link.</div>
 
           <label style={labelStyle}>Post to</label>
@@ -9458,27 +9478,33 @@ function App() {
           const scopeLabel = targets.includes("all") ? "Everyone"
             : targets.map(teamName).filter(Boolean).join(", ");
           return (
-            <div key={a.id} style={{background:dark?"#3a2a16":"#fef3c7",borderBottom:`1.5px solid ${dark?"#92400e":"#f59e0b"}`,padding:"10px 16px",display:"flex",alignItems:"flex-start",gap:10}}>
-              <span style={{fontSize:16,lineHeight:1.3,flexShrink:0}}>📣</span>
-              <div style={{flex:1,minWidth:0}}>
+            <div key={a.id} style={{background:dark?"#3a2a16":"#fef3c7",borderBottom:`1.5px solid ${dark?"#92400e":"#f59e0b"}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:14}}>
+              <span style={{fontSize:16,lineHeight:1.3,flexShrink:0,alignSelf:"flex-start",marginTop:1}}>📣</span>
+              <div style={{flex:1,minWidth:0,alignSelf:"flex-start"}}>
                 <div style={{fontSize:13,lineHeight:1.4,color:dark?"#fde68a":"#92400e",fontWeight:600,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{a.message}</div>
-                {a.spotify_url && (()=>{
-                  // Turn a normal Spotify track link into its embed URL for an inline player.
-                  const m = String(a.spotify_url).match(/track\/([A-Za-z0-9]+)/);
-                  const embed = m ? `https://open.spotify.com/embed/track/${m[1]}` : null;
-                  return (
-                    <div style={{marginTop:8}}>
-                      <div style={{fontSize:10,fontWeight:800,color:dark?"#b08940":"#b4791e",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.04em"}}>🎵 Song of the day</div>
-                      {embed
-                        ? <iframe src={embed} width="100%" height="80" frameBorder="0" allow="encrypted-media" style={{borderRadius:10,maxWidth:380}} title="Song of the day"/>
-                        : <a href={a.spotify_url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,fontWeight:700,color:"#1db954"}}>▶ Open in Spotify</a>}
-                    </div>
-                  );
-                })()}
                 {scopeLabel && <div style={{fontSize:10,fontWeight:700,color:dark?"#b08940":"#b4791e",marginTop:3,textTransform:"uppercase",letterSpacing:"0.04em"}}>{scopeLabel}</div>}
               </div>
+              {a.spotify_url && (()=>{
+                // Extract the track ID (ignoring any ?si=... params) for the inline player.
+                const m = String(a.spotify_url).match(/track\/([A-Za-z0-9]+)/);
+                const embed = m ? `https://open.spotify.com/embed/track/${m[1]}?theme=0` : null;
+                if(embed){
+                  return (
+                    <div style={{flexShrink:0,width:300,maxWidth:"42vw"}}>
+                      <iframe src={embed} width="100%" height="80" frameBorder="0" loading="lazy" allow="encrypted-media" style={{borderRadius:12,display:"block"}} title="Song of the day"/>
+                    </div>
+                  );
+                }
+                // Non-track link → a clean Spotify pill button.
+                return (
+                  <a href={a.spotify_url} target="_blank" rel="noopener noreferrer"
+                    style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:7,background:"#1db954",color:"#fff",fontWeight:800,fontSize:12,padding:"8px 14px",borderRadius:999,textDecoration:"none",whiteSpace:"nowrap"}}>
+                    <span style={{fontSize:13}}>🎵</span> Song of the Day
+                  </a>
+                );
+              })()}
               <button onClick={()=>setDismissedAnnouncements(d=>[...d,a.id])} title="Dismiss"
-                style={{background:"none",border:"none",cursor:"pointer",fontSize:16,lineHeight:1,color:dark?"#fde68a":"#92400e",flexShrink:0,padding:"0 2px"}}>×</button>
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:16,lineHeight:1,color:dark?"#fde68a":"#92400e",flexShrink:0,padding:"0 2px",alignSelf:"flex-start"}}>×</button>
             </div>
           );
         });
