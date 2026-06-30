@@ -9052,9 +9052,15 @@ function App() {
     setModal({open:false,lead:null});
     setDetailId(viewId);
 
-    // Persist to the database in the background
+    // Persist to the database in the background, retrying transient network errors.
     (async()=>{
-      try{
+      // A "Load failed" / network TypeError is usually a transient connection blip,
+      // not a real data problem — retry a few times before giving up.
+      const isNetworkErr = (e)=>{
+        const m=((e&&(e.message||""))+"").toLowerCase();
+        return m.includes("load failed")||m.includes("failed to fetch")||m.includes("network")||m.includes("timeout")||e instanceof TypeError;
+      };
+      const attempt = async()=>{
         if(isUpdate){
           const {error}=await sb.from("leads").update(payload).eq("id",viewId);
           if(error) throw error;
@@ -9063,14 +9069,30 @@ function App() {
           const {error}=await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
           if(error) throw error;
         }
-        await loadData(user,profile);
-      }catch(err){
-        console.error("Save failed:",err);
-        // IMPORTANT: do NOT reload from the DB on failure — that would wipe the
-        // optimistic lead from view and make it look like it vanished. Keep it in
-        // local state and tell the user the save didn't reach the database.
-        const msg=(err&&(err.message||err.details||err.hint))||"unknown error";
-        window.alert("This lead did NOT save to the database and will be lost on refresh.\n\nReason: "+msg+"\n\nThis usually means a database column is missing. Take a screenshot of this message.");
+      };
+      let lastErr=null;
+      for(let i=0;i<3;i++){
+        try{ await attempt(); lastErr=null; break; }
+        catch(err){
+          lastErr=err;
+          console.error(`Save attempt ${i+1} failed:`,err);
+          if(!isNetworkErr(err)) break;          // a real error (e.g. bad column) — don't retry
+          await new Promise(r=>setTimeout(r, 800*(i+1))); // back off, then retry
+        }
+      }
+      if(!lastErr){
+        // Saved successfully. Local state was already updated optimistically before
+        // the save, so we DON'T re-download everything here — that full reload was the
+        // main field slowdown. Pull-to-refresh syncs other people's changes on demand.
+        return;
+      }
+      // Still failing after retries. Keep the optimistic lead in view (don't reload),
+      // and show a message tailored to whether it was a network blip or a real error.
+      const msg=(lastErr&&(lastErr.message||lastErr.details||lastErr.hint))||"unknown error";
+      if(isNetworkErr(lastErr)){
+        window.alert("Couldn't reach the server to save this lead — looks like a connection problem.\n\nYour entry is still on screen. Check your internet connection and re-open the lead and hit Save again. If it keeps happening, the lead may not be saved, so don't refresh until it saves.");
+      } else {
+        window.alert("This lead did NOT save to the database.\n\nReason: "+msg+"\n\nThis may mean a database column is missing. Take a screenshot of this message.");
       }
     })();
   };
@@ -9078,7 +9100,15 @@ function App() {
   const deleteLead=async(id)=>{
     // Find the lead to get its address
     const lead = leads.find(l=>l.id===id);
-    await sb.from("leads").delete().eq("id",id);
+    // Optimistically remove from local state (no full reload — keeps it fast).
+    setLeads(ls=>ls.filter(l=>l.id!==id));
+    const {error}=await sb.from("leads").delete().eq("id",id);
+    if(error){
+      // Roll back on failure.
+      if(lead) setLeads(ls=>[lead,...ls]);
+      window.alert("Couldn't delete lead: "+(error.message||"unknown error"));
+      return;
+    }
     // Clear lead disposition on any matching canvass pin
     if(lead&&lead.address){
       const {data:matchingHomes} = await sb.from("canvass_homes")
@@ -9093,7 +9123,6 @@ function App() {
         }
       }
     }
-    await loadData(user,profile);
   };
 
   const [acWarning,setAcWarning]=useState(null); // {id, missing:[...]} or null
@@ -9156,8 +9185,14 @@ function App() {
   const handleTransfer=async(leadId,toRepId)=>{
     const lead=leads.find(l=>l.id===leadId),toRep=profiles.find(p=>p.id===toRepId);
     const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
-    await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
-    await loadData(user,profile);
+    // Optimistically update the owner locally (no full reload — keeps it fast).
+    setLeads(ls=>ls.map(l=>l.id===leadId?{...l,owner_id:toRepId,history:[entry,...(l.history||[])]}:l));
+    const {error}=await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
+    if(error){
+      // Roll back on failure.
+      setLeads(ls=>ls.map(l=>l.id===leadId?{...l,owner_id:lead?lead.owner_id:l.owner_id}:l));
+      window.alert("Couldn't transfer lead: "+(error.message||"unknown error"));
+    }
   };
 
   const handleSignOut=async()=>{await sb.auth.signOut();setUser(null);setProfile(null);setLeads([]);};
