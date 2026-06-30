@@ -5809,9 +5809,9 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
               const vcIdx=STAGE_PROGRESSION.indexOf("VC / SRA");
               if(targetIdx>=vcIdx){
                 const cc = Array.isArray(linkedLead.closer_checklist) ? linkedLead.closer_checklist : deriveCloserChecklist(linkedLead);
-                const closerDone = VC_CHECKLIST_ITEMS.every(it=>cc.includes(it));
+                const closerDone = Array.isArray(cc) && cc.length > 0;
                 if(!closerDone){
-                  window.alert("Complete the Closers VC Checklist to move this account to VC/SRA or after. All items must be checked.");
+                  window.alert("Mark at least one item in the Closers VC Checklist to move this account to VC/SRA or after.");
                   e.target.value=linkedLead.stage||"";
                   return;
                 }
@@ -9005,9 +9005,9 @@ function App() {
     const movingIntoVcPlus = newStageIdx >= vcIdx && prevStageIdx < vcIdx;
     if (movingIntoVcPlus) {
       const ccForm = Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers});
-      const closerDone = VC_CHECKLIST_ITEMS.every(it=>ccForm.includes(it));
+      const closerDone = Array.isArray(ccForm) && ccForm.length > 0;
       if (!closerDone) {
-        window.alert("Complete the Closers VC Checklist to move this account to VC/SRA or after. All items must be checked.");
+        window.alert("Mark at least one item in the Closers VC Checklist to move this account to VC/SRA or after.");
         return; // block the save
       }
     }
@@ -9099,19 +9099,27 @@ function App() {
   const handleStageChange=async(id,newStage)=>{
     const localLead=leads.find(l=>l.id===id);if(!localLead)return;
     const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
+    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
     const targetIdx = STAGE_PROGRESSION.indexOf(newStage);
-    // The local leads array can be stale (e.g. checklist edits saved live from the
-    // detail modal). For guard checks, pull the lead's CURRENT values from the DB so
-    // we evaluate what's actually saved, not a stale copy.
+    // Where the lead is NOW (use effective stage so flagged leads resolve correctly).
+    const currentIdx = getEffectiveStageIndex(localLead);
+    // Only enforce a stage's gate when the lead is CROSSING INTO it from before it —
+    // not when it's already at/past that stage and simply moving further forward.
+    const crossingIntoAc = currentIdx < acIdx && targetIdx >= acIdx;
+    const crossingIntoVc = currentIdx < vcIdx && targetIdx >= vcIdx;
+    // For guard checks, pull the lead's CURRENT values from the DB so we evaluate
+    // what's actually saved, not a stale local copy.
     let lead = localLead;
-    if (targetIdx >= acIdx) {
+    if (crossingIntoAc || crossingIntoVc) {
       try {
-        const {data:fresh} = await sb.from("leads").select("ac_checklist,closer_checklist,meter,appointment,gcal_event_id,cb_event_id,autopay_input,knew_solar,closer_inside,decision_makers").eq("id",id).single();
+        // select("*") never fails on a missing column, unlike naming columns.
+        const {data:fresh,error:fe} = await sb.from("leads").select("*").eq("id",id).single();
+        if (fe) { console.error("Guard fresh-fetch error:",fe); }
         if (fresh) lead = {...localLead, ...fresh};
-      } catch(e){ /* fall back to local copy if fetch fails */ }
+      } catch(e){ console.error("Guard fresh-fetch threw:",e); }
     }
-    // Guard: moving a lead to AC or any later stage has requirements.
-    if (targetIdx >= acIdx) {
+    // Guard: crossing INTO AC (or later, from before AC) has requirements.
+    if (crossingIntoAc) {
       const checklist = Array.isArray(lead.ac_checklist) ? lead.ac_checklist : [];
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
       const missing = [];
@@ -9129,13 +9137,13 @@ function App() {
         return;
       }
     }
-    // Guard: moving to VC/SRA or after requires ALL closer notes answered (everyone).
-    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
-    if (targetIdx >= vcIdx) {
+    // Guard: crossing INTO VC/SRA (or later, from before VC) requires the full
+    // Closers VC Checklist (everyone).
+    if (crossingIntoVc) {
       const ccLead = Array.isArray(lead.closer_checklist) ? lead.closer_checklist : deriveCloserChecklist(lead);
-      const closerDone = VC_CHECKLIST_ITEMS.every(it=>ccLead.includes(it));
+      const closerDone = Array.isArray(ccLead) && ccLead.length > 0;
       if (!closerDone) {
-        setAcWarning({ id, missing: ["Complete the Closers VC Checklist (all items must be checked)"] });
+        setAcWarning({ id, missing: ["Mark at least one item in the Closers VC Checklist"] });
         return;
       }
     }
