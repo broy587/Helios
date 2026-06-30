@@ -137,6 +137,20 @@ const STAGES = [
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
+// Old/renamed stage values → their current equivalents. Leads saved under an old
+// stage name would otherwise render in NO column (they'd vanish from the board), so
+// we remap them on load. Add new aliases here whenever a stage is renamed.
+const STAGE_ALIASES = {
+  "No Show / Contact": "No Show / In Contact",
+  "No Show/Contact": "No Show / In Contact",
+  "No Show / No Reschedule": "Stale / No Reschedule",
+  "ARC / Cancel": "ARC / Cancels",
+};
+function normalizeStage(stage) {
+  if (stage && STAGE_ALIASES[stage]) return STAGE_ALIASES[stage];
+  return stage;
+}
+
 const STAGE_COLORS = {
   "Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "AC / Scheduled":{bg:"#dbeafe",border:"#10b981",badge:"#1e3a8a"},
@@ -4081,8 +4095,14 @@ function getLeadLastActivity(lead) {
 function analyzeHygiene(leads, staleDays) {
   const now = Date.now();
   const staleMs = staleDays * 24 * 60 * 60 * 1000;
-  const stale = [], noAppt = [], badCloseDate = [];
+  const stale = [], noAppt = [], badCloseDate = [], followUps = [], orphaned = [];
   for (const lead of (leads||[])) {
+    // Orphaned: stage isn't a real pipeline column and the lead isn't flagged into a
+    // special pile — so it renders NOWHERE on the board even though it exists. Surface
+    // it so it can be fixed (its stage edited to a valid one).
+    if (!STAGES.includes(lead.stage) && !lead.is_arc && !lead.on_hold && !lead.needs_cancel_save) {
+      orphaned.push({lead});
+    }
     const isDone = HYGIENE_DONE_STAGES.includes(lead.stage);
     // Stale: not in a done stage, and no activity within the window.
     if (!isDone) {
@@ -4102,9 +4122,21 @@ function analyzeHygiene(leads, staleDays) {
         badCloseDate.push({lead, when: ap});
       }
     }
+    // "No close, agreed to follow up at a later date" — surface with the follow-up date.
+    if (lead.follow_up_agreed === "Yes" || (lead.follow_up_date && String(lead.follow_up_date).trim())) {
+      const fd = lead.follow_up_date ? new Date(lead.follow_up_date) : null;
+      followUps.push({lead, when: (fd && !isNaN(fd.getTime())) ? fd : null, dateStr: lead.follow_up_date || ""});
+    }
   }
   stale.sort((a,b)=>b.days-a.days);
-  return {stale, noAppt, badCloseDate};
+  // Sort follow-ups by date (soonest first; undated last).
+  followUps.sort((a,b)=>{
+    if(a.when && b.when) return a.when.getTime()-b.when.getTime();
+    if(a.when) return -1;
+    if(b.when) return 1;
+    return 0;
+  });
+  return {stale, noAppt, badCloseDate, followUps, orphaned};
 }
 
 // ── Conversion metrics ────────────────────────────────────────────────
@@ -4394,9 +4426,9 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
       )}
 
       {hygieneOpen && (()=>{
-        const {stale, noAppt, badCloseDate} = analyzeHygiene(leads, staleDays);
+        const {stale, noAppt, badCloseDate, followUps, orphaned} = analyzeHygiene(leads, staleDays);
         const ownerName = (id)=>{ const p=(profiles||[]).find(x=>x.id===id); return p ? (p.nickname||p.name||p.email||"Unknown") : null; };
-        const total = stale.length + noAppt.length + badCloseDate.length;
+        const total = stale.length + noAppt.length + badCloseDate.length + followUps.length + orphaned.length;
         const Row = ({lead, right})=>(
           <div onClick={()=>{setHygieneOpen(false);setDetailId(lead.id);}}
             style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,cursor:"pointer",marginBottom:8}}>
@@ -4443,12 +4475,16 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                     <div style={{fontSize:14,fontWeight:600}}>No hygiene issues in the current view.</div>
                   </div>
                 )}
+                <Section icon="👻" title="Hidden — invalid stage (not on board)" color="#dc2626" items={orphaned}
+                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#dc2626",whiteSpace:"nowrap"}}>Fix stage</span>}/>)}/>
                 <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale}
                   render={({lead,days})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:12,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{days}d</span>}/>)}/>
                 <Section icon="📅" title="Missing appointment" color="#3b82f6" items={noAppt}
                   render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#3b82f6",whiteSpace:"nowrap"}}>No appt</span>}/>)}/>
                 <Section icon="⚠️" title="Appointment date passed" color="#ef4444" items={badCloseDate}
                   render={({lead,when})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#ef4444",whiteSpace:"nowrap"}}>{when.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>}/>)}/>
+                <Section icon="🔁" title="No close — follow up later" color="#8b5cf6" items={followUps}
+                  render={({lead,when,dateStr})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#8b5cf6",whiteSpace:"nowrap"}}>{when?when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):(dateStr||"No date")}</span>}/>)}/>
               </div>
             </div>
           </div>
@@ -8823,7 +8859,7 @@ function App() {
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads(await applyAcMigration(leadsRes.data||[], u.id));
+        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
@@ -8870,7 +8906,7 @@ function App() {
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads(await applyAcMigration(leadsRes.data||[], u.id));
+        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
