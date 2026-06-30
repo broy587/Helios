@@ -9212,6 +9212,14 @@ function App() {
   };
 
   // Reps visible to this user
+  // IDs of reps on the current user's OWN team(s) — these surface at the top.
+  const myTeamMemberIds = new Set();
+  teams.forEach(t=>{
+    const ms = teamMembers[t.id]||[];
+    if (ms.some(m=>m.user_id===user.id) || t.created_by===user.id) {
+      ms.forEach(m=>myTeamMemberIds.add(m.user_id));
+    }
+  });
   const visibleReps = (isOwner
     ? profiles.filter(p=>p.id!==user.id&&isMemberRole(p.role))
     : profiles.filter(p=>{
@@ -9219,7 +9227,13 @@ function App() {
         if (p.ghost_mode) return false; // ghosted users hidden from non-owners
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
       })
-  ).slice().sort((a,b)=>(a.name||a.email||"").toLowerCase().localeCompare((b.name||b.email||"").toLowerCase()));
+  ).slice().sort((a,b)=>{
+    // Reps on my team(s) first, then everyone else; alphabetical within each group.
+    const aMine = myTeamMemberIds.has(a.id) ? 0 : 1;
+    const bMine = myTeamMemberIds.has(b.id) ? 0 : 1;
+    if (aMine!==bMine) return aMine-bMine;
+    return (a.name||a.email||"").toLowerCase().localeCompare((b.name||b.email||"").toLowerCase());
+  });
 
   // Which sub-tab is active: "mine" | "team" | "rep"
   const pipelineSubTab = pipelineFilter==="mine" ? "mine"
