@@ -9390,7 +9390,7 @@ function App() {
                 </div>
                 {/* Reps pill + dropdown */}
                 <div style={{position:"relative"}}>
-                  <button onClick={()=>{setRepDropOpen(o=>!o);setTeamDropOpen(false);if(!pipelineFilter.startsWith("rep:")&&pipelineFilter!=="all"&&visibleReps.length>0)setPipelineFilter(`rep:${visibleReps[0].id}`);}}
+                  <button onClick={()=>{setRepDropOpen(o=>!o);setTeamDropOpen(false);}}
                     style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#6b2d4e":dark?"#334155":"#ede3d6"}`,background:(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#1a2456":dark?"#1e293b":"#faf6f0",color:(pipelineSubTab==="rep"||pipelineSubTab==="all")?"#fff":dark?"#94a3b8":"#1a2456",fontWeight:(pipelineSubTab==="rep"||pipelineSubTab==="all")?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.15s"}}>
                     {pipelineSubTab==="all"?"All Reps":(pipelineSubTab==="rep"?(activeRepIds.length>1?`${activeRepIds.length} Reps`:(visibleReps.find(r=>r.id===activeRepIds[0])?.name||"Reps")):"Reps")}
                     <span style={{fontSize:9,opacity:0.7}}>{repDropOpen?"▲":"▼"}</span>
