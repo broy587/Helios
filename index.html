@@ -2935,7 +2935,7 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
         </div>
       </div>
       {openTip==="commitment" && (
-        <div style={tipStyle}>Solid means the customer confirmed they would be there for the appointment two times with you. Soft means they just said to swing by or they'll be around, meaning no concrete appointment.</div>
+        <div style={tipStyle}>*Solid- Customer confirmed they would be there for the appointment two times with you.<br/>*Soft- Customer said to swing by or they'll be around, meaning no commitment to a concrete appointment.</div>
       )}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
         <span style={{...labelStyle,display:"inline-flex",alignItems:"center"}}>Text/Call Confirmation<InfoDot tip="textcall"/></span>
