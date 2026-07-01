@@ -2889,6 +2889,7 @@ function migrateAcChecklist(arr) {
 }
 
 function ACStatus({softSolid, confirmed, onChange, dark}) {
+  const [openTip, setOpenTip] = React.useState(""); // "" | "commitment" | "textcall"
   const labelStyle = {fontSize:11,fontWeight:600,color:dark?"#94a3b8":"#64748b",textTransform:"uppercase",letterSpacing:"0.04em"};
   const Pill = ({active, activeColor, activeBg, children, onClick}) => (
     <button type="button" onClick={onClick}
@@ -2896,11 +2897,17 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
       {children}
     </button>
   );
+  const tipStyle = {marginTop:8,marginBottom:2,fontSize:12,lineHeight:1.5,color:dark?"#cbd5e1":"#475569",background:dark?"#1e293b":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px"};
+  const InfoDot = ({tip}) => (
+    <button type="button" aria-label="Explanation"
+      onClick={(e)=>{e.stopPropagation(); setOpenTip(t=>t===tip?"":tip);}}
+      style={{width:16,height:16,borderRadius:"50%",border:`1.5px solid ${dark?"#475569":"#cbd5e1"}`,background:openTip===tip?(dark?"#334155":"#e2e8f0"):"transparent",color:dark?"#94a3b8":"#64748b",fontSize:10,fontWeight:800,lineHeight:"1",cursor:"pointer",padding:0,marginLeft:5,flexShrink:0,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>?</button>
+  );
   return (
     <div style={{marginBottom:14,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"12px 14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
       <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>AC Status</div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:9}}>
-        <span style={labelStyle}>Commitment</span>
+        <span style={{...labelStyle,display:"inline-flex",alignItems:"center"}}>Commitment<InfoDot tip="commitment"/></span>
         <div style={{display:"flex",gap:6}}>
           {["Solid","Soft"].map(opt=>{
             const isSolid = opt==="Solid";
@@ -2912,10 +2919,16 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
           })}
         </div>
       </div>
+      {openTip==="commitment" && (
+        <div style={tipStyle}>Solid means the customer confirmed they would be there for the appointment two times with you. Soft means they just said to swing by or they'll be around, meaning no concrete appointment.</div>
+      )}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-        <span style={labelStyle}>Text/Call Confirmation</span>
+        <span style={{...labelStyle,display:"inline-flex",alignItems:"center"}}>Text/Call Confirmation<InfoDot tip="textcall"/></span>
         <Pill active={confirmed==="Yes"} activeColor="#047857" activeBg={dark?"#064e3b":"#d1fae5"} onClick={()=>onChange("confirmed", confirmed==="Yes"?"":"Yes")}>{confirmed==="Yes"?"✓ Confirmed":"Confirmed"}</Pill>
       </div>
+      {openTip==="textcall" && (
+        <div style={tipStyle}>Customer confirmed appointment over text or call.</div>
+      )}
     </div>
   );
 }
@@ -5956,7 +5969,7 @@ const STAGE_EMOJIS = {
 };
 
 // ── Canvass View Picker ───────────────────────────────────────────────
-function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, canvassLeadFilter, setCanvassLeadFilter}) {
+function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, myTeamMemberIds, canvassLeadFilter, setCanvassLeadFilter}) {
   const [open, setOpen] = React.useState(false);
   const [showTeams, setShowTeams] = React.useState(false);
   const [showReps, setShowReps] = React.useState(false);
@@ -5995,7 +6008,16 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, ca
   };
 
   const filteredTeams = visibleTeams.filter(t=>(t.name||"").toLowerCase().includes(teamSearch.toLowerCase()));
-  const filteredReps = repProfiles.filter(p=>(p.name||"").toLowerCase().includes(repSearch.toLowerCase()));
+  const filteredReps = repProfiles
+    .filter(p=>(p.name||"").toLowerCase().includes(repSearch.toLowerCase()))
+    .slice()
+    .sort((a,b)=>{
+      // Reps on my team(s) first, then everyone else; alphabetical within each group.
+      const aMine = myTeamMemberIds&&myTeamMemberIds.has(a.id) ? 0 : 1;
+      const bMine = myTeamMemberIds&&myTeamMemberIds.has(b.id) ? 0 : 1;
+      if(aMine!==bMine) return aMine-bMine;
+      return (a.name||a.email||"").toLowerCase().localeCompare((b.name||b.email||"").toLowerCase());
+    });
 
   const Row = ({fkey, icon, label: lbl}) => {
     const on = filters.includes(fkey);
@@ -6087,6 +6109,16 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     return ms.some(m=>m.user_id===currentUser?.id)||t.created_by===currentUser?.id;
   });
   const repProfiles = (profiles||[]).filter(p=>(p.role==="rep"||p.role==="self_gen"||p.role==="closer")&&p.id!==currentUser?.id);
+  // Reps on the current user's own team(s), by actual membership (NOT team
+  // creation — the owner creates every team, so created_by would flag everyone).
+  // Used to float my-team reps to the top of the rep filter, like Pipeline.
+  const canvassMyTeamMemberIds = new Set();
+  (teams||[]).forEach(t=>{
+    const ms=(teamMembers&&teamMembers[t.id])||[];
+    if(ms.some(m=>m.user_id===currentUser?.id)){
+      ms.forEach(m=>canvassMyTeamMemberIds.add(m.user_id));
+    }
+  });
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState([]);
@@ -6682,6 +6714,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           isPrivileged={isPrivileged}
           visibleTeams={visibleTeams}
           repProfiles={repProfiles}
+          myTeamMemberIds={canvassMyTeamMemberIds}
           canvassLeadFilter={canvassLeadFilter}
           setCanvassLeadFilter={setCanvassLeadFilter}
         />
@@ -8704,6 +8737,149 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   );
 }
 
+// ── Song of the Day + Party Mode ──────────────────────────────────────
+// Full-screen psychedelic overlay that plays the track via Spotify's official
+// iFrame API. The API lets us detect real play/pause/end (a plain embed is
+// cross-origin and exposes nothing), so the visuals switch on when audio plays
+// and calm down + auto-close when it stops. Falls back to a plain embed if the
+// API can't load, so this never breaks the always-on banner.
+function SpotifyPartyOverlay({trackId, onClose}) {
+  const hostRef = React.useRef(null);
+  const controllerRef = React.useRef(null);
+  const startedRef = React.useRef(false);
+  const closeTimerRef = React.useRef(null);
+  const [playing, setPlaying] = React.useState(false);
+  const [apiFailed, setApiFailed] = React.useState(false);
+  const closeSelf = React.useCallback(()=>{ if(onClose) onClose(); },[onClose]);
+
+  React.useEffect(()=>{
+    let cancelled = false;
+    const uri = `spotify:track:${trackId}`;
+    const armClose = ()=>{ if(closeTimerRef.current) return; closeTimerRef.current = setTimeout(()=>{ if(!cancelled) closeSelf(); }, 1500); };
+    const cancelClose = ()=>{ if(closeTimerRef.current){ clearTimeout(closeTimerRef.current); closeTimerRef.current=null; } };
+    const onUpdate = (e)=>{
+      const p = e && e.data; if(!p) return;
+      if(!p.isPaused){ startedRef.current = true; cancelClose(); setPlaying(true); }
+      else { setPlaying(false); if(startedRef.current) armClose(); } // ended/paused → calm + auto-close
+    };
+    const makeController = (IFrameAPI)=>{
+      if(cancelled || !hostRef.current) return;
+      try{
+        IFrameAPI.createController(hostRef.current, {uri, width:"100%", height:152}, (ctrl)=>{
+          if(cancelled){ try{ctrl.destroy&&ctrl.destroy();}catch(e){} return; }
+          controllerRef.current = ctrl;
+          ctrl.addListener("ready", ()=>{ try{ctrl.play();}catch(e){} });
+          ctrl.addListener("playback_update", onUpdate);
+        });
+      }catch(e){ console.error("Spotify party controller error:",e); if(!cancelled) setApiFailed(true); }
+    };
+    if(window._spotifyIframeAPI){
+      makeController(window._spotifyIframeAPI);
+    } else {
+      const prev = window.onSpotifyIframeApiReady;
+      window.onSpotifyIframeApiReady = (IFrameAPI)=>{ window._spotifyIframeAPI = IFrameAPI; if(typeof prev==="function"){ try{prev(IFrameAPI);}catch(e){} } makeController(IFrameAPI); };
+      if(!document.getElementById("spotify-iframe-api")){
+        const s = document.createElement("script");
+        s.id="spotify-iframe-api"; s.src="https://open.spotify.com/embed/iframe-api/v1"; s.async=true;
+        s.onerror = ()=>{ if(!cancelled) setApiFailed(true); };
+        document.body.appendChild(s);
+      }
+      setTimeout(()=>{ if(!cancelled && !controllerRef.current) setApiFailed(true); }, 6000);
+    }
+    return ()=>{
+      cancelled = true; cancelClose();
+      try{ controllerRef.current && controllerRef.current.destroy && controllerRef.current.destroy(); }catch(e){}
+      controllerRef.current = null;
+    };
+  },[trackId, closeSelf]);
+
+  const vibeOn = playing || apiFailed; // fallback can't detect state → keep vibing until Exit
+  const ps = vibeOn ? "running" : "paused";
+  const fallbackEmbed = `https://open.spotify.com/embed/track/${trackId}?theme=0`;
+  const blob = (color,top,left,size,anim,dur,extra)=>(
+    <div style={{position:"absolute",top,left,width:size,height:size,borderRadius:"50%",background:`radial-gradient(circle,${color},transparent 60%)`,filter:"blur(60px)",mixBlendMode:"screen",animation:`${anim} ${dur}s ease-in-out infinite${extra||""}`,animationPlayState:ps}}/>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:5000,overflow:"hidden",background:"#05010f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <style>{`
+        @keyframes ppHue { from{filter:hue-rotate(0deg)} to{filter:hue-rotate(360deg)} }
+        @keyframes ppSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes ppPulse { 0%,100%{transform:scale(1);opacity:.85} 50%{transform:scale(1.2);opacity:1} }
+        @keyframes ppBlob1 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(18vw,10vh) scale(1.3)} 66%{transform:translate(-12vw,16vh) scale(.9)} }
+        @keyframes ppBlob2 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-16vw,-12vh) scale(1.2)} 66%{transform:translate(14vw,-8vh) scale(1.1)} }
+        @keyframes ppBlob3 { 0%,100%{transform:translate(0,0) scale(1.1)} 50%{transform:translate(10vw,-14vh) scale(.8)} }
+        @keyframes ppFloat { 0%{transform:translateY(10vh) scale(.6);opacity:0} 15%{opacity:.9} 100%{transform:translateY(-110vh) scale(1.2);opacity:0} }
+      `}</style>
+
+      {/* Color blobs (fade out + freeze when the music stops → 'back to normal') */}
+      <div style={{position:"absolute",inset:"-20%",transition:"opacity .8s ease",opacity:vibeOn?1:0,animation:"ppHue 6s linear infinite",animationPlayState:ps}}>
+        {blob("#ff2d95","20%","18%","55vw","ppBlob1",9)}
+        {blob("#7c3aed","30%","45%","50vw","ppBlob2",11)}
+        {blob("#22d3ee","12%","30%","45vw","ppBlob3",8)}
+        {blob("#f59e0b","40%","10%","48vw","ppBlob1",13," reverse")}
+      </div>
+
+      {/* Rotating conic rays */}
+      <div style={{position:"absolute",width:"160vmax",height:"160vmax",left:"50%",top:"50%",marginLeft:"-80vmax",marginTop:"-80vmax",background:"conic-gradient(from 0deg,#ff2d95,#f59e0b,#22d3ee,#7c3aed,#ff2d95)",opacity:vibeOn?0.18:0,transition:"opacity .8s ease",mixBlendMode:"color-dodge",animation:"ppSpin 18s linear infinite",animationPlayState:ps}}/>
+
+      {/* Floating emoji */}
+      {vibeOn && ["🪩","✨","🌈","💫","🔥","🎶","⭐","💜"].map((e,i)=>(
+        <div key={i} style={{position:"absolute",bottom:0,left:`${8+i*11}%`,fontSize:`${22+(i%3)*10}px`,animation:`ppFloat ${6+(i%4)}s linear ${i*0.7}s infinite`,animationPlayState:ps,pointerEvents:"none"}}>{e}</div>
+      ))}
+
+      {/* Center player card */}
+      <div style={{position:"relative",zIndex:2,width:"min(92vw,420px)",background:"rgba(10,6,24,0.72)",border:"1px solid rgba(255,255,255,0.18)",borderRadius:22,padding:"18px 18px 20px",backdropFilter:"blur(10px)",boxShadow:"0 20px 70px rgba(124,58,237,0.55)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontSize:16,fontWeight:900,letterSpacing:"0.06em",color:"#fff",display:"inline-flex",alignItems:"center",gap:8}}>
+            <span style={{display:"inline-block",animation:"ppPulse 0.5s ease-in-out infinite",animationPlayState:ps}}>🪩</span> PARTY MODE
+          </div>
+          <button onClick={closeSelf} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",color:"#fff",borderRadius:20,padding:"6px 12px",fontSize:12,fontWeight:800,cursor:"pointer"}}>Exit ✕</button>
+        </div>
+        {apiFailed
+          ? <iframe src={fallbackEmbed} width="100%" height="152" frameBorder="0" loading="lazy" allow="encrypted-media; autoplay" style={{borderRadius:12,display:"block"}} title="Song of the day"/>
+          : <div ref={hostRef} style={{borderRadius:12,overflow:"hidden",minHeight:80}}/>}
+        <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.6)",textAlign:"center",lineHeight:1.4}}>
+          {apiFailed ? "Hit play to start the vibe — tap Exit when you're done."
+            : (playing ? "🕺 Vibing… the screen calms down when the song ends." : "Press play to light it up.")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SongOfDay({url}) {
+  const [party, setParty] = React.useState(false);
+  const m = String(url||"").match(/track\/([A-Za-z0-9]+)/);
+  const trackId = m ? m[1] : null;
+  if(trackId){
+    const embed = `https://open.spotify.com/embed/track/${trackId}?theme=0`;
+    return (
+      <div style={{flexShrink:0,width:300,maxWidth:"42vw",display:"flex",alignItems:"center",gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <iframe src={embed} width="100%" height="80" frameBorder="0" loading="lazy" allow="encrypted-media" style={{borderRadius:12,display:"block"}} title="Song of the day"/>
+        </div>
+        <button onClick={()=>setParty(true)} title="Party mode"
+          style={{flexShrink:0,width:38,height:38,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:17,lineHeight:1,background:"linear-gradient(135deg,#ec4899,#8b5cf6,#22d3ee)",boxShadow:"0 2px 10px rgba(139,92,246,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          🪩
+        </button>
+        {party && <SpotifyPartyOverlay trackId={trackId} onClose={()=>setParty(false)}/>}
+      </div>
+    );
+  }
+  // Non-track link → a clean Spotify pill button. Ensure the URL has a scheme;
+  // without https:// the browser treats it as a path on our own site and 404s.
+  const safeUrl = /^https?:\/\//i.test(String(url||"").trim())
+    ? String(url).trim()
+    : "https://" + String(url||"").trim().replace(/^\/+/,"");
+  return (
+    <a href={safeUrl} target="_blank" rel="noopener noreferrer"
+      style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:7,background:"#1db954",color:"#fff",fontWeight:800,fontSize:12,padding:"8px 14px",borderRadius:999,textDecoration:"none",whiteSpace:"nowrap"}}>
+      <span style={{fontSize:13}}>🎵</span> Song of the Day
+    </a>
+  );
+}
+
 function App() {
   const [user,setUser]=useState(null);
   const [profile,setProfile]=useState(null);
@@ -9575,30 +9751,7 @@ function App() {
                 <div style={{fontSize:13,lineHeight:1.4,color:dark?"#fde68a":"#92400e",fontWeight:600,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{a.message}</div>
                 {scopeLabel && <div style={{fontSize:10,fontWeight:700,color:dark?"#b08940":"#b4791e",marginTop:3,textTransform:"uppercase",letterSpacing:"0.04em"}}>{scopeLabel}</div>}
               </div>
-              {a.spotify_url && (()=>{
-                // Extract the track ID (ignoring any ?si=... params) for the inline player.
-                const m = String(a.spotify_url).match(/track\/([A-Za-z0-9]+)/);
-                const embed = m ? `https://open.spotify.com/embed/track/${m[1]}?theme=0` : null;
-                if(embed){
-                  return (
-                    <div style={{flexShrink:0,width:300,maxWidth:"42vw"}}>
-                      <iframe src={embed} width="100%" height="80" frameBorder="0" loading="lazy" allow="encrypted-media" style={{borderRadius:12,display:"block"}} title="Song of the day"/>
-                    </div>
-                  );
-                }
-                // Non-track link → a clean Spotify pill button. Ensure the URL has a
-                // scheme; without https:// the browser treats it as a path on our own
-                // site and 404s, so prepend https:// when it's missing.
-                const safeUrl = /^https?:\/\//i.test(String(a.spotify_url||"").trim())
-                  ? String(a.spotify_url).trim()
-                  : "https://" + String(a.spotify_url||"").trim().replace(/^\/+/,"");
-                return (
-                  <a href={safeUrl} target="_blank" rel="noopener noreferrer"
-                    style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:7,background:"#1db954",color:"#fff",fontWeight:800,fontSize:12,padding:"8px 14px",borderRadius:999,textDecoration:"none",whiteSpace:"nowrap"}}>
-                    <span style={{fontSize:13}}>🎵</span> Song of the Day
-                  </a>
-                );
-              })()}
+              {a.spotify_url && <SongOfDay url={a.spotify_url}/>}
               <button onClick={()=>setDismissedAnnouncements(d=>[...d,a.id])} title="Dismiss"
                 style={{background:"none",border:"none",cursor:"pointer",fontSize:16,lineHeight:1,color:dark?"#fde68a":"#92400e",flexShrink:0,padding:"0 2px",alignSelf:"flex-start"}}>×</button>
             </div>
