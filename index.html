@@ -206,6 +206,21 @@ function getEffectiveStageIndex(lead) {
   }
   return STAGE_PROGRESSION.indexOf(lead.stage);
 }
+// Whether the "gift card dropped off" checkbox should be available for an account.
+// It shows once the account has reached VC / SRA or later — checking the LIVE stage
+// AND any remembered (ARC / On Hold / Needs Cancel Save) stage, so it stays visible
+// even while the account is flagged. `o` may be a full lead (snake_case) or a small
+// object built from the edit form.
+function giftCardEligible(o) {
+  if (!o) return false;
+  const idx = Math.max(
+    STAGE_PROGRESSION.indexOf(o.stage || ""),
+    STAGE_PROGRESSION.indexOf(o.arc_stage || ""),
+    STAGE_PROGRESSION.indexOf(o.on_hold_stage || ""),
+    STAGE_PROGRESSION.indexOf(o.ncs_stage || "")
+  );
+  return idx >= MILESTONE_INDEX["VC"];
+}
 function milestoneCount(leads, milestone) {
   const minIdx = MILESTONE_INDEX[milestone];
   if (minIdx === undefined) return 0;
@@ -3445,7 +3460,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             </div>
           )}
           {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
-          {getEffectiveStageIndex(lead) >= MILESTONE_INDEX["VC"] && (
+          {(giftCardEligible(lead) || lead.gift_card_dropped) && (
             <div onClick={toggleGift} title="Tap to toggle"
               style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
               <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
@@ -3842,7 +3857,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
           </div>
         </div>
         {/* Gift card drop-off — appears once the account has reached VC */}
-        {getEffectiveStageIndex({is_arc:form.isArc,arc_stage:form.arcStage,on_hold:form.onHold,on_hold_stage:form.onHoldStage,needs_cancel_save:form.needsCancelSave,ncs_stage:form.ncsStage,stage:form.stage}) >= MILESTONE_INDEX["VC"] && (
+        {(giftCardEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) || form.giftCardDropped) && (
           <div style={{marginBottom:14}}>
             <div onClick={()=>setForm(f=>({...f,giftCardDropped:!f.giftCardDropped}))}
               style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${form.giftCardDropped?"#10b981":(dark?"#334155":"#cbd5e1")}`}}>
