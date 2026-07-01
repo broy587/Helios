@@ -2867,14 +2867,16 @@ const AC_CHECKLIST_ITEMS = [
   "Homeowner Asked Questions",
   "Homeowner Had Objections",
   "Named Drop In Pitch",
-  "Knew solar was/could be involved",
+  "Knows solar is / can be involved",
   "Clear Expectations Set",
 ];
 
 // Legacy → current AC checklist item names. Any checked item stored under an
 // old name is migrated to the new name so checkmarks/scores aren't lost.
 const AC_CHECKLIST_RENAMES = {
-  "At Least 2 Take Aways": "Knew solar was/could be involved",
+  "At Least 2 Take Aways": "Knows solar is / can be involved",
+  "Knew solar was/could be involved": "Knows solar is / can be involved",
+  "Knows solar was / could be involved": "Knows solar is / can be involved",
 };
 function migrateAcChecklist(arr) {
   if (!Array.isArray(arr)) return {list:arr, changed:false};
@@ -4862,6 +4864,12 @@ function AnnouncementEditorPage({dark, user, onBack, onChange, isOwner, teams, t
     setErr("");
     if(!canSave()){ setErr(isOwner?"Add a message and pick Everyone or at least one team.":"Add a message and pick at least one team."); return; }
     setBusy(true);
+    // Normalize the song link so it always has a scheme (a bare "open.spotify.com/..."
+    // would otherwise be treated as a path on our own site and 404 when clicked).
+    const rawSpotify = spotifyUrl.trim();
+    const normSpotify = rawSpotify
+      ? (/^https?:\/\//i.test(rawSpotify) ? rawSpotify : "https://" + rawSpotify.replace(/^\/+/,""))
+      : null;
     const basePayload = {
       message: message.trim(),
       target_teams: buildTargets(),
@@ -4869,7 +4877,7 @@ function AnnouncementEditorPage({dark, user, onBack, onChange, isOwner, teams, t
       updated_at: new Date().toISOString(),
       updated_by: user.id,
     };
-    const payload = { ...basePayload, spotify_url: spotifyUrl.trim() || null };
+    const payload = { ...basePayload, spotify_url: normSpotify };
     // Try saving WITH spotify_url; if that column doesn't exist yet, fall back to
     // saving without it so the announcement still posts (and warn about the song).
     const doSave = async (body)=>{
@@ -9495,9 +9503,14 @@ function App() {
                     </div>
                   );
                 }
-                // Non-track link → a clean Spotify pill button.
+                // Non-track link → a clean Spotify pill button. Ensure the URL has a
+                // scheme; without https:// the browser treats it as a path on our own
+                // site and 404s, so prepend https:// when it's missing.
+                const safeUrl = /^https?:\/\//i.test(String(a.spotify_url||"").trim())
+                  ? String(a.spotify_url).trim()
+                  : "https://" + String(a.spotify_url||"").trim().replace(/^\/+/,"");
                 return (
-                  <a href={a.spotify_url} target="_blank" rel="noopener noreferrer"
+                  <a href={safeUrl} target="_blank" rel="noopener noreferrer"
                     style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:7,background:"#1db954",color:"#fff",fontWeight:800,fontSize:12,padding:"8px 14px",borderRadius:999,textDecoration:"none",whiteSpace:"nowrap"}}>
                     <span style={{fontSize:13}}>🎵</span> Song of the Day
                   </a>
