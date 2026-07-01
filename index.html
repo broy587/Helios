@@ -6973,6 +6973,44 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
     }
   };
 
+  // ── Add Open Slot: creates a fixed 90-minute event titled "open slot" ──
+  const [slotOpen, setSlotOpen] = React.useState(false);
+  const [slotDate, setSlotDate] = React.useState("");
+  const [slotStart, setSlotStart] = React.useState("");
+  const [slotSaving, setSlotSaving] = React.useState(false);
+  const [slotMsg, setSlotMsg] = React.useState("");
+  const SLOT_MINUTES = 90; // 1.5-hour block
+  const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  // Given an "HH:MM" start, return the "h:MM AM/PM" label of start + 90 min.
+  const slotEndLabel = (val) => {
+    if(!val) return "";
+    const [h,m] = val.split(":").map(Number);
+    const d = new Date(2000,0,1,h,m,0);
+    d.setMinutes(d.getMinutes()+SLOT_MINUTES);
+    const ap = d.getHours()>=12?"PM":"AM"; const h12 = d.getHours()%12||12;
+    return `${h12}:${String(d.getMinutes()).padStart(2,"0")} ${ap}`;
+  };
+  const resetSlot = () => { setSlotDate("");setSlotStart("");setSlotMsg(""); };
+  const submitSlot = async (calendarId) => {
+    if(!slotDate || !slotStart) return;
+    setSlotSaving(true); setSlotMsg("");
+    try {
+      const [yy,mm,dd] = slotDate.split("-").map(Number);
+      const [sh,sm] = slotStart.split(":").map(Number);
+      const startD = new Date(yy,mm-1,dd,sh,sm,0);
+      const endD = new Date(startD.getTime() + SLOT_MINUTES*60000); // start + 1.5 hr
+      await GCal.createMeeting("open slot", startD.toISOString(), endD.toISOString(), calendarId, null);
+      setSlotSaving(false);
+      setSlotOpen(false);
+      resetSlot();
+      setCalKey(k=>k+1); // refresh the embedded calendar to show it
+    } catch(e){
+      console.error("Open slot create failed:",e);
+      setSlotMsg("Couldn't add open slot: "+((e&&e.message)||"unknown error"));
+      setSlotSaving(false);
+    }
+  };
+
   // When a new event URL comes in, show it in the iframe
   React.useEffect(()=>{
     if(newEventUrl){
@@ -7043,6 +7081,12 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
             <button onClick={()=>{resetMeet();setMeetOpen(true);}}
               style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
               + Add Meeting
+            </button>
+          )}
+          {canAddMeeting && (
+            <button onClick={()=>{resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
+              style={{background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
+              + Add Open Slot
             </button>
           )}
           <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
@@ -7155,6 +7199,45 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
               disabled={!meetType||!meetDate||!meetStart||!meetEnd||meetSaving}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"pointer":"default"}}>
               {meetSaving?"Adding…":"Add to Calendar"}
+            </button>
+          </div>
+        </div>
+      )}
+      {slotOpen && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>!slotSaving&&setSlotOpen(false)}>
+          <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>+ Add Open Slot</div>
+              <button onClick={()=>!slotSaving&&setSlotOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>"open slot"</b> to the <b>{CALENDAR_NAME}</b>.</div>
+
+            {/* Date */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
+            <input type="date" value={slotDate} onChange={e=>setSlotDate(e.target.value)}
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:14}}/>
+
+            {/* Start time */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Start Time</label>
+            <select value={slotStart} onChange={e=>setSlotStart(e.target.value)}
+              style={{width:"100%",padding:"10px 8px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",boxSizing:"border-box",cursor:"pointer",marginBottom:14}}>
+              <option value="">Start…</option>
+              {MEET_TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+
+            {/* Auto 1.5-hour end preview */}
+            <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f3ede3",border:`1px solid ${dark?"#334155":"#e2d8c8"}`,borderRadius:8,padding:"10px 12px",marginBottom:18}}>
+              {slotStart
+                ? <>⏱️ 1.5-hour slot — ends at <b>{slotEndLabel(slotStart)}</b></>
+                : <>Pick a start time; the slot automatically runs 1.5 hours.</>}
+            </div>
+
+            {slotMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{slotMsg}</div>}
+
+            <button onClick={()=>submitSlot(teamCfg&&teamCfg.calendarId)}
+              disabled={!slotDate||!slotStart||slotSaving}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(slotDate&&slotStart&&!slotSaving)?"linear-gradient(135deg,#0f766e,#10b981)":"#e2e8f0",color:(slotDate&&slotStart&&!slotSaving)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(slotDate&&slotStart&&!slotSaving)?"pointer":"default"}}>
+              {slotSaving?"Adding…":"Add Open Slot"}
             </button>
           </div>
         </div>
