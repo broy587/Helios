@@ -331,7 +331,7 @@ const TIME_SLOTS = [
 ];
 
 const emptyForm = {
-  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",commission:"",
+  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",commission:"",giftCardDropped:false,
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
   decisionMakers:"",closerChecklist:[],contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
@@ -3197,6 +3197,24 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showCommission,setShowCommission]=useState(false);
+  const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
+  // Toggle "gift card dropped off" from view mode. Persists directly to Supabase
+  // (onUpdate only syncs local state), optimistically updating the UI and
+  // reverting if the write fails.
+  const toggleGift = async () => {
+    const next = !lead.gift_card_dropped;
+    setGiftMsg("saving");
+    handleUpdate({gift_card_dropped: next});
+    try {
+      const { error } = await sb.from("leads").update({gift_card_dropped: next}).eq("id", lead.id);
+      if(error) throw error;
+      setGiftMsg("");
+    } catch(e) {
+      console.error("Gift card save failed:", e);
+      handleUpdate({gift_card_dropped: !next}); // revert
+      setGiftMsg("error");
+    }
+  };
   const [showTransfer,setShowTransfer]=useState(false);
   const [transferTo,setTransferTo]=useState("");
   const [photos,setPhotos]=useState([]);
@@ -3424,6 +3442,16 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   👁 View
                 </button>
               )}
+            </div>
+          )}
+          {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
+          {getEffectiveStageIndex(lead) >= MILESTONE_INDEX["VC"] && (
+            <div onClick={toggleGift} title="Tap to toggle"
+              style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+              {giftMsg==="saving" && <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>saving…</span>}
+              {giftMsg==="error" && <span style={{fontSize:11,color:"#b91c1c",marginLeft:"auto"}}>couldn't save</span>}
             </div>
           )}
           {/* Appointment booking — always visible; booking a new one replaces the old. */}
@@ -3813,6 +3841,16 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
               style={{...inputStyle,paddingLeft:24}}/>
           </div>
         </div>
+        {/* Gift card drop-off — appears once the account has reached VC */}
+        {getEffectiveStageIndex({is_arc:form.isArc,arc_stage:form.arcStage,on_hold:form.onHold,on_hold_stage:form.onHoldStage,needs_cancel_save:form.needsCancelSave,ncs_stage:form.ncsStage,stage:form.stage}) >= MILESTONE_INDEX["VC"] && (
+          <div style={{marginBottom:14}}>
+            <div onClick={()=>setForm(f=>({...f,giftCardDropped:!f.giftCardDropped}))}
+              style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${form.giftCardDropped?"#10b981":(dark?"#334155":"#cbd5e1")}`}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${form.giftCardDropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:form.giftCardDropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{form.giftCardDropped?"✓":""}</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+            </div>
+          </div>
+        )}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
@@ -4201,6 +4239,16 @@ function analyzeConversions(leads) {
     : Math.round((fromPool.filter(l=>atOrPast(l, toMs)).length / fromPool.length) * 100);
   const convN = (fromPool, toMs) => fromPool.filter(l=>atOrPast(l, toMs)).length;
 
+  // Gift card drop-off → Install: of accounts marked "gift card dropped off",
+  // how many are at the literal Install stage or beyond.
+  const giftPool = (leads||[]).filter(l => l.gift_card_dropped === true);
+  const giftToInstall = giftPool.filter(l => atOrPast(l, "Install"));
+  const giftCard = {
+    dropped: giftPool.length,
+    toInstall: giftToInstall.length,
+    pct: giftPool.length === 0 ? null : Math.round((giftToInstall.length / giftPool.length) * 100),
+  };
+
   return {
     acTotal: acPool.length,
     vcTotal: vcPool.length,
@@ -4230,6 +4278,7 @@ function analyzeConversions(leads) {
       {label:"VC → Install", pct:convPct(vcAt,"Install"), n:convN(vcAt,"Install"), of:vcAt.length},
       {label:"AC → Install", pct:convPct(acAt,"Install"), n:convN(acAt,"Install"), of:acAt.length},
     ],
+    giftCard,
   };
 }
 
@@ -4575,6 +4624,15 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                   : c.funnel.map(m=>(
                       <Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.of}/>
                     ))}
+
+                {/* Gift card drop-off → Install */}
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>🎁 Gift Card Drop-off</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.giftCard.dropped} dropped off</span>
+                </div>
+                {c.giftCard.dropped===0
+                  ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have a gift card dropped off in this view.</div>
+                  : <Bar label="Gift card dropped → Install" pct={c.giftCard.pct} n={c.giftCard.toInstall} total={c.giftCard.dropped}/>}
               </div>
             </div>
           </div>
@@ -6938,7 +6996,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
-function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName}) {
+function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlot, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
   const [iframeUrl, setIframeUrl] = React.useState(null);
@@ -7116,7 +7174,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, creatorName})
               + Add Meeting
             </button>
           )}
-          {canAddMeeting && (
+          {canAddOpenSlot && (
             <button onClick={()=>{resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
               style={{background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
               + Add Open Slot
@@ -8748,6 +8806,9 @@ function SpotifyPartyOverlay({trackId, onClose}) {
   const controllerRef = React.useRef(null);
   const startedRef = React.useRef(false);
   const closeTimerRef = React.useRef(null);
+  const wakeRef = React.useRef(null);   // full-screen layer the color-wake dots are added to
+  const lastPtRef = React.useRef(null); // last pointer position (distance-throttle spawns)
+  const hueRef = React.useRef(0);       // rolling hue so the wake cycles the rainbow
   const [playing, setPlaying] = React.useState(false);
   const [apiFailed, setApiFailed] = React.useState(false);
   const closeSelf = React.useCallback(()=>{ if(onClose) onClose(); },[onClose]);
@@ -8797,36 +8858,64 @@ function SpotifyPartyOverlay({trackId, onClose}) {
   const ps = vibeOn ? "running" : "paused";
   const fallbackEmbed = `https://open.spotify.com/embed/track/${trackId}?theme=0`;
   const blob = (color,top,left,size,anim,dur,extra)=>(
-    <div style={{position:"absolute",top,left,width:size,height:size,borderRadius:"50%",background:`radial-gradient(circle,${color},transparent 60%)`,filter:"blur(60px)",mixBlendMode:"screen",animation:`${anim} ${dur}s ease-in-out infinite${extra||""}`,animationPlayState:ps}}/>
+    <div style={{position:"absolute",top,left,width:size,height:size,borderRadius:"50%",background:`radial-gradient(circle,${color},transparent 60%)`,filter:"blur(58px)",mixBlendMode:"screen",animation:`${anim} ${dur}s ease-in-out infinite${extra||""}`,animationPlayState:ps}}/>
   );
 
+  // ── Color wake: append short-lived glowing dots along the pointer/touch path.
+  // Done imperatively (not React state) so a fast drag doesn't thrash rendering.
+  const spawnWake = (x,y)=>{
+    const layer = wakeRef.current; if(!layer) return;
+    const hue = (hueRef.current = (hueRef.current + 28) % 360);
+    const size = 90 + Math.random()*90;
+    const dot = document.createElement("div");
+    dot.style.cssText =
+      "position:absolute;left:"+x+"px;top:"+y+"px;width:"+size+"px;height:"+size+"px;"+
+      "border-radius:50%;pointer-events:none;mix-blend-mode:screen;filter:blur(3px);"+
+      "background:radial-gradient(circle,hsla("+hue+",100%,68%,0.9),hsla("+((hue+55)%360)+",100%,60%,0.35) 55%,transparent 72%);"+
+      "animation:ppWake 1000ms ease-out forwards;";
+    layer.appendChild(dot);
+    dot.addEventListener("animationend",()=>{ dot.remove(); });
+  };
+  const onWakeMove = (e)=>{
+    const x=e.clientX, y=e.clientY, last=lastPtRef.current;
+    if(last){ const dx=x-last.x, dy=y-last.y; if(dx*dx+dy*dy < 196) return; } // ~14px throttle
+    lastPtRef.current = {x,y}; spawnWake(x,y);
+  };
+  const onWakeDown = (e)=>{ lastPtRef.current={x:e.clientX,y:e.clientY}; spawnWake(e.clientX,e.clientY); };
+
   return (
-    <div style={{position:"fixed",inset:0,zIndex:5000,overflow:"hidden",background:"#05010f",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div onPointerMove={onWakeMove} onPointerDown={onWakeDown}
+      style={{position:"fixed",inset:0,zIndex:5000,overflow:"hidden",background:"#05010f",display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none"}}>
       <style>{`
         @keyframes ppHue { from{filter:hue-rotate(0deg)} to{filter:hue-rotate(360deg)} }
         @keyframes ppSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes ppPulse { 0%,100%{transform:scale(1);opacity:.85} 50%{transform:scale(1.2);opacity:1} }
+        @keyframes ppPulse { 0%,100%{transform:scale(1);opacity:.8} 50%{transform:scale(1.22);opacity:1} }
+        @keyframes ppBreathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
         @keyframes ppBlob1 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(18vw,10vh) scale(1.3)} 66%{transform:translate(-12vw,16vh) scale(.9)} }
         @keyframes ppBlob2 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-16vw,-12vh) scale(1.2)} 66%{transform:translate(14vw,-8vh) scale(1.1)} }
         @keyframes ppBlob3 { 0%,100%{transform:translate(0,0) scale(1.1)} 50%{transform:translate(10vw,-14vh) scale(.8)} }
-        @keyframes ppFloat { 0%{transform:translateY(10vh) scale(.6);opacity:0} 15%{opacity:.9} 100%{transform:translateY(-110vh) scale(1.2);opacity:0} }
+        @keyframes ppWake { 0%{transform:translate(-50%,-50%) scale(.3);opacity:.9} 100%{transform:translate(-50%,-50%) scale(2.2);opacity:0} }
       `}</style>
 
-      {/* Color blobs (fade out + freeze when the music stops → 'back to normal') */}
-      <div style={{position:"absolute",inset:"-20%",transition:"opacity .8s ease",opacity:vibeOn?1:0,animation:"ppHue 6s linear infinite",animationPlayState:ps}}>
-        {blob("#ff2d95","20%","18%","55vw","ppBlob1",9)}
-        {blob("#7c3aed","30%","45%","50vw","ppBlob2",11)}
-        {blob("#22d3ee","12%","30%","45vw","ppBlob3",8)}
-        {blob("#f59e0b","40%","10%","48vw","ppBlob1",13," reverse")}
+      {/* Layered color blobs — hue-cycling + breathing (fade + freeze when music stops) */}
+      <div style={{position:"absolute",inset:"-25%",transition:"opacity .8s ease",opacity:vibeOn?1:0,animation:"ppHue 5s linear infinite, ppBreathe 7s ease-in-out infinite",animationPlayState:ps}}>
+        {blob("#ff2d95","18%","16%","58vw","ppBlob1",9)}
+        {blob("#7c3aed","28%","44%","54vw","ppBlob2",11)}
+        {blob("#22d3ee","10%","28%","50vw","ppBlob3",8)}
+        {blob("#f59e0b","42%","8%","52vw","ppBlob1",13," reverse")}
+        {blob("#10f4b1","46%","52%","46vw","ppBlob2",10," reverse")}
+        {blob("#ff5e00","4%","54%","44vw","ppBlob3",12)}
       </div>
 
-      {/* Rotating conic rays */}
-      <div style={{position:"absolute",width:"160vmax",height:"160vmax",left:"50%",top:"50%",marginLeft:"-80vmax",marginTop:"-80vmax",background:"conic-gradient(from 0deg,#ff2d95,#f59e0b,#22d3ee,#7c3aed,#ff2d95)",opacity:vibeOn?0.18:0,transition:"opacity .8s ease",mixBlendMode:"color-dodge",animation:"ppSpin 18s linear infinite",animationPlayState:ps}}/>
+      {/* Two counter-rotating conic gradients — 'difference' blend makes trippy moiré */}
+      <div style={{position:"absolute",width:"170vmax",height:"170vmax",left:"50%",top:"50%",marginLeft:"-85vmax",marginTop:"-85vmax",background:"conic-gradient(from 0deg,#ff2d95,#f59e0b,#22d3ee,#7c3aed,#ff2d95)",opacity:vibeOn?0.22:0,transition:"opacity .8s ease",mixBlendMode:"color-dodge",animation:"ppSpin 16s linear infinite",animationPlayState:ps}}/>
+      <div style={{position:"absolute",width:"150vmax",height:"150vmax",left:"50%",top:"50%",marginLeft:"-75vmax",marginTop:"-75vmax",background:"conic-gradient(from 90deg,#00e5ff,#ff2d95,#faff00,#8b5cf6,#00e5ff)",opacity:vibeOn?0.16:0,transition:"opacity .8s ease",mixBlendMode:"difference",animation:"ppSpin 24s linear infinite reverse",animationPlayState:ps}}/>
 
-      {/* Floating emoji */}
-      {vibeOn && ["🪩","✨","🌈","💫","🔥","🎶","⭐","💜"].map((e,i)=>(
-        <div key={i} style={{position:"absolute",bottom:0,left:`${8+i*11}%`,fontSize:`${22+(i%3)*10}px`,animation:`ppFloat ${6+(i%4)}s linear ${i*0.7}s infinite`,animationPlayState:ps,pointerEvents:"none"}}>{e}</div>
-      ))}
+      {/* Pulsing center ring — a beat-vibe throb */}
+      <div style={{position:"absolute",left:"50%",top:"50%",width:"60vmax",height:"60vmax",marginLeft:"-30vmax",marginTop:"-30vmax",borderRadius:"50%",background:"radial-gradient(circle,transparent 40%,rgba(255,45,149,0.28) 60%,transparent 67%)",mixBlendMode:"screen",opacity:vibeOn?1:0,transition:"opacity .8s ease",animation:"ppPulse 0.75s ease-in-out infinite",animationPlayState:ps}}/>
+
+      {/* Color-wake layer (dots appended here imperatively) */}
+      <div ref={wakeRef} style={{position:"absolute",inset:0,zIndex:1,pointerEvents:"none",overflow:"hidden"}}/>
 
       {/* Center player card */}
       <div style={{position:"relative",zIndex:2,width:"min(92vw,420px)",background:"rgba(10,6,24,0.72)",border:"1px solid rgba(255,255,255,0.18)",borderRadius:22,padding:"18px 18px 20px",backdropFilter:"blur(10px)",boxShadow:"0 20px 70px rgba(124,58,237,0.55)"}}>
@@ -8840,8 +8929,8 @@ function SpotifyPartyOverlay({trackId, onClose}) {
           ? <iframe src={fallbackEmbed} width="100%" height="152" frameBorder="0" loading="lazy" allow="encrypted-media; autoplay" style={{borderRadius:12,display:"block"}} title="Song of the day"/>
           : <div ref={hostRef} style={{borderRadius:12,overflow:"hidden",minHeight:80}}/>}
         <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.6)",textAlign:"center",lineHeight:1.4}}>
-          {apiFailed ? "Hit play to start the vibe — tap Exit when you're done."
-            : (playing ? "🕺 Vibing… the screen calms down when the song ends." : "Press play to light it up.")}
+          {apiFailed ? "Hit play to start — drag anywhere to trail color. Tap Exit when done."
+            : (playing ? "Drag anywhere to trail color — the screen calms when the song ends." : "Press play to light it up.")}
         </div>
       </div>
     </div>
@@ -9157,7 +9246,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -9184,7 +9273,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -9371,7 +9460,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",commission:form.commission||"",stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -9579,6 +9668,7 @@ function App() {
   const isOwner = user.id===OWNER_ID;
   const isPrivileged = profile.role==="manager" || isOwner;
   const isCloser = profile.role==="closer";
+  const canAddOpenSlot = isCloser || profile.role==="manager"; // "Add Open Slot" = closers + managers only
   const canBookCap = canBookCapRole(profile.role, isOwner);
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
@@ -9866,7 +9956,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner)&&(
-          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} canAddOpenSlot={canAddOpenSlot} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
@@ -9944,7 +10034,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
