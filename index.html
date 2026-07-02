@@ -9790,7 +9790,7 @@ function App() {
   const isOwner = user.id===OWNER_ID;
   const isPrivileged = profile.role==="manager" || isOwner;
   const isCloser = profile.role==="closer";
-  const canAddOpenSlot = isCloser || profile.role==="manager"; // "Add Open Slot" = closers + managers only
+  const canAddOpenSlot = isOwner || isPrivileged || isCloser; // "Add Open Slot" = owner + managers + closers
   const canBookCap = canBookCapRole(profile.role, isOwner);
   // Calendar tab: owner, or a member of ANY team that has a Google Calendar
   // configured in TEAM_CALENDARS (was hardcoded to Helios only, which hid the
