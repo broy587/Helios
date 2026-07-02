@@ -3204,7 +3204,7 @@ function CopyIcon({value}) {
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
-  React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, JSON.stringify(leadProp?.ac_checklist)]);
+  React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cap_event_id, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
   React.useEffect(()=>{ setShowCommission(false); },[leadProp?.id]); // re-hide commission each time a lead opens
   const dark=useDark();
   const _creatorProfile = (profiles||[]).find(p=>p.id===lead.owner_id);
@@ -3213,6 +3213,26 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showCommission,setShowCommission]=useState(false);
   const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
+  // Cancel one of the "additional appointments": release its slot back to open on
+  // the team calendar and drop it from the lead's extra_appointments list. Does
+  // NOT touch the primary closer slot or CAP.
+  const cancelExtraAppt = async (entry) => {
+    if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
+    try {
+      const token = await GCal.signIn();
+      const r = TeamCalendars.resolve();
+      const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
+      if(entry.id){
+        try {
+          await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${entry.id}`,
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})});
+        } catch(e){ console.error("Couldn't restore slot:",e); }
+      }
+      const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
+      await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      handleUpdate({...lead,extra_appointments:next});
+    } catch(e){ console.error("Cancel appointment failed:",e); alert("Couldn't cancel: "+((e&&e.message)||"error")); }
+  };
   // Toggle "gift card dropped off" from view mode. Persists directly to Supabase
   // (onUpdate only syncs local state), optimistically updating the UI and
   // reverting if the write fails.
@@ -3496,11 +3516,29 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   ✕ Cancel Personal Comeback
                 </button>
               )}
-              {canBookCap && (lead.stage==="VC / SRA" || lead.stage==="CAP") && (
+              {canBookCap && (
                 <div style={{marginTop:8}}>
-                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="📋 Book CAP Appointment"/>
+                  {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
+                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP Appointment":"📋 Book CAP Appointment"}/>
                 </div>
               )}
+              {/* Additional appointments — book any number of extra sits/appointments
+                  without disturbing the closer slot or CAP above; each is cancellable. */}
+              {Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0 && (
+                <div style={{marginTop:10}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Additional Appointments</div>
+                  {lead.extra_appointments.map((a)=>(
+                    <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"8px 10px",borderRadius:8,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>📅 {a.label||"Appointment"}</div>
+                      <button onClick={()=>cancelExtraAppt(a)} title="Cancel this appointment"
+                        style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{marginTop:8}}>
+                <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} appendMode={true} label="➕ Book Another Appointment"/>
+              </div>
             </div>
           )}
 
@@ -3823,12 +3861,42 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
             {/* Personal Callback */}
             <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
           </div>
-          {canBookCap && (form.stage==="VC / SRA" || form.stage==="CAP") && (
+          {canBookCap && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 Book CAP Appointment</div>
+              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 {form.cap_event_id?"Change CAP Appointment":"Book CAP Appointment"}</div>
+              {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginBottom:8,fontWeight:600}}>{form.cap_appointment}</div>}
               <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-              }} label="Book CAP Appointment" creatorName={creatorName} capMode={true}/>
+                setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
+              }} label={form.cap_event_id?"Change CAP Appointment":"Book CAP Appointment"} creatorName={creatorName} capMode={true}/>
+            </div>
+          )}
+          {/* Additional appointments — any number of extra sits/appointments,
+              independent of the closer slot and CAP; each can be cancelled. */}
+          {form.id && (
+            <div style={{marginTop:10}}>
+              {Array.isArray(form.extra_appointments) && form.extra_appointments.length>0 && (
+                <div style={{marginBottom:6}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Additional Appointments</div>
+                  {form.extra_appointments.map((a)=>(
+                    <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"8px 10px",borderRadius:8,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>📅 {a.label||"Appointment"}</div>
+                      <button type="button" onClick={async()=>{
+                        if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
+                        try {
+                          const token = await GCal.signIn();
+                          const r = TeamCalendars.resolve();
+                          const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
+                          if(a.id){ try{ await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
+                          const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
+                          await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",form.id);
+                          setForm(f=>({...f,extra_appointments:next}));
+                        } catch(e){ console.error("Cancel appointment failed:",e); alert("Couldn't cancel: "+((e&&e.message)||"error")); }
+                      }} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <CalendarSyncButton lead={{...form}} onUpdate={updated=>setForm(f=>({...f,...updated}))} label="➕ Book Another Appointment" creatorName={creatorName} appendMode={true}/>
             </div>
           )}
         </div>
@@ -5981,7 +6049,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 if(isRep){
                   if(!checklist.includes("Bill Acquired")) missing.push('Check "Bill Acquired" in the Setters AC Checklist');
                   if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-                  const hasAppt=!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id);
+                  const hasAppt=(!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id))||(Array.isArray(linkedLead.extra_appointments)&&linkedLead.extra_appointments.length>0)||!!linkedLead.cap_event_id;
                   if(!hasAppt) missing.push("Schedule a closer slot or personal callback");
                 }
                 if(missing.length>0){
@@ -7451,6 +7519,7 @@ const GCal = {
       start: { dateTime: startISO, timeZone: "America/Chicago" },
       end:   { dateTime: endISO,   timeZone: "America/Chicago" },
       colorId: "5", // banana
+      visibility: "public", // show the event title/details to everyone who can see the calendar (not just "busy")
     };
     if (Array.isArray(recurrence) && recurrence.length) event.recurrence = recurrence;
     const res = await fetch(
@@ -7482,6 +7551,7 @@ const GCal = {
         ? { dateTime: times.end, timeZone: "America/Chicago" }
         : { date: new Date().toISOString().split("T")[0] },
       colorId: "2", // sage green
+      visibility: "public", // show the event title/details to calendar viewers, not just "busy"
     };
 
     const res = await fetch(
@@ -7646,12 +7716,12 @@ const TeamCalendars = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode}) {
+function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, appendMode}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
   // Sync when the lead's calendar OR identifying fields change (so a brand-new, unsaved lead's typed name/address/notes flow into the booking)
-  React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.appointment, lead?.name, lead?.address, lead?.phone, lead?.email, lead?.notes]);
-  const isBooked = !!localLead.gcal_event_id;
+  React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.cap_event_id, lead?.appointment, lead?.cap_appointment, JSON.stringify(lead?.extra_appointments), lead?.name, lead?.address, lead?.phone, lead?.email, lead?.notes]);
+  const isBooked = appendMode ? false : (capMode ? !!localLead.cap_event_id : !!localLead.gcal_event_id);
   const handleUpdate = (updated) => {
     setLocalLead(l=>({...l,...updated}));
     if(onUpdate) onUpdate(updated);
@@ -7662,7 +7732,7 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode}) {
         style={label?{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${capMode?"#ea580c":"#1a2456"}`,background:capMode?"#fff7ed":"#f0f4ff",color:capMode?"#ea580c":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         {label||(isBooked?"✅":"📅")}
       </button>
-      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName} capMode={capMode}/>}
+      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName} capMode={capMode} appendMode={appendMode}/>}
     </>
   );
 }
@@ -7770,9 +7840,9 @@ function PersonalApptButton({onSelect, label, lead}) {
   );
 }
 
-function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
+function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appendMode}) {
   const dark = useDark();
-  const isBooked = !!lead.gcal_event_id;
+  const isBooked = capMode ? !!lead.cap_event_id : !!lead.gcal_event_id;
   // Resolve which team calendar this booking should use.
   const initialResolve = React.useMemo(()=>TeamCalendars.resolve(),[]);
   // calendarId: the calendar we'll actually read/write. For an already-booked
@@ -7786,12 +7856,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
   const needsPick = !calChoice && initialResolve.status==="choose";
   const noCalendar = initialResolve.status==="none";
   const [view, setView] = React.useState(
-    noCalendar ? "nocal" : (needsPick ? "pickcal" : (isBooked?"manage":"calendar"))
+    noCalendar ? "nocal" : (needsPick ? "pickcal" : ((isBooked&&!appendMode)?"manage":"calendar"))
   ); // pickcal | nocal | manage | calendar | slots | confirm
   const pickCalendar = (opt) => {
     TeamCalendars.lastOwnerPick = opt.calendarId; // remember for the session (owner)
     setCalChoice({calendarId:opt.calendarId, teamName:opt.name});
-    setView(isBooked?"manage":"calendar");
+    setView((isBooked&&!appendMode)?"manage":"calendar");
   };
   const [selectedDay, setSelectedDay] = React.useState(null);
   const [slots, setSlots] = React.useState([]);
@@ -7850,28 +7920,31 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
   const handleRemoveBooking = async() => {
     try {
       const token = await GCal.signIn();
+      const evId = capMode ? lead.cap_event_id : lead.gcal_event_id;
       // Restore calendar event back to Open Slot
-      await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
-        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-         body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
-      );
-      // Clear gcal_event_id AND appointment from lead. Only revert the stage
-      // back to the first stage if the lead is currently in "AC / Scheduled".
-      // In any other stage, removing the booking leaves the stage unchanged.
-      const revertStage = lead.stage==="AC / Scheduled";
-      const update = {
-        gcal_event_id:null,
-        appointment:null,
-        updated_at:new Date().toISOString()
-      };
-      if(revertStage) update.stage = "Lead: Need Bill/Appointment";
-      if(lead.id){
-        await sb.from("leads").update(update).eq("id",lead.id);
+      if(evId){
+        await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${evId}`,
+          {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+           body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
+        );
       }
-      if(onUpdate) onUpdate(revertStage
-        ? {gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"}
-        : {gcal_event_id:null,appointment:null});
+      let update, local;
+      if(capMode){
+        // CAP is tracked separately from the closer-slot booking, so removing it
+        // never touches gcal_event_id / appointment or the stage.
+        update = { cap_event_id:null, cap_appointment:null, updated_at:new Date().toISOString() };
+        local  = { cap_event_id:null, cap_appointment:null };
+      } else {
+        // Clear gcal_event_id AND appointment from lead. Only revert the stage
+        // back to the first stage if the lead is currently in "AC / Scheduled".
+        const revertStage = lead.stage==="AC / Scheduled";
+        update = { gcal_event_id:null, appointment:null, updated_at:new Date().toISOString() };
+        if(revertStage) update.stage = "Lead: Need Bill/Appointment";
+        local = revertStage ? {gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"} : {gcal_event_id:null,appointment:null};
+      }
+      if(lead.id){ await sb.from("leads").update(update).eq("id",lead.id); }
+      if(onUpdate) onUpdate(local);
       setDoneMsg("removed");
       setDone(true);
     } catch(e){console.error(e);alert("Error removing: "+e.message);}
@@ -7882,48 +7955,59 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
     setBooking(true);
     try {
       const token = await GCal.signIn();
-      // If lead already has a booked slot, restore it to "Open Slot" first
-      if(lead.gcal_event_id && lead.gcal_event_id !== selectedSlot.id) {
+      // If THIS booking type already has a slot, restore that old slot to "Open
+      // Slot" first. CAP and closer-slot bookings are tracked separately, so
+      // booking a CAP never disturbs an existing closer-slot booking (or vice versa).
+      // In appendMode we're adding an extra appointment, so nothing is released.
+      const oldId = appendMode ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
+      if(oldId && oldId !== selectedSlot.id) {
         try {
           await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${lead.gcal_event_id}`,
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${oldId}`,
             {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7"})}
+             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
           );
         } catch(e){ console.error("Error restoring old slot:",e); }
       }
       // Update the event with lead info
       const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       const updatedEvent = {
-        summary: capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`,
-        description: `${capMode?"CAP BOOKED":"BOOKED"}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
-        colorId: capMode ? "6" : "10", // CAP = tangerine (orange), AC = basil green
+        summary: appendMode ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
+        description: `${appendMode?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        colorId: appendMode ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
+        visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
       };
       const res = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
         {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
       );
       if(!res.ok) throw new Error(await res.text());
-      // If the lead had a personal comeback on the rep's own calendar, remove it
-      // — a real booked slot/CAP is replacing it.
-      if(lead.cb_event_id){
-        try { await GCal.deletePersonalCB(lead.cb_event_id); }
-        catch(e){ console.error("Couldn't delete old comeback from calendar:",e); }
-      }
-      // Save appointment to lead
+      // Build the appointment label from the slot times.
       const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
       const apptStr = `${startTime.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} - ${startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} to ${endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
-      if(lead.id){
-        await sb.from("leads").update({
-          appointment:apptStr,
-          gcal_event_id:selectedSlot.id,
-          cb_event_id:null,
-          stage:bookedStage,
-          updated_at:new Date().toISOString()
-        }).eq("id",lead.id);
+      let update, local;
+      if(appendMode){
+        // Additional appointment: append to the list, never touch the primary
+        // closer slot / CAP, and leave the pipeline stage unchanged.
+        const entry = { id:selectedSlot.id, label:apptStr, type:"extra", ts:new Date().toISOString() };
+        const nextExtra = [...(Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]), entry];
+        update = { extra_appointments:nextExtra, updated_at:new Date().toISOString() };
+        local  = { extra_appointments:nextExtra };
+      } else if(capMode){
+        update = { cap_appointment:apptStr, cap_event_id:selectedSlot.id, stage:bookedStage, updated_at:new Date().toISOString() };
+        local  = { cap_event_id:selectedSlot.id, cap_appointment:apptStr, stage:bookedStage };
+      } else {
+        // A real booked closer slot replaces any personal comeback on the rep's own calendar.
+        if(lead.cb_event_id){
+          try { await GCal.deletePersonalCB(lead.cb_event_id); }
+          catch(e){ console.error("Couldn't delete old comeback from calendar:",e); }
+        }
+        update = { appointment:apptStr, gcal_event_id:selectedSlot.id, cb_event_id:null, stage:bookedStage, updated_at:new Date().toISOString() };
+        local  = { gcal_event_id:selectedSlot.id, appointment:apptStr, cb_event_id:null, stage:bookedStage };
       }
-      if(onUpdate) onUpdate({gcal_event_id:selectedSlot.id,appointment:apptStr,cb_event_id:null,stage:bookedStage});
+      if(lead.id){ await sb.from("leads").update(update).eq("id",lead.id); }
+      if(onUpdate) onUpdate(local);
       setDoneMsg("booked");
       setDone(true);
     } catch(e){
@@ -7997,7 +8081,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
             <div style={{background:dark?"#0f172a":"#fff",borderRadius:12,padding:"16px",marginBottom:16,border:"1.5px solid #10b981"}}>
               <div style={{fontSize:12,color:"#94a3b8",marginBottom:4}}>Currently booked</div>
               <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#1a2456"}}>{lead.name}</div>
-              {lead.appointment&&<div style={{fontSize:13,color:"#10b981",marginTop:4}}>{lead.appointment}</div>}
+              {(capMode?lead.cap_appointment:lead.appointment)&&<div style={{fontSize:13,color:capMode?"#ea580c":"#10b981",marginTop:4}}>{capMode?"📋 ":""}{capMode?lead.cap_appointment:lead.appointment}</div>}
             </div>
             <button onClick={()=>setView("calendar")}
               style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:10}}>
@@ -9275,7 +9359,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -9302,7 +9386,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -9456,7 +9540,7 @@ function App() {
       if (isRep) {
         if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
         if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-        const hasAppt = !!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id);
+        const hasAppt = (!!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id)) || (Array.isArray(form.extra_appointments) && form.extra_appointments.length>0) || !!form.cap_event_id;
         if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
       }
       if (missing.length > 0) {
@@ -9622,7 +9706,7 @@ function App() {
       if (isRep) {
         if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
         if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-        const hasAppt = !!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id);
+        const hasAppt = (!!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id)) || (Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0) || !!lead.cap_event_id;
         if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
       }
       if (missing.length > 0) {
