@@ -9698,6 +9698,10 @@ function App() {
   const isCloser = profile.role==="closer";
   const canAddOpenSlot = isCloser || profile.role==="manager"; // "Add Open Slot" = closers + managers only
   const canBookCap = canBookCapRole(profile.role, isOwner);
+  // Calendar tab: owner, or a member of ANY team that has a Google Calendar
+  // configured in TEAM_CALENDARS (was hardcoded to Helios only, which hid the
+  // tab from every other team's reps, e.g. Kilowatt Kartels).
+  const onCalendarTeam = isOwner || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id));
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
   // pipelineFilter state already declared at top
@@ -9800,7 +9804,7 @@ function App() {
   const tabs=[
     ["pipeline","Pipeline"],
     ["recruits","Recruits"],
-    ...((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner?[["calendar","Calendar"]]:[[]]),
+    ...(onCalendarTeam?[["calendar","Calendar"]]:[]),
     ["canvass","Canvass"],
     ["stats","Stats"],
     ["team","Team"],
@@ -9983,7 +9987,7 @@ function App() {
             <div style={{fontSize:15,color:"#94a3b8",fontWeight:500}}>Coming Soon</div>
           </div>
         )}
-        {tab==="calendar"&&((teamMembers["b1f166c3-661e-4e02-b839-3b9560c9237b"]||[]).some(m=>m.user_id===user.id)||isOwner)&&(
+        {tab==="calendar"&&onCalendarTeam&&(
           <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} canAddOpenSlot={canAddOpenSlot} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
