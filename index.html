@@ -3536,9 +3536,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   ))}
                 </div>
               )}
-              <div style={{marginTop:8}}>
-                <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} appendMode={true} label="➕ Book Another Appointment"/>
-              </div>
+              {((!!(lead.appointment&&String(lead.appointment).trim())&&!!(lead.gcal_event_id||lead.cb_event_id))||(Array.isArray(lead.extra_appointments)&&lead.extra_appointments.length>0)||!!lead.cap_event_id) && (
+                <div style={{marginTop:8}}>
+                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} appendMode={true} label="➕ Book Another Appointment"/>
+                </div>
+              )}
             </div>
           )}
 
@@ -3896,7 +3898,9 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap}
                   ))}
                 </div>
               )}
-              <CalendarSyncButton lead={{...form}} onUpdate={updated=>setForm(f=>({...f,...updated}))} label="➕ Book Another Appointment" creatorName={creatorName} appendMode={true}/>
+              {((!!(form.appointment&&String(form.appointment).trim())&&!!(form.gcal_event_id||form.cb_event_id))||(Array.isArray(form.extra_appointments)&&form.extra_appointments.length>0)||!!form.cap_event_id) && (
+                <CalendarSyncButton lead={{...form}} onUpdate={updated=>setForm(f=>({...f,...updated}))} label="➕ Book Another Appointment" creatorName={creatorName} appendMode={true}/>
+              )}
             </div>
           )}
         </div>
@@ -7890,13 +7894,18 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
     try {
       const dayStart = new Date(day); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
-      // Use API key for reading — no OAuth needed
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime&key=AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU`;
-      const res = await fetch(url);
+      // Read with the signed-in user's OAuth token (NOT an API key). An API key can
+      // only read calendars that are shared "Make available to public"; the team
+      // calendar may only be shared privately with reps. Using the user's token lets
+      // us see open slots on any calendar the user has access to, and returns full
+      // event details (so slots created before events were made public still show).
+      const token = await GCal.signIn();
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if(!res.ok){
-        const err = await res.json();
+        const err = await res.json().catch(()=>({}));
         console.error("Calendar fetch error:", err);
-        if(res.status===403) setNoAccess(true);
+        if(res.status===403||res.status===404) setNoAccess(true);
         setLoadingSlots(false);
         return;
       }
