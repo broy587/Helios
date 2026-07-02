@@ -9998,10 +9998,9 @@ function App() {
   // Manager-configured AC requirements that apply to THIS user. Empty ({items:[],
   // count:0}) for anyone who isn't a rep, or a rep whose team(s) set no config —
   // so with no config anywhere, every gate below behaves exactly as before.
-  const myAcReq = React.useMemo(
-    () => acRequirementsForUser(teams, teamMembers, user.id, profile.role),
-    [teams, teamMembers, user.id, profile.role]
-  );
+  // NOTE: computed as a plain const (NOT useMemo) because this line runs after
+  // the loading/auth early-returns above — a hook here would break hook order.
+  const myAcReq = acRequirementsForUser(teams, teamMembers, user.id, profile.role);
   // Calendar tab: owner, or a member of ANY team that has a Google Calendar
   // configured in TEAM_CALENDARS (was hardcoded to Helios only, which hid the
   // tab from every other team's reps, e.g. Kilowatt Kartels).
