@@ -3475,7 +3475,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{lead.appointment?"Rebook / Change Appointment":"Appointment"}</div>
               <div style={{display:"flex",gap:8}}>
                 <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot" creatorName={creatorName}/>
-                <PersonalApptButton lead={lead} label="↩️ Personal CB" onSelect={async(val,cbEventId)=>{
+                <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change CB":"↩️ Personal CB"} onSelect={async(val,cbEventId)=>{
                   // Replacing an old comeback? Remove the previous calendar event.
                   if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
                     try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
@@ -3484,6 +3484,18 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null});
                 }}/>
               </div>
+              {/* Cancel a scheduled personal comeback (closer slots are cancelled via the calendar button). */}
+              {lead.cb_event_id && (
+                <button onClick={async()=>{
+                  if(!window.confirm("Cancel this personal comeback? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                  try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); }
+                  try{ await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear comeback on lead:",e); }
+                  handleUpdate({...lead,appointment:"",cb_event_id:null});
+                }}
+                  style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✕ Cancel Personal Comeback
+                </button>
+              )}
               {canBookCap && (lead.stage==="VC / SRA" || lead.stage==="CAP") && (
                 <div style={{marginTop:8}}>
                   <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label="📋 Book CAP Appointment"/>
@@ -8002,8 +8014,8 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
         {noAccess&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{fontSize:40,marginBottom:12}}>🔒</div>
-            <div style={{fontSize:13,color:"#94a3b8",marginBottom:12}}>You don't have access to the Helios calendar.</div>
-            <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600,background:"#f5ede0",padding:"12px",borderRadius:10}}>Request access from your manager to be added to the Helios Google Calendar.</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:12}}>The {calChoice?.teamName||"team"} calendar can't be read. It may not be shared publicly.</div>
+            <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600,background:"#f5ede0",padding:"12px",borderRadius:10}}>Ask an owner/manager to set the {calChoice?.teamName||"team"} Google Calendar's sharing to “Make available to public,” then try again.</div>
           </div>
         )}
 
@@ -8014,7 +8026,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
             <div style={{fontSize:16,fontWeight:700,color:doneMsg==="removed"?"#ef4444":"#10b981",marginBottom:8}}>
               {doneMsg==="removed"?"Booking removed!":"Slot booked for "+lead.name+"!"}
             </div>
-            <div style={{fontSize:13,color:"#94a3b8"}}>{doneMsg==="removed"?"Calendar event deleted.":"Lead moved to AC / Scheduled and added to Helios Calendar."}</div>
+            <div style={{fontSize:13,color:"#94a3b8"}}>{doneMsg==="removed"?"Calendar event deleted.":`Lead moved to AC / Scheduled and added to ${calChoice?.teamName||"team"} Calendar.`}</div>
           </div>
         )}
 
@@ -8065,7 +8077,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode}) {
               <div style={{textAlign:"center",padding:20}}>
                 <div style={{fontSize:32,marginBottom:8}}>📭</div>
                 <div style={{fontSize:14,color:"#94a3b8"}}>No open slots on this day.</div>
-                <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Ask your manager to add slots to the Helios calendar.</div>
+                <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Ask an owner/manager to add open slots to the {calChoice?.teamName||"team"} calendar for this day.</div>
               </div>
             ):(
               slots.map(slot=>{
