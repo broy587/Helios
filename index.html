@@ -6324,17 +6324,16 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 const checklist=Array.isArray(linkedLead.ac_checklist)?linkedLead.ac_checklist:[];
                 const isRep=currentUser&&currentUser.role==="rep";
                 const missing=[];
-                if(isRep && acRequirementsActive(acReq)){
-                  // Team-configured requirements are authoritative for this rep.
+                // Everyone: at least one AC checklist item — always applies to reps too.
+                if(checklist.length===0) missing.push("Mark at least one item in the Setters AC Checklist");
+                // Reps also need meter # and a scheduled appointment (always), plus
+                // whatever their team set in Rep Management. The utility bill is only
+                // required when "Utility bill" is checked in Rep Management.
+                if(isRep){
+                  if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
+                  const hasAppt=(!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id))||(Array.isArray(linkedLead.extra_appointments)&&linkedLead.extra_appointments.length>0)||!!linkedLead.cap_event_id;
+                  if(!hasAppt) missing.push("Schedule a closer slot or personal callback");
                   missing.push(...acRequirementsMissing(linkedLead, acReq));
-                } else {
-                  if(checklist.length===0) missing.push("Mark at least one item in the Setters AC Checklist");
-                  if(isRep){
-                    if(!checklist.includes("Bill Acquired")) missing.push('Check "Bill Acquired" in the Setters AC Checklist');
-                    if(!linkedLead.meter||!String(linkedLead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-                    const hasAppt=(!!(linkedLead.appointment&&String(linkedLead.appointment).trim())&&!!(linkedLead.gcal_event_id||linkedLead.cb_event_id))||(Array.isArray(linkedLead.extra_appointments)&&linkedLead.extra_appointments.length>0)||!!linkedLead.cap_event_id;
-                    if(!hasAppt) missing.push("Schedule a closer slot or personal callback");
-                  }
                 }
                 if(missing.length>0){
                   window.alert("Can't move this account forward yet. Please complete the following:\n\n• "+missing.join("\n• "));
@@ -9863,20 +9862,17 @@ function App() {
       const checklist = Array.isArray(form.acChecklist) ? form.acChecklist : [];
       const isRep = profile && profile.role === "rep";
       const missing = [];
-      if (isRep && acRequirementsActive(myAcReq)) {
-        // This rep's team defined AC requirements — those are authoritative and
-        // replace the default rep checks below.
+      // Everyone still needs at least one AC checklist item — and this now ALWAYS
+      // applies to reps, even when Rep Management requirements are configured.
+      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      // Reps also need meter # and a scheduled appointment (always), plus whatever
+      // their team set in Rep Management. The utility bill is NOT hardcoded — it's
+      // only required when "Utility bill" is checked in Rep Management.
+      if (isRep) {
+        if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
+        const hasAppt = (!!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id)) || (Array.isArray(form.extra_appointments) && form.extra_appointments.length>0) || !!form.cap_event_id;
+        if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
         missing.push(...acRequirementsMissing(form, myAcReq));
-      } else {
-        // Everyone must mark at least one checklist item.
-        if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
-        // Reps have additional requirements before an account can reach AC.
-        if (isRep) {
-          if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
-          if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-          const hasAppt = (!!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id)) || (Array.isArray(form.extra_appointments) && form.extra_appointments.length>0) || !!form.cap_event_id;
-          if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
-        }
       }
       if (missing.length > 0) {
         window.alert("This account can't move to AC or beyond yet. Please complete the following:\n\n• " + missing.join("\n• "));
@@ -10035,20 +10031,16 @@ function App() {
       const checklist = Array.isArray(lead.ac_checklist) ? lead.ac_checklist : [];
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
       const missing = [];
-      if (isRep && acRequirementsActive(myAcReq)) {
-        // This rep's team defined AC requirements — those are authoritative and
-        // replace the default rep checks below.
+      // Everyone: at least one AC checklist box checked — always applies to reps too.
+      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      // Reps also need meter # and a scheduled appointment (always), plus whatever
+      // their team set in Rep Management. The utility bill is only required when
+      // "Utility bill" is checked in Rep Management.
+      if (isRep) {
+        if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
+        const hasAppt = (!!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id)) || (Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0) || !!lead.cap_event_id;
+        if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
         missing.push(...acRequirementsMissing(lead, myAcReq));
-      } else {
-        // Everyone: at least one AC checklist box checked.
-        if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
-        // Reps only: Bill Acquired, meter #, and a scheduled closer slot / personal CB.
-        if (isRep) {
-          if (!checklist.includes("Bill Acquired")) missing.push("Check \"Bill Acquired\" in the Setters AC Checklist");
-          if (!lead.meter || !String(lead.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
-          const hasAppt = (!!(lead.appointment && String(lead.appointment).trim()) && !!(lead.gcal_event_id || lead.cb_event_id)) || (Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0) || !!lead.cap_event_id;
-          if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
-        }
       }
       if (missing.length > 0) {
         setAcWarning({ id, missing }); // shows the invalid banner; the card stays in the first lead stage
