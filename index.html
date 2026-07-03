@@ -2258,10 +2258,12 @@ function InviteCodesSection({currentUser, onRefresh}) {
   );
 }
 
-const RECRUIT_STAGES = ["Wishlist","Working With","Filled Out Link","Recently Onboarded","Gone But Not Forgotten"];
+const RECRUIT_STAGES = ["Wishlist","Working With","No Show / No Contact","No Show / In Contact","Filled Out Link","Recently Onboarded","Gone But Not Forgotten"];
 const RECRUIT_STAGE_COLORS = {
   "Wishlist":              {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "Working With":          {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  "No Show / No Contact":  {bg:"#fee2e2",border:"#ef4444",badge:"#991b1b"},
+  "No Show / In Contact":  {bg:"#ffedd5",border:"#f97316",badge:"#9a3412"},
   "Filled Out Link":       {bg:"#ede9fe",border:"#8b5cf6",badge:"#5b21b6"},
   "Recently Onboarded":    {bg:"#d1fae5",border:"#10b981",badge:"#065f46"},
   "Gone But Not Forgotten":{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"},
