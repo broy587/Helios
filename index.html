@@ -2365,12 +2365,13 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
   );
 }
 
-function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
+function RecruitCard({recruit,onView,onTouchDragStart,onMouseDragStart,isDragging}) {
   const dark=useDark();
   const colors=getRecruitStageColor(recruit.stage);
   const holdTimer=useRef(null);
   const moved=useRef(false);
   const startPos=useRef(null);
+  const mouseStart=useRef(null);
   const fullName=`${recruit.first_name||""} ${recruit.last_name||""}`.trim()||"Unnamed";
   const handleTouchStart=e=>{
     moved.current=false; startPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY};
@@ -2381,8 +2382,22 @@ function RecruitCard({recruit,onView,onTouchDragStart,isDragging}) {
       if(dx>10||dy>10){moved.current=true;if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}}}
   };
   const handleTouchEnd=()=>{if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}};
+  // Mouse drag: begin the board drag only once the cursor moves past a small
+  // threshold with the button held, so a plain click still opens the card.
+  const handleMouseDown=e=>{
+    if(e.button!==0)return; // left button only
+    mouseStart.current={x:e.clientX,y:e.clientY}; moved.current=false;
+    const onMove=ev=>{
+      if(!mouseStart.current)return;
+      const dx=Math.abs(ev.clientX-mouseStart.current.x),dy=Math.abs(ev.clientY-mouseStart.current.y);
+      if(dx>5||dy>5){ moved.current=true; window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); mouseStart.current=null; onMouseDragStart(ev,recruit.id); }
+    };
+    const onUp=()=>{ window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); mouseStart.current=null; };
+    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onUp);
+  };
   return (
     <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+      onMouseDown={handleMouseDown}
       onClick={()=>{if(!moved.current)onView(recruit);}}
       style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"pan-y"}}>
       <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{fullName}</div>
@@ -2495,6 +2510,21 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
     window.addEventListener("touchmove",onMove,{passive:false}); window.addEventListener("touchend",onEnd);
   };
 
+  // Mouse equivalent of the touch drag above, so laptop/desktop cursors can drag
+  // recruits between columns too. Kept separate from the touch path so touch
+  // behavior is unchanged.
+  const handleMouseDragStart=(e,id)=>{
+    setDragId(id); setDragPos({x:e.clientX,y:e.clientY});
+    const EDGE=60,MAX_SPEED=12;
+    const startScroll=dir=>{if(scrollAnim.current)return;const step=()=>{if(!boardRef.current)return;boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED;scrollAnim.current=requestAnimationFrame(step);};scrollAnim.current=requestAnimationFrame(step);};
+    const stopScroll=()=>{if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;}};
+    const onMove=ev=>{const x=ev.clientX,y=ev.clientY;setDragPos({x,y});
+      if(x<EDGE){stopScroll();startScroll("left");}else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}else stopScroll();
+      let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);};
+    const onEnd=()=>{setDragId(null);setDragOver(over=>{if(over)handleStageChange(id,over);return null;});stopScroll();window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);};
+    window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onEnd);
+  };
+
   if(loading) return (
     <div style={{minHeight:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{fontSize:14,color:"#94a3b8"}}>Loading recruits...</div>
@@ -2583,7 +2613,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
                 {stageRecruits.length===0?(
                   <div style={{textAlign:"center",color:isOver?colors.border:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10,fontWeight:isOver?700:400}}>Drop here</div>
                 ):stageRecruits.map(recruit=>(
-                  <RecruitCard key={recruit.id} recruit={recruit} onView={r=>{if(!dragId)setDetailId(r.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===recruit.id}/>
+                  <RecruitCard key={recruit.id} recruit={recruit} onView={r=>{if(!dragId)setDetailId(r.id);}} onTouchDragStart={handleTouchDragStart} onMouseDragStart={handleMouseDragStart} isDragging={dragId===recruit.id}/>
                 ))}
               </div>
             </div>
