@@ -3058,7 +3058,7 @@ const AC_REQ_ITEMS = [
   {key:"prescreen",    label:"Prescreen approved"},
   {key:"bill",         label:"Utility bill"},
   {key:"confirmation", label:"Confirmation text"},
-  {key:"spouses",      label:"Agreed that both spouses will be there"},
+  {key:"spouses",      label:"Confirmed all decision makers / spouses will be present"},
 ];
 // True if a given requirement item is satisfied on a lead. Accepts both the
 // camelCase edit-form shape and the snake_case DB shape.
@@ -3139,7 +3139,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   const card = {background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:14};
   const teamName = team ? (team.name||"your team") : "your team";
   return (
-    <div style={{padding:"0 4px"}}>
+    <div style={{flex:1,overflowY:"auto",minHeight:0,padding:"0 4px 48px"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🎯 Rep Management</div>
