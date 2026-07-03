@@ -2358,6 +2358,24 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
     if(onUpdate) onUpdate({...recruit,photos:next});
   };
 
+  // Schedule / change / cancel a recruiting appointment. The event lands on the
+  // user's OWN (primary) Google Calendar as a 30-minute block; we also store it
+  // on the recruit so it shows here and can be changed or cancelled.
+  const saveAppt = async (apptStr, eventId) => {
+    if(recruit.appt_event_id && recruit.appt_event_id !== eventId){
+      try { await GCal.deletePersonalCB(recruit.appt_event_id); } catch(e){ console.error("Couldn't remove old recruit appt:",e); }
+    }
+    try { await sb.from("recruits").update({appointment:apptStr, appt_event_id:eventId||null, updated_at:new Date().toISOString()}).eq("id",recruit.id); }
+    catch(e){ console.error("Save recruit appointment failed:",e); }
+    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null});
+  };
+  const cancelAppt = async () => {
+    if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
+    try { if(recruit.appt_event_id) await GCal.deletePersonalCB(recruit.appt_event_id); } catch(e){ console.error("Couldn't delete recruit appt from calendar:",e); }
+    try { await sb.from("recruits").update({appointment:null, appt_event_id:null, updated_at:new Date().toISOString()}).eq("id",recruit.id); } catch(e){ console.error("Couldn't clear recruit appt:",e); }
+    if(onUpdate) onUpdate({...recruit, appointment:null, appt_event_id:null});
+  };
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete)onClose();}}/>
@@ -2381,6 +2399,27 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
               <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
             </div>
           ):null)}
+          {/* Appointment — 30-min block on the user's own Google Calendar */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Appointment</div>
+            {recruit.appointment && (
+              <div style={{display:"flex",alignItems:"center",gap:8,background:dark?"#0f172a":"#f0f4ff",border:`1.5px solid ${dark?"#334155":"#c7d2fe"}`,borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+                <div style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1e293b"}}>📅 {recruit.appointment}</div>
+                <button onClick={cancelAppt} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
+              </div>
+            )}
+            <div style={{display:"flex"}}>
+              <PersonalApptButton
+                lead={{name:fullName, phone:recruit.phone||"", address:"", notes:recruit.notes||""}}
+                durationMin={30}
+                summary={`Recruiting - ${fullName}`}
+                title="📅 Schedule Appointment"
+                confirmLabel="Schedule Appointment"
+                label={recruit.appointment?"📅 Change Appointment":"📅 Schedule Appointment"}
+                onSelect={saveAppt}
+              />
+            </div>
+          </div>
           {/* Photos */}
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Photos</div>
@@ -7862,7 +7901,7 @@ const GCal = {
   // `times` = { start, end } ISO strings, or null for an all-day event.
   // `times` = { start, end } ISO strings for a timed block, OR
   //           { allDayDate: "YYYY-MM-DD" } for an all-day event.
-  async createPersonalCB(lead, times) {
+  async createPersonalCB(lead, times, opts) {
     const token = await this.signIn();
     let start, end;
     if(times && times.start && times.end){
@@ -7878,7 +7917,7 @@ const GCal = {
       end   = { date: `${next.getFullYear()}-${pad(next.getMonth()+1)}-${pad(next.getDate())}` };
     }
     const event = {
-      summary: `Personal Comeback - ${lead.name || "Lead"}`,
+      summary: (opts && opts.summary) || `Personal Comeback - ${lead.name || "Lead"}`,
       location: lead.address || "",
       description: [
         lead.phone ? `Phone: ${lead.phone}` : "",
@@ -8050,7 +8089,7 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, append
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label, lead}) {
+function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel}) {
   const [show, setShow] = React.useState(false);
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
@@ -8083,7 +8122,7 @@ function PersonalApptButton({onSelect, label, lead}) {
       const [h,m] = time.split(":").map(Number);
       const [yy,mm,dd] = date.split("-").map(Number);
       const startD = new Date(yy, mm-1, dd, h, m, 0);
-      const endD = new Date(startD.getTime() + 60*60*1000);
+      const endD = new Date(startD.getTime() + (durationMin||60)*60*1000);
       times = { start:startD.toISOString(), end:endD.toISOString() };
       // Format both ends from the real Date objects so the label always matches
       // the 1-hour block (handles 11AM→12PM, 12:30PM→1:30PM, etc.).
@@ -8101,16 +8140,16 @@ function PersonalApptButton({onSelect, label, lead}) {
     setAdding(true);
     let calOk = false, calErr = "", cbEventId = null;
     try {
-      if(lead) { const ev = await GCal.createPersonalCB(lead, times); cbEventId = ev && ev.id; calOk = true; }
+      if(lead) { const ev = await GCal.createPersonalCB(lead, times, summary?{summary}:undefined); cbEventId = ev && ev.id; calOk = true; }
     } catch(e){
       calErr = (e && e.message) || "unknown error";
-      console.error("Personal comeback calendar add failed:", e);
+      console.error("Personal calendar add failed:", e);
     }
     setAdding(false);
     onSelect(apptStr, cbEventId);
     setShow(false);
     if(lead && !calOk){
-      alert("The comeback was saved to the lead, but it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted.");
+      alert("Saved, but it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted.");
     }
   };
 
@@ -8124,7 +8163,7 @@ function PersonalApptButton({onSelect, label, lead}) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShow(false)}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>↩️ Personal Comeback</div>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{title||"↩️ Personal Comeback"}</div>
               <button onClick={()=>setShow(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{marginBottom:14}}>
@@ -8140,7 +8179,7 @@ function PersonalApptButton({onSelect, label, lead}) {
             </div>
             <button onClick={handleConfirm} disabled={!date||!time||adding}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&time&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&time&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&time&&!adding)?"pointer":"default"}}>
-              {adding?"Adding to your calendar…":"Set Comeback"}
+              {adding?"Adding to your calendar…":(confirmLabel||"Set Comeback")}
             </button>
             <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",textAlign:"center",marginTop:10,lineHeight:1.4}}>
               Adds a private event to your own Google Calendar. Only you can see it — it won't appear on the team calendar.
