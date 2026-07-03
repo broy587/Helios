@@ -8191,9 +8191,11 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
 
   const handleConfirm = async () => {
     if(!date || !time) return;
-    const d = new Date(date);
     const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const dateStr = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    // Build the date label straight from the YYYY-MM-DD parts. Using new Date(date)
+    // parses as UTC midnight and renders one day behind in negative-UTC timezones.
+    const [dyy,dmm,ddd] = date.split("-").map(Number);
+    const dateStr = `${MONTHS[dmm-1]} ${ddd}, ${dyy}`;
     let apptStr = dateStr;
     // Build ISO start/end for the Google Calendar event (1-hour block if a time
     // was given; otherwise an all-day event on the selected date).
