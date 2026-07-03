@@ -2241,7 +2241,7 @@ const RECRUIT_STAGE_COLORS = {
 };
 function getRecruitStageColor(stage){ return RECRUIT_STAGE_COLORS[stage]||{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"}; }
 
-const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0],photos:[] };
+const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0],photos:[],appointment:"",appt_event_id:"" };
 
 function RecruitModal({open,onClose,onSave,initial}) {
   const dark=useDark();
@@ -2260,6 +2260,21 @@ function RecruitModal({open,onClose,onSave,initial}) {
     if(photoRef.current) photoRef.current.value="";
   };
   const removePhoto=(idx)=>setForm(f=>({...f,photos:(f.photos||[]).filter((_,i)=>i!==idx)}));
+  const fullName=`${form.firstName||""} ${form.lastName||""}`.trim()||"New Recruit";
+  // Schedule during creation/edit: the calendar event is built from what's typed
+  // in the form right now (name/phone/notes). Stored on the form so it saves with
+  // the recruit. Replacing an appointment removes the old calendar event first.
+  const setAppt = async (apptStr, eventId) => {
+    if(form.appt_event_id && form.appt_event_id !== eventId){
+      try{ await GCal.deletePersonalCB(form.appt_event_id); }catch(e){ console.error("Couldn't remove old recruit appt:",e); }
+    }
+    setForm(f=>({...f, appointment:apptStr, appt_event_id:eventId||null, ...(f.stage==="Wishlist"?{stage:"Working With"}:{})}));
+  };
+  const clearAppt = async () => {
+    if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
+    try{ if(form.appt_event_id) await GCal.deletePersonalCB(form.appt_event_id); }catch(e){ console.error("Couldn't delete recruit appt from calendar:",e); }
+    setForm(f=>({...f, appointment:"", appt_event_id:""}));
+  };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
@@ -2286,6 +2301,26 @@ function RecruitModal({open,onClose,onSave,initial}) {
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Notes about this recruit..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
+          {form.appointment && (
+            <div style={{display:"flex",alignItems:"center",gap:8,background:dark?"#0f172a":"#f0f4ff",border:`1.5px solid ${dark?"#334155":"#c7d2fe"}`,borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+              <div style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1e293b"}}>📅 {form.appointment}</div>
+              <button type="button" onClick={clearAppt} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
+            </div>
+          )}
+          <div style={{display:"flex"}}>
+            <PersonalApptButton
+              lead={{name:fullName, phone:form.phone||"", address:"", notes:form.notes||""}}
+              durationMin={30}
+              summary={`New Hire - ${fullName}`}
+              title="📅 Schedule Appointment"
+              confirmLabel="Schedule Appointment"
+              label={form.appointment?"📅 Change Appointment":"📅 Schedule Appointment"}
+              onSelect={setAppt}
+            />
+          </div>
         </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Photos</label>
@@ -2368,9 +2403,18 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
     if(recruit.appt_event_id && recruit.appt_event_id !== eventId){
       try { await GCal.deletePersonalCB(recruit.appt_event_id); } catch(e){ console.error("Couldn't remove old recruit appt:",e); }
     }
-    try { await sb.from("recruits").update({appointment:apptStr, appt_event_id:eventId||null, updated_at:new Date().toISOString()}).eq("id",recruit.id); }
+    // Scheduling an appointment auto-advances a Wishlist recruit to Working With.
+    const autoStage = recruit.stage==="Wishlist";
+    const upd = {appointment:apptStr, appt_event_id:eventId||null, updated_at:new Date().toISOString()};
+    let nextHistory = recruit.history;
+    if(autoStage){
+      const entry={ts:formatTs(),changes:[`Stage: "Wishlist" to "Working With"`,`Appointment scheduled`]};
+      nextHistory=[entry,...(Array.isArray(recruit.history)?recruit.history:[])];
+      upd.stage="Working With"; upd.history=nextHistory;
+    }
+    try { await sb.from("recruits").update(upd).eq("id",recruit.id); }
     catch(e){ console.error("Save recruit appointment failed:",e); }
-    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null});
+    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null, ...(autoStage?{stage:"Working With", history:nextHistory}:{})});
   };
   const cancelAppt = async () => {
     if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
@@ -2415,7 +2459,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
               <PersonalApptButton
                 lead={{name:fullName, phone:recruit.phone||"", address:"", notes:recruit.notes||""}}
                 durationMin={30}
-                summary={`Recruiting - ${fullName}`}
+                summary={`New Hire - ${fullName}`}
                 title="📅 Schedule Appointment"
                 confirmLabel="Schedule Appointment"
                 label={recruit.appointment?"📅 Change Appointment":"📅 Schedule Appointment"}
@@ -2512,6 +2556,25 @@ function RecruitCard({recruit,onView,onTouchDragStart,onMouseDragStart,isDraggin
       onClick={()=>{if(!moved.current)onView(recruit);}}
       style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",opacity:isDragging?0.3:1,touchAction:"pan-y"}}>
       <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{fullName}</div>
+      {recruit.appointment && (()=>{
+        try {
+          const MMAP = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"};
+          const raw = recruit.appointment;
+          const dashIdx = raw.indexOf(' - ');
+          if (dashIdx === -1) return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginTop:3}}>{raw}</div>;
+          const datePart = raw.substring(0, dashIdx).trim();
+          const afterDash = raw.substring(dashIdx + 3).trim();
+          const startTime = afterDash.indexOf(' to ') > -1 ? afterDash.substring(0, afterDash.indexOf(' to ')).trim() : afterDash;
+          const cleaned = datePart.replace(/,/g,'').trim();
+          const dp = cleaned.split(/\s+/);
+          const month = MMAP[dp[0]] || String(Object.keys(MMAP).indexOf(dp[0])+1).padStart(2,'0');
+          const day = dp[1] ? String(parseInt(dp[1])).padStart(2,'0') : '??';
+          if (month === "00" || day === "NaN") return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginTop:3}}>{raw}</div>;
+          return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginTop:3}}>{month}/{day} @ {startTime}</div>;
+        } catch(e) {
+          return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginTop:3}}>{recruit.appointment}</div>;
+        }
+      })()}
     </div>
   );
 }
@@ -2589,7 +2652,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(formMap[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${formMap[key]||"-"}"`);}
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Recruit created"]}];
-    const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],photos:Array.isArray(form.photos)?form.photos:[],history:newHistory,updated_at:new Date().toISOString()};
+    const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],photos:Array.isArray(form.photos)?form.photos:[],appointment:form.appointment||null,appt_event_id:form.appt_event_id||null,history:newHistory,updated_at:new Date().toISOString()};
     if(existing){await sb.from("recruits").update(payload).eq("id",existing.id);}
     else{await sb.from("recruits").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,recruit:null});
@@ -2711,7 +2774,28 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
         {RECRUIT_STAGES.map(stage=>{
           const colors=getRecruitStageColor(stage);
-          const stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
+          let stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
+          if(stage==="Working With"){
+            // Appointment start time as ms; no/unparseable appointment sorts last.
+            const apptMs=(r)=>{
+              const raw=r&&r.appointment;
+              if(!raw||!String(raw).trim()) return Infinity;
+              try{
+                const dashIdx=raw.indexOf(' - ');
+                const datePart=(dashIdx===-1?raw:raw.substring(0,dashIdx)).trim();
+                let timeStr="";
+                if(dashIdx!==-1){
+                  const afterDash=raw.substring(dashIdx+3).trim();
+                  timeStr=afterDash.indexOf(' to ')>-1?afterDash.substring(0,afterDash.indexOf(' to ')).trim():afterDash;
+                }
+                const d=new Date(timeStr?`${datePart} ${timeStr}`:datePart);
+                const t=d.getTime();
+                return isNaN(t)?Infinity:t;
+              }catch(e){ return Infinity; }
+            };
+            // Sorted copy: soonest appointment at top, undated recruits below (stable).
+            stageRecruits=[...stageRecruits].sort((a,b)=>{const am=apptMs(a),bm=apptMs(b);return am===bm?0:am-bm;});
+          }
           const isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
@@ -2737,7 +2821,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
         </div>
       )}
       <RecruitModal open={modal.open} onClose={()=>setModal({open:false,recruit:null})} onSave={saveRecruit}
-        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id,history:Array.isArray(modal.recruit.history)?modal.recruit.history:[]}:null}/>
+        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id,history:Array.isArray(modal.recruit.history)?modal.recruit.history:[],appointment:modal.recruit.appointment||"",appt_event_id:modal.recruit.appt_event_id||""}:null}/>
       {detailId&&(
         <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
           onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
