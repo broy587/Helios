@@ -1736,6 +1736,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
     if(error){ setProfiles(prev=>prev.map(p=>p.id===repId?{...p,calendar_access:cur}:p)); window.alert("Couldn't update calendar access: "+(error.message||"unknown error")); }
   };
 
+  const handleDeleteRep = async (repId, repName) => {
     if (!window.confirm(`Remove ${repName} from your team list?\n\nTheir leads and account are preserved and can be restored. They will be hidden from the reps list.`)) return;
     const {error} = await sb.from("profiles").update({deleted_at:new Date().toISOString()}).eq("id",repId);
     if (error){ window.alert("Couldn't remove rep: "+(error.message||"unknown error")); return; }
@@ -9490,6 +9491,15 @@ function App() {
   const [unreadTickets,setUnreadTickets]=useState(0);
   const [dark,setDark]=useDarkMode();
   const [loading,setLoading]=useState(true);
+  // Safety net: never let the app sit on the loading spinner forever. If the
+  // initial data load hasn't finished in ~14s (e.g. a stalled network/Supabase
+  // request), drop the spinner so the app renders. loadData keeps running in the
+  // background and fills state in when it eventually returns; the user can also
+  // pull-to-refresh. This can't fire on a healthy load (which finishes in ~1-2s).
+  React.useEffect(()=>{
+    const t=setTimeout(()=>setLoading(false), 14000);
+    return ()=>clearTimeout(t);
+  },[]);
   const [leads,setLeads]=useState([]);
   // Slim, PII-free team leads used ONLY for Team Stats aggregates (so reps can
   // see team numbers without their teammates' names/addresses/phones loading).
