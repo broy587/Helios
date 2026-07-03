@@ -1610,6 +1610,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
   const [saving, setSaving] = useState(false);
   const [repActionOpen, setRepActionOpen] = useState(null);
   const [assignTeamOpen, setAssignTeamOpen] = useState(null);
+  const [calAccessOpen, setCalAccessOpen] = useState(null);
   const [showEditTeam, setShowEditTeam] = useState(false);
   const [viewingRepProfile, setViewingRepProfile] = useState(null);
   const [editTeamName, setEditTeamName] = useState("");
@@ -1719,7 +1720,22 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
     onDataRefresh();
   };
 
-  const handleDeleteRep = async (repId, repName) => {
+  // Calendar access (per rep). Stored on the rep's profile: calendar_access
+  // (array of team ids) + calendar_access_all (see every calendar, incl. future).
+  const handleSetCalAll = async (repId, val) => {
+    const prevAll = !!(profiles.find(p=>p.id===repId)||{}).calendar_access_all;
+    setProfiles(prev=>prev.map(p=>p.id===repId?{...p,calendar_access_all:val}:p));
+    const {error} = await sb.from("profiles").update({calendar_access_all:val}).eq("id",repId);
+    if(error){ setProfiles(prev=>prev.map(p=>p.id===repId?{...p,calendar_access_all:prevAll}:p)); window.alert("Couldn't update calendar access: "+(error.message||"unknown error")); }
+  };
+  const handleToggleCalTeam = async (repId, teamId) => {
+    const cur = (()=>{ const a=(profiles.find(p=>p.id===repId)||{}).calendar_access; return Array.isArray(a)?a:[]; })();
+    const next = cur.includes(teamId) ? cur.filter(x=>x!==teamId) : [...cur, teamId];
+    setProfiles(prev=>prev.map(p=>p.id===repId?{...p,calendar_access:next}:p));
+    const {error} = await sb.from("profiles").update({calendar_access:next}).eq("id",repId);
+    if(error){ setProfiles(prev=>prev.map(p=>p.id===repId?{...p,calendar_access:cur}:p)); window.alert("Couldn't update calendar access: "+(error.message||"unknown error")); }
+  };
+
     if (!window.confirm(`Remove ${repName} from your team list?\n\nTheir leads and account are preserved and can be restored. They will be hidden from the reps list.`)) return;
     const {error} = await sb.from("profiles").update({deleted_at:new Date().toISOString()}).eq("id",repId);
     if (error){ window.alert("Couldn't remove rep: "+(error.message||"unknown error")); return; }
@@ -1908,6 +1924,11 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                           </div>
                         </div>
                         )}
+                        {/* Calendar access — owner + managers */}
+                        <button onClick={()=>{setRepActionOpen(null);setCalAccessOpen(rep.id);}}
+                          style={{width:"100%",padding:"10px 14px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",color:"#0f172a",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                          Calendar Access
+                        </button>
                         {/* Assign to team — owner only */}
                         {isOwner && (
                         <button onClick={()=>{setRepActionOpen(null);setAssignTeamOpen(rep.id);}}
@@ -2091,6 +2112,52 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                   </div>
                 );
               })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {calAccessOpen && (()=>{
+        const rep=profiles.find(p=>p.id===calAccessOpen);
+        const all=!!(rep&&rep.calendar_access_all);
+        const access=Array.isArray(rep&&rep.calendar_access)?rep.calendar_access:[];
+        const calTeams=teams.filter(t=>TEAM_CALENDARS[t.id]);
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setCalAccessOpen(null)}>
+            <div style={{background:dark?"#1e293b":"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"78vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontWeight:800,fontSize:17,color:dark?"#f1f5f9":"#0f172a"}}>Calendar Access — {rep?.name}</div>
+                <button onClick={()=>setCalAccessOpen(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+              </div>
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:16,lineHeight:1.5}}>Pick which team calendars {rep?.name||"this rep"} can view in the Calendar tab. Select more than one and they can toggle between them. By default a rep only sees their own team's calendar.</div>
+              <div onClick={()=>handleSetCalAll(calAccessOpen,!all)}
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 14px",borderRadius:12,background:all?(dark?"rgba(16,185,129,0.15)":"#ecfdf5"):(dark?"#0f172a":"#f8fafc"),border:`1.5px solid ${all?"#10b981":(dark?"#334155":"#e2e8f0")}`,cursor:"pointer",marginBottom:16}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>See all calendars</div>
+                  <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Includes any new team calendars added later</div>
+                </div>
+                <div style={{width:44,height:26,borderRadius:20,background:all?"#10b981":"#cbd5e1",position:"relative",flexShrink:0,transition:"background 0.15s"}}>
+                  <div style={{position:"absolute",top:3,left:all?21:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+                </div>
+              </div>
+              <div style={{opacity:all?0.45:1,pointerEvents:all?"none":"auto"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Individual calendars</div>
+                {calTeams.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"14px 0"}}>No team calendars are configured yet.</div>}
+                {calTeams.map(t=>{
+                  const on=all||access.includes(t.id);
+                  return (
+                    <div key={t.id} onClick={()=>{if(!all)handleToggleCalTeam(calAccessOpen,t.id);}}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`,cursor:all?"default":"pointer"}}>
+                      {t.logo_url?<img src={t.logo_url} style={{width:34,height:34,borderRadius:8,objectFit:"cover",border:"1.5px solid #e2e8f0",flexShrink:0}}/>
+                        :<div style={{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>☀</div>}
+                      <div style={{flex:1,fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{t.name}</div>
+                      <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${on?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {on && <span style={{color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>✓</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
@@ -7891,7 +7958,7 @@ const TeamCalendars = {
   myTeams: [],
   // owner's remembered pick for this session
   lastOwnerPick: null,
-  set({ currentUserId, isOwner, teams, teamMembers }) {
+  set({ currentUserId, isOwner, teams, teamMembers, calendarAccess, calendarAccessAll }) {
     this.currentUserId = currentUserId;
     this.isOwner = isOwner;
     // Pull calendar config from the TEAM_CALENDARS map (keyed by team id).
@@ -7903,7 +7970,18 @@ const TeamCalendars = {
       })
       .filter(Boolean);
     this.teams = withCal;
-    this.myTeams = withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId));
+    // Which calendars THIS user can browse:
+    //  • calendarAccessAll → every configured calendar, including any added later
+    //  • calendarAccess (non-empty) → exactly those calendars (a per-rep override
+    //    set by a manager/owner in the Team tab)
+    //  • otherwise (default) → the calendars of the team(s) they belong to
+    if(calendarAccessAll){
+      this.myTeams = withCal;
+    } else if(Array.isArray(calendarAccess) && calendarAccess.length>0){
+      this.myTeams = withCal.filter(t=>calendarAccess.includes(t.id));
+    } else {
+      this.myTeams = withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId));
+    }
   },
   // Returns one of:
   //  { status:"ok", calendarId, teamName }              → use this calendar
@@ -9427,8 +9505,10 @@ function App() {
       isOwner: user.id === OWNER_ID,
       teams,
       teamMembers,
+      calendarAccess: profile && profile.calendar_access,
+      calendarAccessAll: profile && profile.calendar_access_all,
     });
-  },[user, teams, teamMembers]);
+  },[user, teams, teamMembers, profile]);
   const [teamGoals,setTeamGoals]=useState({}); // { teamId: { weekly: {...}, quarterly: {...} } }
   const [personalGoals,setPersonalGoals]=useState({}); // { userId: { weekly: {...}, quarterly: {...} } }
   const [tab,setTab]=useState("pipeline");
@@ -10034,7 +10114,10 @@ function App() {
   // Calendar tab: owner, or a member of ANY team that has a Google Calendar
   // configured in TEAM_CALENDARS (was hardcoded to Helios only, which hid the
   // tab from every other team's reps, e.g. Kilowatt Kartels).
-  const onCalendarTeam = isOwner || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id));
+  const onCalendarTeam = isOwner
+    || profile.calendar_access_all
+    || (Array.isArray(profile.calendar_access) && profile.calendar_access.some(tid => TEAM_CALENDARS[tid]))
+    || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id));
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
   // pipelineFilter state already declared at top
