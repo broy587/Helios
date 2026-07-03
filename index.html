@@ -10228,7 +10228,13 @@ function App() {
   // Compute visible leads
   const getVisibleLeads = () => {
     if (pipelineFilter==="mine") return leads.filter(l=>l.owner_id===user.id);
-    if (pipelineFilter==="all") return leads;
+    if (pipelineFilter==="all") {
+      if (isOwner) return leads; // owner: truly everything
+      // Safety: a non-owner should never see every team. Bound to their team members.
+      const memberIds=new Set([user.id]);
+      visibleTeams.forEach(t=>(teamMembers[t.id]||[]).forEach(m=>memberIds.add(m.user_id)));
+      return leads.filter(l=>memberIds.has(l.owner_id));
+    }
     if (pipelineFilter.startsWith("team:")) {
       const teamId=pipelineFilter.replace("team:","");
       const memberIds=(teamMembers[teamId]||[]).map(m=>m.user_id);
