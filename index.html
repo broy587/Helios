@@ -415,6 +415,15 @@ function AuthScreen({ onAuth }) {
     setMode("login"); setLoading(false);
   };
 
+  const handleResetPassword = async () => {
+    setLoading(true); setError(""); setMsg("");
+    if(!email.trim()){ setError("Enter your account email first."); setLoading(false); return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+    if(error){ setError(error.message); setLoading(false); return; }
+    setMsg("If an account exists for that email, a password reset link is on its way. Check your inbox — and your spam folder.");
+    setLoading(false);
+  };
+
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#1a2456,#2d1f3d)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"#faf6f0",borderRadius:20,padding:32,width:"min(100%,400px)",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
@@ -433,6 +442,11 @@ function AuthScreen({ onAuth }) {
             </button>
           ))}
         </div>
+        {mode==="reset" && (
+          <div style={{fontSize:13,color:"#475569",marginBottom:16,lineHeight:1.5}}>
+            Enter your account email and we'll send you a link to reset your password.
+          </div>
+        )}
         {mode==="signup" && (
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Full Name</label>
@@ -443,10 +457,17 @@ function AuthScreen({ onAuth }) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Email</label>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" style={inputStyle}/>
         </div>
+        {mode!=="reset" && (
         <div style={{marginBottom:mode==="signup"?14:22}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Password</label>
           <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="password" style={inputStyle}/>
         </div>
+        )}
+        {mode==="login" && (
+          <div style={{textAlign:"right",marginTop:-10,marginBottom:16}}>
+            <span onClick={()=>{setMode("reset");setError("");setMsg("");}} style={{fontSize:12,color:"#6b2d4e",cursor:"pointer",fontWeight:600}}>Forgot password?</span>
+          </div>
+        )}
         {mode==="signup" && (
           <div style={{marginBottom:22}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Invite Code</label>
@@ -463,10 +484,15 @@ function AuthScreen({ onAuth }) {
             <span style={{fontSize:13,color:"#64748b",cursor:"pointer"}} onClick={()=>setRememberMe(r=>!r)}>Remember my email</span>
           </div>
         )}
-        <button onClick={mode==="login"?handleLogin:handleSignup} disabled={loading}
+        <button onClick={mode==="login"?handleLogin:mode==="reset"?handleResetPassword:handleSignup} disabled={loading}
           style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#2d3a6b)",color:"#fff",fontWeight:700,cursor:loading?"default":"pointer",fontSize:15,opacity:loading?0.7:1}}>
-          {loading?"Please wait...":mode==="login"?"Log In":"Create Account"}
+          {loading?"Please wait...":mode==="login"?"Log In":mode==="reset"?"Send Reset Link":"Create Account"}
         </button>
+        {mode==="reset" && (
+          <div style={{textAlign:"center",marginTop:14}}>
+            <span onClick={()=>{setMode("login");setError("");setMsg("");}} style={{fontSize:13,color:"#6b2d4e",cursor:"pointer",fontWeight:600}}>← Back to log in</span>
+          </div>
+        )}
       </div>
     </div>
   );
