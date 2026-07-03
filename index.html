@@ -1624,7 +1624,16 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
   const memberIds = members.map(m=>m.user_id);
   const allReps = profiles.filter(p=>(isMemberRole(p.role)||p.id===OWNER_ID)&&!p.deleted_at);
   const deletedReps = profiles.filter(p=>(isMemberRole(p.role)||p.id===OWNER_ID)&&p.deleted_at);
-  const nonMembers = allReps.filter(r=>!memberIds.includes(r.id));
+  // Reps eligible to add to the selected team. The owner can add anyone who
+  // isn't already on THIS team. Managers can only add reps who aren't on ANY
+  // team yet — so they can't pull someone off another manager's team.
+  const assignedUserIds = new Set(Object.values(teamMembers||{}).flat().map(m=>m.user_id));
+  const managerAddOnly = !isOwner && currentUser.role==="manager";
+  const nonMembers = allReps.filter(r=>{
+    if(memberIds.includes(r.id)) return false;            // already on this team
+    if(managerAddOnly && assignedUserIds.has(r.id)) return false; // on another team
+    return true;
+  });
 
   // Get teams a rep belongs to
   const getRepTeams = (repId) => teams.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===repId));
