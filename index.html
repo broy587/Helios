@@ -2746,13 +2746,18 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   // behavior is unchanged.
   const handleMouseDragStart=(e,id)=>{
     setDragId(id); setDragPos({x:e.clientX,y:e.clientY});
+    // Stop the browser from highlighting text everywhere the cursor passes during the drag.
+    const prevUserSelect=document.body.style.userSelect;
+    const prevWebkit=document.body.style.webkitUserSelect;
+    document.body.style.userSelect="none"; document.body.style.webkitUserSelect="none";
+    try{ const sel=window.getSelection&&window.getSelection(); if(sel&&sel.removeAllRanges) sel.removeAllRanges(); }catch(_){}
     const EDGE=60,MAX_SPEED=12;
     const startScroll=dir=>{if(scrollAnim.current)return;const step=()=>{if(!boardRef.current)return;boardRef.current.scrollLeft+=dir==="right"?MAX_SPEED:-MAX_SPEED;scrollAnim.current=requestAnimationFrame(step);};scrollAnim.current=requestAnimationFrame(step);};
     const stopScroll=()=>{if(scrollAnim.current){cancelAnimationFrame(scrollAnim.current);scrollAnim.current=null;}};
-    const onMove=ev=>{const x=ev.clientX,y=ev.clientY;setDragPos({x,y});
+    const onMove=ev=>{ev.preventDefault();const x=ev.clientX,y=ev.clientY;setDragPos({x,y});
       if(x<EDGE){stopScroll();startScroll("left");}else if(x>window.innerWidth-EDGE){stopScroll();startScroll("right");}else stopScroll();
       let found=null;for(const [stage,el] of Object.entries(columnRefs.current)){if(!el)continue;const r=el.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom){found=stage;break;}}setDragOver(found);};
-    const onEnd=()=>{setDragId(null);setDragOver(over=>{if(over)handleStageChange(id,over);return null;});stopScroll();window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);};
+    const onEnd=()=>{setDragId(null);setDragOver(over=>{if(over)handleStageChange(id,over);return null;});stopScroll();document.body.style.userSelect=prevUserSelect;document.body.style.webkitUserSelect=prevWebkit;window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);};
     window.addEventListener("mousemove",onMove); window.addEventListener("mouseup",onEnd);
   };
 
