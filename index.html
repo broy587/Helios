@@ -2258,10 +2258,10 @@ function InviteCodesSection({currentUser, onRefresh}) {
   );
 }
 
-const RECRUIT_STAGES = ["Wishlist","Working With","No Show / No Contact","No Show / In Contact","Filled Out Link","Lost In The Process","Recently Onboarded","Gone But Not Forgotten"];
+const RECRUIT_STAGES = ["Wishlist","Scheduled Meeting","No Show / No Contact","No Show / In Contact","Filled Out Link","Lost In The Process","Recently Onboarded","Gone But Not Forgotten"];
 const RECRUIT_STAGE_COLORS = {
   "Wishlist":              {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
-  "Working With":          {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
+  "Scheduled Meeting":          {bg:"#dbeafe",border:"#3b82f6",badge:"#1e3a8a"},
   "No Show / No Contact":  {bg:"#fee2e2",border:"#ef4444",badge:"#991b1b"},
   "No Show / In Contact":  {bg:"#ffedd5",border:"#f97316",badge:"#9a3412"},
   "Filled Out Link":       {bg:"#ede9fe",border:"#8b5cf6",badge:"#5b21b6"},
@@ -2298,7 +2298,7 @@ function RecruitModal({open,onClose,onSave,initial}) {
     if(form.appt_event_id && form.appt_event_id !== eventId){
       try{ await GCal.deletePersonalCB(form.appt_event_id); }catch(e){ console.error("Couldn't remove old recruit appt:",e); }
     }
-    setForm(f=>({...f, appointment:apptStr, appt_event_id:eventId||null, ...(f.stage==="Wishlist"?{stage:"Working With"}:{})}));
+    setForm(f=>({...f, appointment:apptStr, appt_event_id:eventId||null, ...(f.stage==="Wishlist"?{stage:"Scheduled Meeting"}:{})}));
   };
   const clearAppt = async () => {
     if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
@@ -2396,7 +2396,17 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
   const [uploading,setUploading]=useState(false);
   const [imgOpen,setImgOpen]=useState(null);
   const fileRef=React.useRef(null);
-  React.useEffect(()=>{ setPhotos(Array.isArray(recruit&&recruit.photos)?recruit.photos:[]); },[recruit&&recruit.id]);
+  React.useEffect(()=>{
+    const rid=recruit&&recruit.id;
+    setPhotos(Array.isArray(recruit&&recruit.photos)?recruit.photos:[]);
+    if(!rid) return;
+    let cancelled=false;
+    // Photos are omitted from the recruit list for speed — load them on open.
+    sb.from("recruits").select("photos").eq("id",rid).single().then(({data})=>{
+      if(!cancelled && data) setPhotos(Array.isArray(data.photos)?data.photos:[]);
+    }).catch(e=>console.error("Couldn't load recruit photos:",e));
+    return ()=>{ cancelled=true; };
+  },[recruit&&recruit.id]);
   if(!recruit) return null;
   const colors=getRecruitStageColor(recruit.stage);
   const fullName=`${recruit.first_name||""} ${recruit.last_name||""}`.trim()||"Unnamed Recruit";
@@ -2433,18 +2443,18 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
     if(recruit.appt_event_id && recruit.appt_event_id !== eventId){
       try { await GCal.deletePersonalCB(recruit.appt_event_id); } catch(e){ console.error("Couldn't remove old recruit appt:",e); }
     }
-    // Scheduling an appointment auto-advances a Wishlist recruit to Working With.
+    // Scheduling an appointment auto-advances a Wishlist recruit to Scheduled Meeting.
     const autoStage = recruit.stage==="Wishlist";
     const upd = {appointment:apptStr, appt_event_id:eventId||null, updated_at:new Date().toISOString()};
     let nextHistory = recruit.history;
     if(autoStage){
-      const entry={ts:formatTs(),changes:[`Stage: "Wishlist" to "Working With"`,`Appointment scheduled`]};
+      const entry={ts:formatTs(),changes:[`Stage: "Wishlist" to "Scheduled Meeting"`,`Appointment scheduled`]};
       nextHistory=[entry,...(Array.isArray(recruit.history)?recruit.history:[])];
-      upd.stage="Working With"; upd.history=nextHistory;
+      upd.stage="Scheduled Meeting"; upd.history=nextHistory;
     }
     try { await sb.from("recruits").update(upd).eq("id",recruit.id); }
     catch(e){ console.error("Save recruit appointment failed:",e); }
-    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null, ...(autoStage?{stage:"Working With", history:nextHistory}:{})});
+    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null, ...(autoStage?{stage:"Scheduled Meeting", history:nextHistory}:{})});
   };
   const cancelAppt = async () => {
     if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
@@ -2617,6 +2627,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
   const isOwner = currentUser && currentUser.id===OWNER_ID;
   const isPrivileged = isOwner || currentUser.role==="manager" || currentUser.role==="closer";
   const [recruits,setRecruits]=useState([]);
+  const [recruitSearch,setRecruitSearch]=useState("");
   const [loading,setLoading]=useState(true);
   const [modal,setModal]=useState({open:false,recruit:null});
   const [detailId,setDetailId]=useState(null);
@@ -2632,11 +2643,16 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
 
   const loadRecruits = async () => {
     setLoading(true);
-    // Owner loads all, manager loads team members', rep loads own
-    let query = sb.from("recruits").select("*").order("created_at",{ascending:false});
+    // Owner loads all, manager loads team members', rep loads own.
+    // NOTE: photos (base64 blobs) are intentionally excluded here — they made the
+    // tab slow to load. They're fetched on demand when a recruit is opened.
+    const RECRUIT_LIST_COLS = "id,owner_id,first_name,last_name,phone,email,social_media,notes,stage,history,appointment,appt_event_id,created_at,updated_at";
+    let query = sb.from("recruits").select(RECRUIT_LIST_COLS).order("created_at",{ascending:false});
     if (!isOwner && !isPrivileged) query = query.eq("owner_id", currentUser.id);
     const {data}=await query;
-    setRecruits(data||[]); setLoading(false);
+    // Legacy stage rename: existing recruits saved as "Working With" now show under "Scheduled Meeting".
+    const remapped=(data||[]).map(r=>r.stage==="Working With"?{...r,stage:"Scheduled Meeting"}:r);
+    setRecruits(remapped); setLoading(false);
   };
 
   // Filter logic — same pattern as pipeline
@@ -2668,7 +2684,17 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
     }
     return recruits.filter(r=>r.owner_id===currentUser.id);
   };
-  const filteredRecruits = getFilteredRecruits();
+  const filteredRecruits = (()=>{
+    const base = getFilteredRecruits();
+    const q = recruitSearch.trim().toLowerCase();
+    if(!q) return base;
+    const digits = q.replace(/\D/g,"");
+    return base.filter(r=>{
+      const name = `${r.first_name||""} ${r.last_name||""}`.trim().toLowerCase();
+      const phone = String(r.phone||"").replace(/\D/g,"");
+      return name.includes(q) || (digits.length>0 && phone.includes(digits));
+    });
+  })();
 
   const saveRecruit = async (form) => {
     const existing=modal.recruit&&modal.recruit.id?recruits.find(r=>r.id===modal.recruit.id):null;
@@ -2800,12 +2826,23 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
           style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14}}>+ Add</button>
       </div>
 
+      {/* Search */}
+      <div style={{padding:"12px 16px 0",position:"relative"}}>
+        <input placeholder="Search recruits by name or phone..." value={recruitSearch}
+          onChange={e=>setRecruitSearch(e.target.value)}
+          style={{width:"100%",padding:"10px 34px 10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+        {recruitSearch && (
+          <button onClick={()=>setRecruitSearch("")}
+            style={{position:"absolute",right:24,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94a3b8",fontSize:16,cursor:"pointer",padding:4}}>✕</button>
+        )}
+      </div>
+
       {/* Board */}
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
         {RECRUIT_STAGES.map(stage=>{
           const colors=getRecruitStageColor(stage);
           let stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
-          if(stage==="Working With"){
+          if(stage==="Scheduled Meeting"){
             // Appointment start time as ms; no/unparseable appointment sorts last.
             const apptMs=(r)=>{
               const raw=r&&r.appointment;
@@ -2855,7 +2892,14 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       {detailId&&(
         <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
           onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
-          onEdit={r=>{setDetailId(null);setModal({open:true,recruit:r});}}
+          onEdit={async r=>{
+            setDetailId(null);
+            // The list has no photos — pull them before editing so a save can't wipe them.
+            let photos=[];
+            try{ const {data}=await sb.from("recruits").select("photos").eq("id",r.id).single(); photos=Array.isArray(data&&data.photos)?data.photos:[]; }
+            catch(e){ console.error("Couldn't load recruit photos for edit:",e); }
+            setModal({open:true,recruit:{...r,photos}});
+          }}
           onDelete={deleteRecruit}/>
       )}
     </div>
