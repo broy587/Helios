@@ -2310,6 +2310,9 @@ function RecruitModal({open,onClose,onSave,initial}) {
             {RECRUIT_STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {initial && initial.id && Array.isArray(form.history) && form.history.length>0 && (
+          <HistorySection lead={{id:form.id, history:form.history}} dark={dark} table="recruits"/>
+        )}
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
           <button onClick={()=>onSave(form)} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
@@ -2445,15 +2448,7 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
             </div>
           )}
           {recruit.history&&recruit.history.length>0&&(
-            <div style={{marginBottom:16,borderTop:"1.5px solid #f1f5f9",paddingTop:14}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Change History</div>
-              {recruit.history.map((entry,i)=>(
-                <div key={i} style={{marginBottom:10,paddingBottom:10,borderBottom:i<recruit.history.length-1?"1px solid #f1f5f9":"none"}}>
-                  <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>{entry.ts}</div>
-                  {entry.changes.map((ch,j)=><div key={j} style={{fontSize:12,color:"#475569",lineHeight:1.5,paddingLeft:8,borderLeft:"2px solid #6b2d4e",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{ch}</div>)}
-                </div>
-              ))}
-            </div>
+            <HistorySection lead={recruit} dark={dark} table="recruits"/>
           )}
           {confirmDelete?(
             <div style={{background:"#fff5f5",border:"1.5px solid #fca5a5",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
@@ -2742,7 +2737,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
         </div>
       )}
       <RecruitModal open={modal.open} onClose={()=>setModal({open:false,recruit:null})} onSave={saveRecruit}
-        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id}:null}/>
+        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id,history:Array.isArray(modal.recruit.history)?modal.recruit.history:[]}:null}/>
       {detailId&&(
         <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
           onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
@@ -2902,9 +2897,10 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
 
 
 // ── History Section ───────────────────────────────────────────────────
-function HistorySection({lead, dark: darkProp}) {
+function HistorySection({lead, dark: darkProp, table}) {
   const darkCtx=useDark();
   const dark = darkProp !== undefined ? darkProp : darkCtx;
+  const tbl = table || "leads";
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [history, setHistory] = React.useState(lead.history||[]);
@@ -2924,7 +2920,7 @@ function HistorySection({lead, dark: darkProp}) {
 
   const saveHistory = async () => {
     setSaving(true);
-    await sb.from("leads").update({history, updated_at:new Date().toISOString()}).eq("id",lead.id);
+    await sb.from(tbl).update({history, updated_at:new Date().toISOString()}).eq("id",lead.id);
     setSaving(false);
     setEditing(false);
     lead.history = history; // update local ref
