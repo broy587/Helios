@@ -3014,7 +3014,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         />
         <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>No close, agreed to follow up at a later date</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>In close, the customer agreed to a follow up at a later date</div>
             <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,background:hasFollowUp?(dark?"#064e3b":"#d1fae5"):(dark?"#7f1d1d":"#fee2e2"),color:hasFollowUp?(dark?"#6ee7b7":"#047857"):(dark?"#fca5a5":"#b91c1c")}}>{hasFollowUp?"Yes":"No"}</span>
           </div>
           {hasFollowUp && followUpDate && (
@@ -3038,7 +3038,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
       />
       <div style={{marginBottom:22,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>No close, agreed to follow up at a later date</div>
+        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>In close, the customer agreed to a follow up at a later date</div>
         <div style={{display:"flex",gap:10}}>
           {["Yes","No"].map(opt=>{
             const active = opt==="Yes" ? hasFollowUp : !hasFollowUp && form.followUpAgreed==="No";
@@ -4801,7 +4801,7 @@ function analyzeHygiene(leads, staleDays) {
         badCloseDate.push({lead, when: ap});
       }
     }
-    // "No close, agreed to follow up at a later date" — surface with the follow-up date.
+    // "In close, the customer agreed to a follow up at a later date" — surface with the follow-up date.
     if (lead.follow_up_agreed === "Yes" || (lead.follow_up_date && String(lead.follow_up_date).trim())) {
       const fd = lead.follow_up_date ? new Date(lead.follow_up_date) : null;
       followUps.push({lead, when: (fd && !isNaN(fd.getTime())) ? fd : null, dateStr: lead.follow_up_date || ""});
@@ -5134,7 +5134,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
             {right}
           </div>
         );
-        const Section = ({icon, title, color, items, render})=> items.length===0 ? null : (()=>{
+        const Section = ({icon, title, color, items, render, topContent, alwaysShow, emptyText})=> (items.length===0 && !alwaysShow) ? null : (()=>{
           const isOpen = !!hygieneExpanded[title];
           return (
             <div style={{marginBottom:10,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
@@ -5147,7 +5147,10 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
               </div>
               {isOpen && (
                 <div style={{padding:"10px 12px 4px"}}>
-                  {items.map(render)}
+                  {topContent}
+                  {items.length===0
+                    ? <div style={{fontSize:12,color:"#94a3b8",padding:"2px 2px 8px"}}>{emptyText||"Nothing here right now."}</div>
+                    : items.map(render)}
                 </div>
               )}
             </div>
@@ -5165,13 +5168,6 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 </div>
                 <button onClick={()=>setHygieneOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",flexShrink:0,flexWrap:"wrap"}}>
-                <span style={{fontSize:12,color:"#94a3b8"}}>Stale after:</span>
-                {[14,21,30].map(d=>(
-                  <button key={d} onClick={()=>setStaleDays(d)}
-                    style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${staleDays===d?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:staleDays===d?"#6b2d4e":(dark?"#0f172a":"#fff"),color:staleDays===d?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{d}d</button>
-                ))}
-              </div>
               <div style={{padding:"6px 20px 24px",overflowY:"auto",flex:1}}>
                 {total===0 && hotLeads.length===0 && (
                   <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}>
@@ -5183,7 +5179,17 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                   render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:15,whiteSpace:"nowrap"}}>🔥</span>}/>)}/>
                 <Section icon="👻" title="Hidden — invalid stage (not on board)" color="#dc2626" items={orphaned}
                   render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#dc2626",whiteSpace:"nowrap"}}>Fix stage</span>}/>)}/>
-                <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale}
+                <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale} alwaysShow
+                  emptyText={`No leads are stale at ${staleDays}d in this view.`}
+                  topContent={
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:"#94a3b8"}}>Stale after:</span>
+                      {[14,21,30].map(d=>(
+                        <button key={d} onClick={()=>setStaleDays(d)}
+                          style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${staleDays===d?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:staleDays===d?"#6b2d4e":(dark?"#0f172a":"#fff"),color:staleDays===d?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{d}d</button>
+                      ))}
+                    </div>
+                  }
                   render={({lead,days})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:12,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{days}d</span>}/>)}/>
                 <Section icon="📅" title="Missing appointment" color="#3b82f6" items={noAppt}
                   render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#3b82f6",whiteSpace:"nowrap"}}>No appt</span>}/>)}/>
