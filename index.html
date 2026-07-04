@@ -4775,6 +4775,23 @@ function getLeadLastActivity(lead) {
   return null;
 }
 
+// Parse an appointment string ("Mon DD, YYYY - h:mm AM to h:mm PM", or all-day
+// "Mon DD, YYYY") into a Date at the START time. new Date() can't handle the
+// " - ... to ..." form directly (returns Invalid Date), so we split it out.
+function parseApptDate(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  raw = String(raw);
+  const dashIdx = raw.indexOf(' - ');
+  const datePart = (dashIdx === -1 ? raw : raw.substring(0, dashIdx)).trim();
+  let timeStr = "";
+  if (dashIdx !== -1) {
+    const afterDash = raw.substring(dashIdx + 3).trim();
+    timeStr = afterDash.indexOf(' to ') > -1 ? afterDash.substring(0, afterDash.indexOf(' to ')).trim() : afterDash;
+  }
+  const d = new Date(timeStr ? `${datePart} ${timeStr}` : datePart);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function analyzeHygiene(leads, staleDays) {
   const now = Date.now();
   const staleMs = staleDays * 24 * 60 * 60 * 1000;
@@ -4800,8 +4817,8 @@ function analyzeHygiene(leads, staleDays) {
     }
     // Bad appointment date: a scheduled/AC lead whose appointment is in the past.
     if (lead.appointment) {
-      const ap = new Date(lead.appointment);
-      if (!isNaN(ap.getTime()) && ap.getTime() < now && (lead.stage === "AC / Scheduled" || lead.stage === "Lead: Need Bill/Appointment")) {
+      const ap = parseApptDate(lead.appointment);
+      if (ap && ap.getTime() < now && (lead.stage === "AC / Scheduled" || lead.stage === "Lead: Need Bill/Appointment")) {
         badCloseDate.push({lead, when: ap});
       }
     }
