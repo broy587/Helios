@@ -352,7 +352,7 @@ const TIME_SLOTS = [
 ];
 
 const emptyForm = {
-  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",closerNotes:"",commission:"",giftCardDropped:false,
+  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",closerNotes:"",temperature:"",commission:"",giftCardDropped:false,
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
   decisionMakers:"",closerChecklist:[],contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
@@ -3673,6 +3673,41 @@ function CopyIcon({value}) {
   );
 }
 
+// Lead temperature (only meaningful in the "Lead: Need Bill/Appointment" stage).
+function TemperatureSelector({value, onChange, dark}) {
+  const [info, setInfo] = React.useState(false);
+  const btn = (val, icon, activeColor, activeBg) => {
+    const active = value===val;
+    return (
+      <button type="button" onClick={()=>onChange(active?"":val)}
+        style={{flex:1,padding:"10px 0",borderRadius:10,cursor:"pointer",fontSize:22,lineHeight:1,
+          border:`2px solid ${active?activeColor:(dark?"#334155":"#e2e8f0")}`,
+          background:active?activeBg:(dark?"#0f172a":"#f8fafc"),opacity:active?1:0.7,transition:"all 0.15s"}}>
+        {icon}
+      </button>
+    );
+  };
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,position:"relative"}}>
+        <span style={{fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Temperature</span>
+        <button type="button" onClick={()=>setInfo(o=>!o)}
+          style={{width:17,height:17,borderRadius:"50%",border:`1px solid ${dark?"#475569":"#cbd5e1"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",lineHeight:1,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>?</button>
+        {info && (
+          <div style={{position:"absolute",top:24,left:0,zIndex:60,width:290,maxWidth:"80vw",background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.25)",fontSize:12,lineHeight:1.5,color:dark?"#cbd5e1":"#475569"}}>
+            <div style={{marginBottom:6}}>❄️ — Not in contact and little implication that they want you to come back.</div>
+            <div>🔥 — In contact or implied that they want you to come back. Interest shown.</div>
+          </div>
+        )}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {btn("cold","❄️","#38bdf8","#e0f2fe")}
+        {btn("hot","🔥","#ef4444","#fee2e2")}
+      </div>
+    </div>
+  );
+}
+
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
@@ -4027,6 +4062,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Closer Notes</div>
               <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.closer_notes}</div>
             </div>
+          )}
+          {lead.stage==="Lead: Need Bill/Appointment" && (
+            <TemperatureSelector value={lead.temperature||""} dark={dark}
+              onChange={val=>{ handleUpdate({...lead,temperature:val}); sb.from("leads").update({temperature:val||null,updated_at:new Date().toISOString()}).eq("id",lead.id); }}/>
           )}
           <ACStatus softSolid={lead.soft_solid||""} confirmed={lead.confirmed||""}
             onChange={(field,val)=>{
@@ -4444,6 +4483,10 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
             {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {form.stage==="Lead: Need Bill/Appointment" && (
+          <TemperatureSelector value={form.temperature||""} dark={dark}
+            onChange={val=>setForm(f=>({...f,temperature:val}))}/>
+        )}
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
@@ -4731,7 +4774,7 @@ function getLeadLastActivity(lead) {
 function analyzeHygiene(leads, staleDays) {
   const now = Date.now();
   const staleMs = staleDays * 24 * 60 * 60 * 1000;
-  const stale = [], noAppt = [], badCloseDate = [], followUps = [], orphaned = [];
+  const stale = [], noAppt = [], badCloseDate = [], followUps = [], orphaned = [], hotLeads = [];
   for (const lead of (leads||[])) {
     // Orphaned: stage isn't a real pipeline column and the lead isn't flagged into a
     // special pile — so it renders NOWHERE on the board even though it exists. Surface
@@ -4763,6 +4806,10 @@ function analyzeHygiene(leads, staleDays) {
       const fd = lead.follow_up_date ? new Date(lead.follow_up_date) : null;
       followUps.push({lead, when: (fd && !isNaN(fd.getTime())) ? fd : null, dateStr: lead.follow_up_date || ""});
     }
+    // 🔥 Leads: still in the Lead stage and marked hot.
+    if (lead.stage === "Lead: Need Bill/Appointment" && lead.temperature === "hot") {
+      hotLeads.push({lead});
+    }
   }
   stale.sort((a,b)=>b.days-a.days);
   // Sort follow-ups by date (soonest first; undated last).
@@ -4772,7 +4819,7 @@ function analyzeHygiene(leads, staleDays) {
     if(b.when) return 1;
     return 0;
   });
-  return {stale, noAppt, badCloseDate, followUps, orphaned};
+  return {stale, noAppt, badCloseDate, followUps, orphaned, hotLeads};
 }
 
 // ── Conversion metrics ────────────────────────────────────────────────
@@ -5074,7 +5121,7 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
       )}
 
       {hygieneOpen && (()=>{
-        const {stale, noAppt, badCloseDate, followUps, orphaned} = analyzeHygiene(leads, staleDays);
+        const {stale, noAppt, badCloseDate, followUps, orphaned, hotLeads} = analyzeHygiene(leads, staleDays);
         const ownerName = (id)=>{ const p=(profiles||[]).find(x=>x.id===id); return p ? (p.nickname||p.name||p.email||"Unknown") : null; };
         const total = stale.length + noAppt.length + badCloseDate.length + followUps.length + orphaned.length;
         const Row = ({lead, right})=>(
@@ -5126,12 +5173,14 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
                 ))}
               </div>
               <div style={{padding:"6px 20px 24px",overflowY:"auto",flex:1}}>
-                {total===0 && (
+                {total===0 && hotLeads.length===0 && (
                   <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}>
                     <div style={{fontSize:36,marginBottom:8}}>✨</div>
                     <div style={{fontSize:14,fontWeight:600}}>No hygiene issues in the current view.</div>
                   </div>
                 )}
+                <Section icon="🔥" title="Leads" color="#ef4444" items={hotLeads}
+                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:15,whiteSpace:"nowrap"}}>🔥</span>}/>)}/>
                 <Section icon="👻" title="Hidden — invalid stage (not on board)" color="#dc2626" items={orphaned}
                   render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#dc2626",whiteSpace:"nowrap"}}>Fix stage</span>}/>)}/>
                 <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale}
@@ -9762,7 +9811,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -9789,7 +9838,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -9979,7 +10028,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:form.closerNotes||"",commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:form.closerNotes||"",temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -10574,7 +10623,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",temperature:modal.lead.temperature||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
