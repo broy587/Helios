@@ -5344,29 +5344,6 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   </div>
                 </div>
 
-                {/* Avg commission — only accounts with a commission entered */}
-                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:18}}>
-                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Avg commission</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>🌞 Installed leads</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.avgCommissionInstalled==null?"—":c.avgCommissionInstalled.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:`1px solid ${dark?"#1e293b":"#e2e8f0"}`,paddingTop:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>All leads</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.commCount>0?`${c.commCount} with commission entered`:"None with commission entered"}</div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.avgCommission==null?"—":c.avgCommission.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
-                    </div>
-                  </div>
-                </div>
-
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC or after</span>
                   <span style={{fontSize:11,color:"#94a3b8"}}>{c.acTotal} account{c.acTotal===1?"":"s"}</span>
@@ -5398,6 +5375,29 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {c.giftCard.dropped===0
                   ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have a gift card dropped off in this view.</div>
                   : <Bar label="Gift card dropped → Install" pct={c.giftCard.pct} n={c.giftCard.toInstall} total={c.giftCard.dropped}/>}
+
+                {/* Avg commission — pinned to the very bottom of the list */}
+                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:20}}>
+                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Avg commission</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>🌞 Installed leads</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
+                    </div>
+                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                      {c.avgCommissionInstalled==null?"—":c.avgCommissionInstalled.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:`1px solid ${dark?"#1e293b":"#e2e8f0"}`,paddingTop:10}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>All leads</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.commCount>0?`${c.commCount} with commission entered`:"None with commission entered"}</div>
+                    </div>
+                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                      {c.avgCommission==null?"—":c.avgCommission.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
