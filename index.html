@@ -7119,18 +7119,22 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         const loc = data.results[0].geometry.location;
         // Stale check — if filter changed since we started geocoding, discard
         if(gen!==leadGenRef.current) return;
+        // Show each lead pin with its pipeline-stage emoji + color (matches the
+        // filter icons) so multiple filtered stages are distinguishable on the map.
+        const stageEmoji = STAGE_EMOJIS[lead.stage] || "⚡";
+        const stageColor = (STAGE_COLORS[lead.stage] && STAGE_COLORS[lead.stage].border) || "#10b981";
         const marker = new window.google.maps.Marker({
           position:{lat:loc.lat,lng:loc.lng},
           map:mapInstanceRef.current,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
             scale:14,
-            fillColor:"#10b981",
+            fillColor:stageColor,
             fillOpacity:0.9,
             strokeColor:"#fff",
             strokeWeight:2.5,
           },
-          label:{text:"⚡",fontSize:"14px"},
+          label:{text:stageEmoji,fontSize:"14px"},
           title:lead.name||lead.address,
           zIndex:10,
         });
