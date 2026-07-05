@@ -8972,11 +8972,11 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   };
   const CATEGORIES = [
     {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
+    {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
     {key:"closing_hub", label:"Closing Hub", icon:"🤝", blurb:"Closing techniques, tools & resources"},
     {key:"sales_material", label:"Sales Material", icon:"💼", blurb:"Flyers, brochures & sales collateral"},
     {key:"playbooks", label:"Templates", icon:"📧", blurb:"Email & text templates, closing & setter materials"},
-    {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"},
     {key:"leadership", label:"Leadership", icon:"🧭", blurb:"Leadership, management & team-building resources"}
   ];
   const [materials, setMaterials] = useState([]);
@@ -9021,6 +9021,26 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [dropIndex, setDropIndex] = useState(null);
   const listRef = React.useRef(null);
   const dragState = React.useRef({active:false, id:null});
+
+  // Horizontal scroll affordance for the category buttons (there are more than fit on screen).
+  const catScrollRef = React.useRef(null);
+  const [catCanScroll, setCatCanScroll] = useState({left:false, right:false});
+  const updateCatScroll = React.useCallback(()=>{
+    const el = catScrollRef.current; if(!el) return;
+    setCatCanScroll({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  },[]);
+  React.useEffect(()=>{
+    updateCatScroll();
+    const el = catScrollRef.current; if(!el) return;
+    el.addEventListener("scroll", updateCatScroll, {passive:true});
+    window.addEventListener("resize", updateCatScroll);
+    const t = setTimeout(updateCatScroll, 300); // after fonts/layout settle
+    return ()=>{ el.removeEventListener("scroll", updateCatScroll); window.removeEventListener("resize", updateCatScroll); clearTimeout(t); };
+  },[updateCatScroll]);
+  const scrollCats = (dir)=>{ const el = catScrollRef.current; if(el) el.scrollBy({left: dir*240, behavior:"smooth"}); };
 
   const persistOrder = async (arr) => {
     try { await Promise.all(arr.map((m,idx)=> sb.from("vault_materials").update({sort_order:idx}).eq("id",m.id))); }
@@ -9202,18 +9222,30 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       </div>
 
       {/* Category selector */}
-      <div style={{display:"flex",gap:8,overflowX:"auto",padding:"14px 0",marginBottom:4}}>
-        {CATEGORIES.map(c=>{
-          const active = c.key===activeCat;
-          const count = visibleMaterials.filter(m=>m.category===c.key).length;
-          return (
-            <button key={c.key} onClick={()=>setActiveCat(c.key)}
-              style={{display:"flex",alignItems:"center",gap:7,padding:"9px 15px",borderRadius:22,border:`1.5px solid ${active?"#6b2d4e":dark?"#334155":"#e2e8f0"}`,background:active?"#1a2456":dark?"#1e293b":"#fff",color:active?"#fff":dark?"#cbd5e1":"#1a2456",fontWeight:active?700:600,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
-              <span>{c.icon}</span>{c.label}
-              <span style={{fontSize:11,fontWeight:700,background:active?"rgba(255,255,255,0.2)":dark?"#334155":"#f1f5f9",color:active?"#fff":dark?"#94a3b8":"#64748b",borderRadius:10,padding:"1px 7px"}}>{count}</span>
-            </button>
-          );
-        })}
+      <div style={{position:"relative"}}>
+        <div ref={catScrollRef} style={{display:"flex",gap:8,overflowX:"auto",padding:"14px 0",marginBottom:4,scrollbarWidth:"thin"}}>
+          {CATEGORIES.map(c=>{
+            const active = c.key===activeCat;
+            const count = visibleMaterials.filter(m=>m.category===c.key).length;
+            return (
+              <button key={c.key} onClick={()=>setActiveCat(c.key)}
+                style={{display:"flex",alignItems:"center",gap:7,padding:"9px 15px",borderRadius:22,border:`1.5px solid ${active?"#6b2d4e":dark?"#334155":"#e2e8f0"}`,background:active?"#1a2456":dark?"#1e293b":"#fff",color:active?"#fff":dark?"#cbd5e1":"#1a2456",fontWeight:active?700:600,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,transition:"all 0.15s"}}>
+                <span>{c.icon}</span>{c.label}
+                <span style={{fontSize:11,fontWeight:700,background:active?"rgba(255,255,255,0.2)":dark?"#334155":"#f1f5f9",color:active?"#fff":dark?"#94a3b8":"#64748b",borderRadius:10,padding:"1px 7px"}}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+        {catCanScroll.left && (
+          <div style={{position:"absolute",left:0,top:0,bottom:8,display:"flex",alignItems:"center",paddingRight:24,background:`linear-gradient(to right, ${dark?"#0f172a":"#f8fafc"} 40%, transparent)`,pointerEvents:"none"}}>
+            <button onClick={()=>scrollCats(-1)} aria-label="Scroll left" style={{pointerEvents:"auto",width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",boxShadow:"0 2px 8px rgba(0,0,0,0.25)",fontSize:18,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          </div>
+        )}
+        {catCanScroll.right && (
+          <div style={{position:"absolute",right:0,top:0,bottom:8,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingLeft:24,background:`linear-gradient(to left, ${dark?"#0f172a":"#f8fafc"} 40%, transparent)`,pointerEvents:"none"}}>
+            <button onClick={()=>scrollCats(1)} aria-label="Scroll right" style={{pointerEvents:"auto",width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",boxShadow:"0 2px 8px rgba(0,0,0,0.25)",fontSize:18,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </div>
+        )}
       </div>
 
       {/* Active category header + add button */}
