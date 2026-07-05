@@ -6702,6 +6702,26 @@ const STAGE_EMOJIS = {
   "ARC / Cancels":               "🔴",
 };
 
+// Decide how a pipeline lead pin should look on the canvass map.
+// No filters active -> generic lightning "lead" pin. Filters active -> show the
+// specific pile/stage emoji+color so multiple filtered types are distinguishable.
+function leadPinVisual(lead, activeFilters) {
+  if (!activeFilters || activeFilters.length === 0) return {emoji:"⚡", color:"#10b981"};
+  if (lead.is_arc && activeFilters.includes("pile:arc")) return {emoji:"🔴", color:"#ef4444"};
+  if (lead.on_hold && activeFilters.includes("pile:on_hold")) return {emoji:"⏸️", color:"#f59e0b"};
+  if (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) return {emoji:"🛟", color:"#6366f1"};
+  const emoji = STAGE_EMOJIS[lead.stage] || "⚡";
+  const color = (STAGE_COLORS[lead.stage] && STAGE_COLORS[lead.stage].border) || "#10b981";
+  return {emoji, color};
+}
+
+// Pile filter chips (booleans on the lead, not stage values).
+const CANVASS_PILES = [
+  {key:"pile:on_hold", label:"On Hold",          emoji:"⏸️", color:"#f59e0b"},
+  {key:"pile:ncs",     label:"Needs Cancel Save", emoji:"🛟", color:"#6366f1"},
+  {key:"pile:arc",     label:"ARC / Cancels",     emoji:"🔴", color:"#ef4444"},
+];
+
 // ── Canvass View Picker ───────────────────────────────────────────────
 function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, myTeamMemberIds, canvassLeadFilter, setCanvassLeadFilter}) {
   const [open, setOpen] = React.useState(false);
@@ -6869,7 +6889,13 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const [locating, setLocating] = React.useState(false);
   const myLocationMarkerRef = React.useRef(null);
   const [showFilter, setShowFilter] = React.useState(false);
+  const [isFs, setIsFs] = React.useState(false);
+  const containerRef = React.useRef(null);
+  const filterPanelRef = React.useRef(null);
+  const filterBtnRef = React.useRef(null);
   const [activeFilters, setActiveFilters] = React.useState([]); // empty = show all
+  const activeFiltersRef = React.useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
   const buildingMarkersRef = React.useRef([]);
   const homesRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
@@ -7022,15 +7048,27 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
     // Filter pipeline lead markers
     leadMarkersRef.current.forEach(m=>{
-      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
-      const pos=m.getPosition();
-      const lead = leads&&leads.find(l=>{
+      const lead = m._leadRef || (leads&&leads.find(l=>{
         if(!l.address) return false;
         return m.getTitle()===l.name||m.getTitle()===l.address;
-      });
+      }));
+      // Repaint the pin so it shows the generic lead bolt with no filter, or the
+      // specific stage/pile icon when filtering.
+      if(lead){
+        const vis = leadPinVisual(lead, activeFilters);
+        const cur = m.getIcon() || {};
+        m.setIcon({...cur, path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:vis.color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2.5});
+        m.setLabel({text:vis.emoji, fontSize:"14px"});
+      }
+      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
       const stageMatch = lead&&activeFilters.includes("stage:"+lead.stage);
       const dispMatch = activeFilters.includes("disp:lead"); // lead disposition
-      m.setMap(stageMatch||dispMatch?mapInstanceRef.current:null);
+      const pileMatch = lead && (
+        (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
+        (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
+        (lead.is_arc && activeFilters.includes("pile:arc"))
+      );
+      m.setMap(stageMatch||dispMatch||pileMatch?mapInstanceRef.current:null);
     });
 
     // Hide/show OSM building bubbles based on filter
@@ -7119,24 +7157,23 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         const loc = data.results[0].geometry.location;
         // Stale check — if filter changed since we started geocoding, discard
         if(gen!==leadGenRef.current) return;
-        // Show each lead pin with its pipeline-stage emoji + color (matches the
-        // filter icons) so multiple filtered stages are distinguishable on the map.
-        const stageEmoji = STAGE_EMOJIS[lead.stage] || "⚡";
-        const stageColor = (STAGE_COLORS[lead.stage] && STAGE_COLORS[lead.stage].border) || "#10b981";
+        // Icon reflects the current filter state (generic ⚡ when nothing filtered).
+        const vis = leadPinVisual(lead, activeFiltersRef.current);
         const marker = new window.google.maps.Marker({
           position:{lat:loc.lat,lng:loc.lng},
           map:mapInstanceRef.current,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
             scale:14,
-            fillColor:stageColor,
+            fillColor:vis.color,
             fillOpacity:0.9,
             strokeColor:"#fff",
             strokeWeight:2.5,
           },
-          label:{text:stageEmoji,fontSize:"14px"},
+          label:{text:vis.emoji,fontSize:"14px"},
           title:lead.name||lead.address,
           zIndex:10,
+          _leadRef:lead,
         });
         marker.addListener("click",()=>{
           setSelectedHome({
@@ -7375,8 +7412,33 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
   const btnStyle = {width:48,height:48,borderRadius:12,background:"rgba(20,20,30,0.85)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.4)",backdropFilter:"blur(4px)"};
 
+  // Keep fullscreen state in sync (covers Esc key / native exit too) and nudge the map to re-fit.
+  React.useEffect(()=>{
+    const onFsChange = ()=>{
+      const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      setIsFs(fs);
+      setTimeout(()=>{ if(mapInstanceRef.current && window.google) window.google.maps.event.trigger(mapInstanceRef.current,"resize"); }, 120);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+    return ()=>{ document.removeEventListener("fullscreenchange", onFsChange); document.removeEventListener("webkitfullscreenchange", onFsChange); };
+  },[]);
+
+  // Close the filter panel when tapping the map or anywhere outside the panel.
+  React.useEffect(()=>{
+    if(!showFilter) return;
+    const onDown = (e)=>{
+      if(filterPanelRef.current && filterPanelRef.current.contains(e.target)) return;
+      if(filterBtnRef.current && filterBtnRef.current.contains(e.target)) return;
+      setShowFilter(false);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("touchstart", onDown, true);
+    return ()=>{ document.removeEventListener("mousedown", onDown, true); document.removeEventListener("touchstart", onDown, true); };
+  },[showFilter]);
+
   return(
-    <div style={{position:"relative",height:"calc(100vh - 110px)",overflow:"hidden"}}>
+    <div ref={containerRef} style={{position:"relative",height:isFs?"100vh":"calc(100vh - 110px)",overflow:"hidden"}}>
 
       {/* Map fills everything */}
       {!mapLoaded?(
@@ -7420,7 +7482,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           </button>
 
           {/* Filter */}
-          <button onClick={()=>setShowFilter(f=>!f)}
+          <button ref={filterBtnRef} onClick={()=>setShowFilter(f=>!f)}
             style={{...btnStyle,background:activeFilters.length>0?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:activeFilters.length>0?"2px solid #6b2d4e":"none",position:"relative"}}
             title="Filter">
             <span style={{fontSize:20}}>🔍</span>
@@ -7436,16 +7498,17 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       {/* Custom fullscreen button — left of eye */}
       {mapLoaded && (
         <button onClick={()=>{
-          const el = mapRef.current;
+          const el = containerRef.current;
           if(el){
-            if(!document.fullscreenElement){
+            if(!(document.fullscreenElement||document.webkitFullscreenElement)){
               (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen)?.call(el);
             } else {
               (document.exitFullscreen||document.webkitExitFullscreen)?.call(document);
             }
           }
-        }} style={{position:"absolute",top:12,right:68,zIndex:400,width:48,height:48,borderRadius:12,background:"rgba(20,20,30,0.85)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.4)",backdropFilter:"blur(4px)"}}>
-          <span style={{fontSize:18,color:"#fff"}}>⛶</span>
+        }} title={isFs?"Exit full screen":"Full screen"}
+        style={{position:"absolute",top:12,right:68,zIndex:400,width:48,height:48,borderRadius:12,background:isFs?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.4)",backdropFilter:"blur(4px)"}}>
+          <span style={{fontSize:isFs?24:18,color:"#fff",lineHeight:1}}>{isFs?"✕":"⛶"}</span>
         </button>
       )}
       {/* View Scope Button — separate from filter */}
@@ -7463,7 +7526,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
       {/* Filter Panel — dispositions & lead stages only */}
       {showFilter && (
-        <div style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:240,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
+        <div ref={filterPanelRef} style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:240,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Filter Pins</div>
             {activeFilters.length>0&&(
@@ -7492,6 +7555,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
                 <span style={{fontSize:14,width:26,textAlign:"center"}}>{emoji}</span>
                 <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{s}</span>
                 {isOn&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
+              </div>
+            );
+          })}
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Piles</div>
+          {CANVASS_PILES.map(p=>{
+            const isOn=activeFilters.includes(p.key);
+            return(
+              <div key={p.key} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!==p.key):[...f,p.key])}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent",border:`1px solid ${isOn?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)"}`}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:isOn?p.color:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{p.emoji}</div>
+                <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{p.label}</span>
+                {isOn&&<span style={{color:p.color,fontSize:13}}>✓</span>}
               </div>
             );
           })}
