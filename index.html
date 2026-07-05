@@ -4792,6 +4792,65 @@ function parseApptDate(raw) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// ── Pipeline filters (replaces the old hygiene panel) ─────────────────
+function pfNonEmpty(v){ return !!(v && String(v).trim()); }
+function pfHasAppt(l){
+  return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) ||
+    (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
+}
+function pfKnowsSolar(l){
+  const cl = l.ac_checklist || l.acChecklist || [];
+  return Array.isArray(cl) && cl.some(x=>/solar/i.test(String(x)));
+}
+function pfApptPassed(l){
+  const ap = parseApptDate(l.appointment);
+  return !!ap && ap.getTime() < Date.now() && (l.stage==="AC / Scheduled" || l.stage==="Lead: Need Bill/Appointment");
+}
+function pfStaleDays(l){
+  const d = getLeadLastActivity(l);
+  if(!d) return Infinity;
+  return Math.floor((Date.now() - d.getTime())/86400000);
+}
+const PIPELINE_FILTER_DEFS = [
+  {key:"has_phone",    group:"General",         label:"Has phone number",                          test:l=>pfNonEmpty(l.phone)},
+  {key:"has_email",    group:"General",         label:"Has email",                                 test:l=>pfNonEmpty(l.email)},
+  {key:"has_appt",     group:"General",         label:"Has an appointment",                        test:pfHasAppt},
+  {key:"has_utility",  group:"General",         label:"All utility info (company, ESIID, Meter #)", test:l=>pfNonEmpty(l.utility)&&pfNonEmpty(l.esiid)&&pfNonEmpty(l.meter)},
+  {key:"has_comm",     group:"General",         label:"Commission entered",                        test:l=>pfNonEmpty(l.commission)},
+  {key:"has_notes",    group:"General",         label:"Has setter notes",                          test:l=>pfNonEmpty(l.notes)},
+  {key:"no_notes",     group:"General",         label:"No setter notes",                           test:l=>!pfNonEmpty(l.notes)},
+  {key:"warm",         group:"General",         label:"🔥 Warm lead",                              test:l=>l.temperature==="hot"},
+  {key:"solid",        group:"General",         label:"Solid commitment",                          test:l=>l.soft_solid==="Solid"},
+  {key:"confirmed",    group:"General",         label:"Text / call confirmation",                  test:l=>l.confirmed==="Yes"},
+  {key:"ac_bill",      group:"Setter AC",       label:"Bill acquired",                             test:l=>acItemSatisfied("bill", l)},
+  {key:"ac_prescreen", group:"Setter AC",       label:"Prescreened",                               test:l=>acItemSatisfied("prescreen", l)},
+  {key:"ac_solar",     group:"Setter AC",       label:"Knows solar is / can be involved",          test:pfKnowsSolar},
+  {key:"ac_followup",  group:"Setter AC",       label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
+  {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
+  {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
+];
+const PIPELINE_FILTER_GROUPS = ["General","Setter AC","Needs attention"];
+const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"]]; // can't both be on
+function matchesPipelineFilters(lead, filters){
+  if(!filters) return true;
+  const active = Array.isArray(filters.active) ? filters.active : [];
+  for(const key of active){
+    const def = PIPELINE_FILTER_DEFS.find(d=>d.key===key);
+    if(def && !def.test(lead)) return false; // AND: must match every selected filter
+  }
+  const st = filters.stale;
+  if(st && st.on){
+    const isStale = pfStaleDays(lead) >= (Number(st.days)||14);
+    if(st.mode==="hide" && isStale) return false;
+    if((!st.mode || st.mode==="show") && !isStale) return false;
+  }
+  return true;
+}
+function pipeFilterCount(filters){
+  if(!filters) return 0;
+  return (Array.isArray(filters.active)?filters.active.length:0) + (filters.stale&&filters.stale.on?1:0);
+}
+
 function analyzeHygiene(leads, staleDays) {
   const now = Date.now();
   const staleMs = staleDays * 24 * 60 * 60 * 1000;
@@ -4933,12 +4992,12 @@ function analyzeConversions(leads) {
   };
 }
 
-function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq}) {
+function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters}) {
   const dark=useDark();
-  const [hygieneOpen,setHygieneOpen]=useState(false);
-  const [hygieneExpanded,setHygieneExpanded]=useState({}); // {sectionTitle: true} when expanded
+  const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
+  const [filterOpen,setFilterOpen]=useState(false);
+  const [draftFilters,setDraftFilters]=useState(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}});
   const [convOpen,setConvOpen]=useState(false);
-  const [staleDays,setStaleDays]=useState(14);
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -5040,9 +5099,10 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
           📊
         </button>
-        <button onClick={()=>setHygieneOpen(true)} title="Pipeline hygiene"
-          style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
-          🩺
+        <button onClick={()=>{ setDraftFilters(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}}); setFilterOpen(true); }} title="Filter pipeline"
+          style={{position:"relative",background:pipeFilterCount(pipeFilters)>0?"#1a2456":(dark?"#1e293b":"#fff"),color:pipeFilterCount(pipeFilters)>0?"#fff":(dark?"#f1f5f9":"#0f172a"),border:`1.5px solid ${pipeFilterCount(pipeFilters)>0?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap",display:"flex",alignItems:"center"}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          {pipeFilterCount(pipeFilters)>0 && <span style={{position:"absolute",top:-6,right:-6,background:"#6b2d4e",color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",minWidth:16,textAlign:"center",lineHeight:1.4}}>{pipeFilterCount(pipeFilters)}</span>}
         </button>
         <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
@@ -5141,83 +5201,85 @@ function PipelineBoard({leads,onAddLead,onStageChange,onLeadView,allLeads,onView
           onSwitchToCalendar={onSwitchToCalendar}/>
       )}
 
-      {hygieneOpen && (()=>{
-        const {stale, noAppt, badCloseDate, followUps, orphaned, hotLeads} = analyzeHygiene(leads, staleDays);
-        const ownerName = (id)=>{ const p=(profiles||[]).find(x=>x.id===id); return p ? (p.nickname||p.name||p.email||"Unknown") : null; };
-        const total = stale.length + noAppt.length + badCloseDate.length + followUps.length + orphaned.length;
-        const Row = ({lead, right})=>(
-          <div onClick={()=>{setHygieneOpen(false);setDetailId(lead.id);}}
-            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,cursor:"pointer",marginBottom:8}}>
-            <div style={{minWidth:0,flex:1}}>
-              <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lead.name||"Unnamed"}</div>
-              <div style={{fontSize:12,color:"#94a3b8",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lead.stage}{ownerName(lead.owner_id)?` · ${ownerName(lead.owner_id)}`:""}</div>
-            </div>
-            {right}
-          </div>
-        );
-        const Section = ({icon, title, color, items, render, topContent, alwaysShow, emptyText})=> (items.length===0 && !alwaysShow) ? null : (()=>{
-          const isOpen = !!hygieneExpanded[title];
-          return (
-            <div style={{marginBottom:10,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
-              <div onClick={()=>setHygieneExpanded(prev=>({...prev,[title]:!prev[title]}))}
-                style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
-                <span style={{fontSize:15}}>{icon}</span>
-                <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",flex:1}}>{title}</span>
-                <span style={{fontSize:11,fontWeight:700,color:"#fff",background:color,borderRadius:10,padding:"1px 8px"}}>{items.length}</span>
-                <span style={{fontSize:12,color:"#94a3b8",fontWeight:700}}>{isOpen?"▲":"▼"}</span>
-              </div>
-              {isOpen && (
-                <div style={{padding:"10px 12px 4px"}}>
-                  {topContent}
-                  {items.length===0
-                    ? <div style={{fontSize:12,color:"#94a3b8",padding:"2px 2px 8px"}}>{emptyText||"Nothing here right now."}</div>
-                    : items.map(render)}
-                </div>
-              )}
-            </div>
-          );
-        })();
+      {filterOpen && (()=>{
+        const draft = draftFilters || {active:[],stale:{on:false,mode:"show",days:14}};
+        const activeSet = new Set(draft.active||[]);
+        const stale = draft.stale || {on:false,mode:"show",days:14};
+        const toggle = (key)=>{
+          const next = new Set(activeSet);
+          if(next.has(key)) next.delete(key);
+          else {
+            next.add(key);
+            for(const [a,b] of PIPELINE_FILTER_EXCLUSIVE){
+              if(key===a) next.delete(b);
+              if(key===b) next.delete(a);
+            }
+          }
+          setDraftFilters({...draft, active:[...next]});
+        };
+        const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0);
         return (
-          <div onClick={()=>setHygieneOpen(false)}
+          <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
             <div onClick={e=>e.stopPropagation()}
               style={{background:dark?"#1e293b":"#fff",width:"min(560px,100%)",maxHeight:"85vh",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.3)"}}>
               <div style={{padding:"18px 20px 12px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
                 <div>
-                  <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🩺 Pipeline Hygiene</div>
-                  <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{total===0?"Everything looks clean here.":`${total} item${total===1?"":"s"} to review in this view`}</div>
+                  <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Filter Pipeline</div>
+                  <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Shows only accounts matching every selected filter.</div>
                 </div>
-                <button onClick={()=>setHygieneOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
+                <button onClick={()=>setFilterOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
               </div>
-              <div style={{padding:"6px 20px 24px",overflowY:"auto",flex:1}}>
-                {total===0 && hotLeads.length===0 && (
-                  <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}>
-                    <div style={{fontSize:36,marginBottom:8}}>✨</div>
-                    <div style={{fontSize:14,fontWeight:600}}>No hygiene issues in the current view.</div>
-                  </div>
-                )}
-                <Section icon="🔥" title="Leads" color="#ef4444" items={hotLeads}
-                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:15,whiteSpace:"nowrap"}}>🔥</span>}/>)}/>
-                <Section icon="👻" title="Hidden — invalid stage (not on board)" color="#dc2626" items={orphaned}
-                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#dc2626",whiteSpace:"nowrap"}}>Fix stage</span>}/>)}/>
-                <Section icon="🕒" title="Stale (no recent activity)" color="#f97316" items={stale} alwaysShow
-                  emptyText={`No leads are stale at ${staleDays}d in this view.`}
-                  topContent={
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,color:"#94a3b8"}}>Stale after:</span>
-                      {[14,21,30].map(d=>(
-                        <button key={d} onClick={()=>setStaleDays(d)}
-                          style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${staleDays===d?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:staleDays===d?"#6b2d4e":(dark?"#0f172a":"#fff"),color:staleDays===d?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{d}d</button>
-                      ))}
+              <div style={{padding:"6px 20px 12px",overflowY:"auto",flex:1}}>
+                {PIPELINE_FILTER_GROUPS.map(group=>(
+                  <div key={group} style={{marginBottom:16}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"10px 0 8px"}}>{group}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {PIPELINE_FILTER_DEFS.filter(d=>d.group===group).map(d=>{
+                        const on = activeSet.has(d.key);
+                        return (
+                          <button key={d.key} onClick={()=>toggle(d.key)}
+                            style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                            {on && <span style={{fontSize:12}}>✓</span>}{d.label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  }
-                  render={({lead,days})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:12,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{days}d</span>}/>)}/>
-                <Section icon="📅" title="Missing appointment" color="#3b82f6" items={noAppt}
-                  render={({lead})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#3b82f6",whiteSpace:"nowrap"}}>No appt</span>}/>)}/>
-                <Section icon="⚠️" title="Appointment date passed" color="#ef4444" items={badCloseDate}
-                  render={({lead,when})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#ef4444",whiteSpace:"nowrap"}}>{when.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>}/>)}/>
-                <Section icon="🔁" title="No close — follow up later" color="#8b5cf6" items={followUps}
-                  render={({lead,when,dateStr})=>(<Row key={lead.id} lead={lead} right={<span style={{fontSize:11,fontWeight:700,color:"#8b5cf6",whiteSpace:"nowrap"}}>{when?when.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):(dateStr||"No date")}</span>}/>)}/>
+                  </div>
+                ))}
+                <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Stale (no recent activity)</div>
+                    <button onClick={()=>setStale({on:!stale.on})}
+                      style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:stale.on?"#1a2456":(dark?"#334155":"#cbd5e1"),position:"relative",transition:"background 0.15s",flexShrink:0}}>
+                      <span style={{position:"absolute",top:2,left:stale.on?22:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+                    </button>
+                  </div>
+                  {stale.on && (
+                    <div>
+                      <div style={{display:"flex",gap:8,marginBottom:10}}>
+                        {[["show","Show only stale"],["hide","Hide stale"]].map(([m,lbl])=>(
+                          <button key={m} onClick={()=>setStale({mode:m})}
+                            style={{flex:1,padding:"8px 0",borderRadius:10,border:`1.5px solid ${stale.mode===m?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:stale.mode===m?"#1a2456":(dark?"#0f172a":"#fff"),color:stale.mode===m?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:700,cursor:"pointer"}}>{lbl}</button>
+                        ))}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:12,color:"#94a3b8"}}>Older than:</span>
+                        {[7,14,21,30,60].map(dd=>(
+                          <button key={dd} onClick={()=>setStale({days:dd})}
+                            style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${stale.days===dd?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:stale.days===dd?"#6b2d4e":(dark?"#0f172a":"#fff"),color:stale.days===dd?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{dd}d</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14}}); }}
+                  style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
+                <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
+                  style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
               </div>
             </div>
           </div>
@@ -9775,6 +9837,22 @@ function App() {
   // see team numbers without their teammates' names/addresses/phones loading).
   const [teamStatLeads,setTeamStatLeads]=useState([]);
   const [profiles,setProfiles]=useState([]);
+  // Saved pipeline filters (persist per-user in profiles.pipeline_filters).
+  const [pipeFilters,setPipeFilters]=useState({active:[], stale:{on:false,mode:"show",days:14}});
+  React.useEffect(()=>{
+    const pf = profile && profile.pipeline_filters;
+    if(pf && typeof pf==="object"){
+      setPipeFilters({
+        active: Array.isArray(pf.active)?pf.active:[],
+        stale: (pf.stale && typeof pf.stale==="object") ? {on:!!pf.stale.on, mode:pf.stale.mode||"show", days:Number(pf.stale.days)||14} : {on:false,mode:"show",days:14},
+      });
+    }
+  },[profile && profile.id]);
+  const savePipeFilters = async (next) => {
+    setPipeFilters(next);
+    setProfile(p=>p?{...p, pipeline_filters:next}:p);
+    if(user){ try{ await sb.from("profiles").update({pipeline_filters:next}).eq("id",user.id); }catch(e){ console.error("Pipeline filter save failed:",e); } }
+  };
   const [teams,setTeams]=useState([]);  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
   // Keep the team-calendar registry in sync so deeply-nested booking components
   // can resolve the right calendar without prop-drilling.
@@ -10654,7 +10732,7 @@ function App() {
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </div>
             )}
-            <PipelineBoard leads={visibleLeads} allLeads={leads} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
