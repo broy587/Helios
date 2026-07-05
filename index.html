@@ -4960,10 +4960,30 @@ function analyzeConversions(leads) {
     pct: giftPool.length === 0 ? null : Math.round((giftToInstall.length / giftPool.length) * 100),
   };
 
+  // Average commission — ONLY across accounts that actually have a commission
+  // entered (blank/none are excluded entirely, not counted as $0). Tracked both
+  // for installed leads (Install stage or beyond) and for all leads.
+  let commSum = 0, commCount = 0, instSum = 0, instCount = 0;
+  for (const l of (leads||[])) {
+    const raw = l.commission;
+    if (raw == null || String(raw).trim() === "") continue;
+    const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
+    if (isNaN(num)) continue;
+    commSum += num; commCount++;
+    // "Installed" = currently sitting in the Install or PTO / REP stage
+    // (not pulled into an ARC / On Hold / Needs-Cancel-Save pile).
+    if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) {
+      instSum += num; instCount++;
+    }
+  }
+  const avgCommission = commCount > 0 ? commSum / commCount : null;
+  const avgCommissionInstalled = instCount > 0 ? instSum / instCount : null;
+
   return {
     acTotal: acPool.length,
     vcTotal: vcPool.length,
     avgScore, // out of 10
+    avgCommission, commCount, avgCommissionInstalled, instCount,
     ac: [
       {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
       {label:"Got contact info", pct:pct(countAc("Contact Info"), acPool.length), n:countAc("Contact Info")},
@@ -5321,6 +5341,29 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   </div>
                   <div style={{fontSize:26,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
                     {c.avgScore==null?"—":c.avgScore.toFixed(1)}<span style={{fontSize:15,color:"#94a3b8",fontWeight:700}}>/10</span>
+                  </div>
+                </div>
+
+                {/* Avg commission — only accounts with a commission entered */}
+                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:18}}>
+                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Avg commission</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>🌞 Installed leads</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
+                    </div>
+                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                      {c.avgCommissionInstalled==null?"—":c.avgCommissionInstalled.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:`1px solid ${dark?"#1e293b":"#e2e8f0"}`,paddingTop:10}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>All leads</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.commCount>0?`${c.commCount} with commission entered`:"None with commission entered"}</div>
+                    </div>
+                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                      {c.avgCommission==null?"—":c.avgCommission.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+                    </div>
                   </div>
                 </div>
 
