@@ -9140,10 +9140,31 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
   const [emailChoice, setEmailChoice] = useState(null); // chosen lead awaiting app/browser pick
+  // Recruit contacts for the "Recruits" template section (same scoping as the
+  // Recruits tab: owner/manager see their team's, reps see their own).
+  const [recruitContacts, setRecruitContacts] = useState([]);
+  React.useEffect(()=>{
+    let cancelled = false;
+    (async()=>{
+      try{
+        let query = sb.from("recruits").select("id,owner_id,first_name,last_name,phone,email").order("created_at",{ascending:false});
+        if(!isOwner && !isPrivileged && currentUser) query = query.eq("owner_id", currentUser.id);
+        const {data} = await query;
+        if(cancelled) return;
+        setRecruitContacts((data||[]).map(r=>({
+          id:r.id,
+          name:[r.first_name,r.last_name].filter(Boolean).join(" ").trim()||"Unnamed",
+          phone:r.phone||"",
+          email:r.email||"",
+        })));
+      }catch(e){ console.error("Recruit contacts load failed:",e); }
+    })();
+    return ()=>{ cancelled = true; };
+  },[isOwner, isPrivileged, currentUser && currentUser.id]);
   const [templateView, setTemplateView] = useState(null); // material whose body is being viewed
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
-  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:""});
+  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers"});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -9254,8 +9275,8 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   };
   useEffect(()=>{ load(); },[]);
 
-  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",visibleTo:"all"}); setEditing("new"); };
-  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||"",visibleTo:(m.visible_to&&m.visible_to!=="all")?m.visible_to:"all"}); setEditing(m); };
+  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers",visibleTo:"all"}); setEditing("new"); };
+  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||"",audience:m.audience||"customers",visibleTo:(m.visible_to&&m.visible_to!=="all")?m.visible_to:"all"}); setEditing(m); };
   const closeForm = () => { setEditing(null); setErrMsg(""); };
 
   const handleFile = async (e) => {
@@ -9309,7 +9330,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
     setSaving(true);
     let url = form.url.trim();
     if(url && !/^https?:\/\//i.test(url)) url = "https://"+url; // tolerate pasted links without scheme
-    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null, visible_to:form.visibleTo||"all"};
+    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null, audience:(form.category==="playbooks"?(form.audience||"customers"):"customers"), visible_to:form.visibleTo||"all"};
     try {
       if(editing==="new"){
         payload.created_by = userId;
@@ -9341,6 +9362,86 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   // Materials this user is allowed to see (owner sees all).
   const visibleMaterials = materials.filter(canRoleView);
   const catMaterials = visibleMaterials.filter(m=>m.category===activeCat);
+  // Templates split into two audience sections (customers vs recruits).
+  const customerTemplates = catMaterials.filter(m=>(m.audience||"customers")!=="recruits");
+  const recruitTemplates = catMaterials.filter(m=>(m.audience||"customers")==="recruits");
+  // Shared card body (title/desc + edit/delete + action buttons). `draggable`
+  // shows the reorder handle (drag list only; the Templates sections are static).
+  const matCardInner = (m, draggable) => {
+    const isVideo = activeCat==="videos";
+    return (<>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
+          {draggable && canManage && (
+            <div
+              onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,m.id);}}
+              onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,m.id);}}
+              title="Drag to reorder"
+              style={{touchAction:"none",cursor:"grab",color:"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",marginTop:2}}>⠿</div>
+          )}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:m.description?4:0}}>
+              <span style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{m.title}</span>
+              <AccessBadge value={m.visible_to}/>
+            </div>
+            {m.description && <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45,whiteSpace:"pre-wrap"}}>{m.description}</div>}
+          </div>
+        </div>
+        {canManage && (
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <button onClick={()=>openEdit(m)} title="Edit" style={{padding:"4px 9px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️</button>
+            <button onClick={()=>del(m)} title="Delete" style={{padding:"4px 9px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>🗑</button>
+          </div>
+        )}
+      </div>
+      {(m.url || m.file_url || m.image_url || m.body) && (
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
+          {m.body && (
+            <button onClick={()=>setTemplateView(m)}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:dark?"#0f172a":"#f1f5f9",color:dark?"#cbd5e1":"#475569",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              👁 View
+            </button>
+          )}
+          {m.body && <CopyTextButton text={m.body} label={m.template_type==="email"?"📋 Copy Email":m.template_type==="text"?"📋 Copy Text":"📋 Copy"}/>}
+          {m.template_type==="email" && m.body && (
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("email"); setGmailPicker(m); }}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fce8e6",color:"#c5221f",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              ✉️ Open in Gmail
+            </button>
+          )}
+          {m.template_type==="text" && m.body && (
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker(m); }}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              💬 Open in Messages
+            </button>
+          )}
+          {m.file_url && (
+            <button onClick={()=>setViewer({type:"pdf",url:m.file_url,name:m.file_name||m.title||"PDF"})}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fde8e8",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              📕 View PDF
+            </button>
+          )}
+          {m.image_url && (
+            <button onClick={()=>setViewer({type:"image",url:m.image_url,name:m.image_name||m.title||"Photo"})}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e6f7ee",color:"#047857",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              🖼️ View Photo
+            </button>
+          )}
+          {m.url && (()=>{ const emb = toEmbedUrl(m.url); return emb ? (
+            <button onClick={()=>setViewer({type:"video",url:emb,name:m.title||"Video"})}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fee2e2",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              ▶ Watch
+            </button>
+          ) : (
+            <a href={m.url} target="_blank" rel="noopener noreferrer"
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:isVideo?"#fee2e2":"#e8f0ff",color:isVideo?"#b91c1c":"#1a2456",textDecoration:"none",fontSize:13,fontWeight:700}}>
+              {isVideo?"▶ Watch":"📄 Open Link"}
+            </a>
+          ); })()}
+        </div>
+      )}
+    </>);
+  };
   const inputStyle = {width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 
   return (
@@ -9405,17 +9506,16 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
 
       {loading && <div style={{textAlign:"center",padding:"30px 0",color:"#94a3b8",fontSize:14}}>Loading…</div>}
 
-      {!loading && catMaterials.length===0 && !errMsg && (
+      {!loading && catMaterials.length===0 && !errMsg && activeCat!=="playbooks" && (
         <div style={{textAlign:"center",padding:"40px 20px",color:dark?"#64748b":"#94a3b8",fontSize:14,border:`1.5px dashed ${dark?"#334155":"#e2e8f0"}`,borderRadius:14}}>
           <div style={{fontSize:32,marginBottom:8,opacity:0.6}}>{cat.icon}</div>
           No {cat.label.toLowerCase()} yet.{canManage?" Tap “Add Material” to add the first one.":" Check back soon."}
         </div>
       )}
 
-      {!loading && (
+      {!loading && activeCat!=="playbooks" && (
         <div ref={listRef}>
         {(()=>{ const dragIndex = dragId ? catMaterials.findIndex(x=>x.id===dragId) : -1; const H = (dragState.current && dragState.current.H) || 0; return catMaterials.map((m,i)=>{
-        const isVideo = activeCat==="videos";
         const isDragged = dragId===m.id;
         let shift = 0;
         if(!isDragged && dragIndex>=0 && dropIndex!==null){
@@ -9425,79 +9525,25 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
         const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : (shift ? `translateY(${shift}px)` : "none");
         return (
           <div key={m.id} data-mat-id={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e8e2f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.25)":"0 1px 4px rgba(0,0,0,0.05)",transform:transform,transition:isDragged?"none":"transform 0.18s ease, box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,opacity:isDragged?0.97:1,touchAction:isDragged?"none":"auto"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8,flex:1,minWidth:0}}>
-                {canManage && (
-                  <div
-                    onMouseDown={e=>{e.preventDefault();e.stopPropagation();beginReorder(e.clientY,false,m.id);}}
-                    onTouchStart={e=>{e.stopPropagation();if(e.touches&&e.touches[0])beginReorder(e.touches[0].clientY,true,m.id);}}
-                    title="Drag to reorder"
-                    style={{touchAction:"none",cursor:isDragged?"grabbing":"grab",color:isDragged?"#f97316":"#cbd5e1",fontSize:18,lineHeight:1,padding:"2px 2px",flexShrink:0,userSelect:"none",WebkitUserSelect:"none",marginTop:2}}>⠿</div>
-                )}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:m.description?4:0}}>
-                    <span style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{m.title}</span>
-                    <AccessBadge value={m.visible_to}/>
-                  </div>
-                  {m.description && <div style={{fontSize:13,color:dark?"#94a3b8":"#475569",lineHeight:1.45,whiteSpace:"pre-wrap"}}>{m.description}</div>}
-                </div>
-              </div>
-              {canManage && (
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <button onClick={()=>openEdit(m)} title="Edit" style={{padding:"4px 9px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:"#6b2d4e",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️</button>
-                  <button onClick={()=>del(m)} title="Delete" style={{padding:"4px 9px",borderRadius:8,border:"1.5px solid #fecaca",background:"#fff",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>🗑</button>
-                </div>
-              )}
-            </div>
-            {(m.url || m.file_url || m.image_url || m.body) && (
-              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
-                {m.body && (
-                  <button onClick={()=>setTemplateView(m)}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:dark?"#0f172a":"#f1f5f9",color:dark?"#cbd5e1":"#475569",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    👁 View
-                  </button>
-                )}
-                {m.body && <CopyTextButton text={m.body} label={m.template_type==="email"?"📋 Copy Email":m.template_type==="text"?"📋 Copy Text":"📋 Copy"}/>}
-                {m.template_type==="email" && m.body && (
-                  <button onClick={()=>{ setPickerSearch(""); setPickerMode("email"); setGmailPicker(m); }}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fce8e6",color:"#c5221f",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    ✉️ Open in Gmail
-                  </button>
-                )}
-                {m.template_type==="text" && m.body && (
-                  <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker(m); }}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    💬 Open in Messages
-                  </button>
-                )}
-                {m.file_url && (
-                  <button onClick={()=>setViewer({type:"pdf",url:m.file_url,name:m.file_name||m.title||"PDF"})}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fde8e8",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    📕 View PDF
-                  </button>
-                )}
-                {m.image_url && (
-                  <button onClick={()=>setViewer({type:"image",url:m.image_url,name:m.image_name||m.title||"Photo"})}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e6f7ee",color:"#047857",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    🖼️ View Photo
-                  </button>
-                )}
-                {m.url && (()=>{ const emb = toEmbedUrl(m.url); return emb ? (
-                  <button onClick={()=>setViewer({type:"video",url:emb,name:m.title||"Video"})}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fee2e2",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    ▶ Watch
-                  </button>
-                ) : (
-                  <a href={m.url} target="_blank" rel="noopener noreferrer"
-                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:isVideo?"#fee2e2":"#e8f0ff",color:isVideo?"#b91c1c":"#1a2456",textDecoration:"none",fontSize:13,fontWeight:700}}>
-                    {isVideo?"▶ Watch":"📄 Open Link"}
-                  </a>
-                ); })()}
-              </div>
-            )}
+            {matCardInner(m, true)}
           </div>
         );
       }); })()}
+        </div>
+      )}
+      {!loading && activeCat==="playbooks" && (
+        <div>
+          {[{label:"👥 Customers",list:customerTemplates,empty:"No customer templates yet."},{label:"🧲 Recruits",list:recruitTemplates,empty:"No recruit templates yet."}].map(sec=>(
+            <div key={sec.label} style={{marginBottom:24}}>
+              <div style={{fontSize:13,fontWeight:800,color:dark?"#cbd5e1":"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>{sec.label}</div>
+              {sec.list.length===0 && <div style={{fontSize:13,color:"#94a3b8",padding:"4px 0 6px"}}>{sec.empty}</div>}
+              {sec.list.map(m=>(
+                <div key={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${dark?"#334155":"#e8e2f0"}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                  {matCardInner(m, false)}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -9528,8 +9574,11 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       {/* Customer picker for Gmail / Messages send */}
       {gmailPicker && (()=>{
         const isText = pickerMode==="text";
+        const isRecruit = (gmailPicker.audience||"customers")==="recruits";
+        const who = isRecruit ? "recruit" : "customer";
         const q = pickerSearch.trim().toLowerCase();
-        const list = (leads||[]).filter(l=>{ if(!q) return true; return (l.name||"").toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q) || (l.phone||"").toLowerCase().includes(q); }).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+        const source = isRecruit ? (recruitContacts||[]) : (leads||[]);
+        const list = source.filter(l=>{ if(!q) return true; return (l.name||"").toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q) || (l.phone||"").toLowerCase().includes(q); }).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||""));
         const sendTo = (l) => {
           if(isText){
             const num = (l.phone||"").replace(/[^\d+]/g,"");
@@ -9544,14 +9593,14 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
           <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:560,height:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 30px rgba(0,0,0,0.25)"}}>
             <div style={{padding:"18px 20px 12px",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Send to customer</div>
+                <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Send to {who}</div>
                 <button onClick={()=>setGmailPicker(null)} style={{background:"none",border:"none",fontSize:20,color:"#94a3b8",cursor:"pointer",padding:0}}>✕</button>
               </div>
-              <div style={{fontSize:13,color:"#94a3b8",marginBottom:12,lineHeight:1.4}}>{isText ? `Opens Messages with “${gmailPicker.title}” and the chosen customer's phone number as the recipient.` : `Opens Gmail with “${gmailPicker.title}” and the chosen customer's email as the recipient.`}</div>
-              <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder="Search customers by name…" style={{...inputStyle}}/>
+              <div style={{fontSize:13,color:"#94a3b8",marginBottom:12,lineHeight:1.4}}>{isText ? `Opens Messages with “${gmailPicker.title}” and the chosen ${who}'s phone number as the recipient.` : `Opens Gmail with “${gmailPicker.title}” and the chosen ${who}'s email as the recipient.`}</div>
+              <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder={`Search ${who}s by name…`} style={{...inputStyle}}/>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"0 20px 20px"}}>
-              {list.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No customers found.</div>}
+              {list.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>{`No ${who}s found.`}</div>}
               {list.map(l=>{
                 const contact = isText ? l.phone : l.email;
                 return (
@@ -9706,6 +9755,19 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                 </button>
               ))}
             </div>
+            {form.category==="playbooks" && (
+              <>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Send to</label>
+                <div style={{display:"flex",gap:8,marginBottom:16}}>
+                  {[{k:"customers",label:"👥 Customers"},{k:"recruits",label:"🧲 Recruits"}].map(o=>(
+                    <button key={o.k} type="button" onClick={()=>setForm(f=>({...f,audience:o.k}))}
+                      style={{flex:1,padding:"8px 0",borderRadius:8,border:`2px solid ${(form.audience||"customers")===o.k?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:(form.audience||"customers")===o.k?(dark?"#312e81":"#e0e7ff"):(dark?"#0f172a":"#fff"),color:(form.audience||"customers")===o.k?(dark?"#c7d2fe":"#4338ca"):(dark?"#94a3b8":"#64748b"),fontWeight:(form.audience||"customers")===o.k?700:500,cursor:"pointer",fontSize:13}}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             {form.templateType && (
               <textarea value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} placeholder={form.templateType==="email"?"Paste the email template here. The title above is used as the email subject.":"Paste the text-message template here."} rows={6} style={{...inputStyle,marginBottom:16,resize:"vertical"}}/>
             )}
