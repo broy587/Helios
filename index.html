@@ -3256,7 +3256,9 @@ function acItemSatisfied(key, lead) {
 // people with the "rep" role, and only from the team(s) the rep belongs to
 // (union of items, max of counts across their teams). Everyone else → none.
 function acRequirementsForUser(teams, teamMembers, userId, role) {
-  if(role !== "rep") return {items:[], count:0};
+  // Required items gate booking a closer slot for reps, self-gen, and closers.
+  // Owner and managers are exempt (they can always book).
+  if(role !== "rep" && role !== "self_gen" && role !== "closer") return {items:[], count:0};
   const myTeamIds = Object.keys(teamMembers||{}).filter(tid => (teamMembers[tid]||[]).some(m => m.user_id === userId));
   const items = new Set(); let count = 0;
   (teams||[]).forEach(t=>{
