@@ -9222,6 +9222,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       const cy = isTouch ? (ev.touches&&ev.touches[0]?ev.touches[0].clientY:st.lastY) : ev.clientY;
       st.lastY = cy;
       st.idx = computeIdx(cy);
+      if(activeCat==="playbooks" && listRef.current){
+        const hdr = listRef.current.querySelector('[data-section-header="recruits"]');
+        if(hdr){ const r=hdr.getBoundingClientRect(); st.audience = (cy > r.top + r.height/2) ? "recruits" : "customers"; }
+      }
       setDragY(cy - st.startY);
       setDropIndex(st.idx);
     };
@@ -9233,13 +9237,32 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       setDragY(0);
       setDropIndex(null);
       setMaterials(prev=>{
+        const known = CATEGORIES.map(c=>c.key);
+        if(activeCat==="playbooks"){
+          // Two audience sections rendered as one flat list: customers then recruits.
+          const pbAll = prev.filter(m=>m.category==="playbooks");
+          const cust = pbAll.filter(m=>(m.audience||"customers")!=="recruits");
+          const rec = pbAll.filter(m=>(m.audience||"customers")==="recruits");
+          const combined = [...cust, ...rec]; // matches the DOM card order
+          const dragged = combined.find(m=>m.id===st.id);
+          if(!dragged) return prev;
+          const prevAudience = dragged.audience||"customers";
+          const targetAudience = st.audience || prevAudience;
+          const without = combined.filter(m=>m.id!==st.id);
+          without.splice(Math.min(target, without.length), 0, {...dragged, audience:targetAudience});
+          const newAll = [];
+          CATEGORIES.forEach(c=>{ newAll.push(...(c.key==="playbooks" ? without : prev.filter(m=>m.category===c.key))); });
+          newAll.push(...prev.filter(m=>!known.includes(m.category)));
+          persistOrder(newAll);
+          if(targetAudience!==prevAudience){ sb.from("vault_materials").update({audience:targetAudience}).eq("id",st.id).then(()=>{},e=>console.error("Audience save failed:",e)); }
+          return newAll;
+        }
         const catList = prev.filter(m=>m.category===activeCat);
         const dragged = catList.find(m=>m.id===st.id);
         if(!dragged) return prev;
         const without = catList.filter(m=>m.id!==st.id);
         without.splice(Math.min(target, without.length), 0, dragged);
         // rebuild full materials: active category replaced with new order, others kept
-        const known = CATEGORIES.map(c=>c.key);
         const newAll = [];
         CATEGORIES.forEach(c=>{ newAll.push(...(c.key===activeCat ? without : prev.filter(m=>m.category===c.key))); });
         newAll.push(...prev.filter(m=>!known.includes(m.category)));
@@ -9438,6 +9461,13 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
               {isVideo?"▶ Watch":"📄 Open Link"}
             </a>
           ); })()}
+          {m.url && <CopyTextButton text={m.url} label="🔗 Copy Link"/>}
+          {m.url && (
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Link", body:m.url, audience:"recruits"}); }}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              📤 Send Link
+            </button>
+          )}
         </div>
       )}
     </>);
@@ -9531,21 +9561,38 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
       }); })()}
         </div>
       )}
-      {!loading && activeCat==="playbooks" && (
-        <div>
-          {[{label:"👥 Customers",list:customerTemplates,empty:"No customer templates yet."},{label:"🧲 Recruits",list:recruitTemplates,empty:"No recruit templates yet."}].map(sec=>(
-            <div key={sec.label} style={{marginBottom:24}}>
-              <div style={{fontSize:13,fontWeight:800,color:dark?"#cbd5e1":"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>{sec.label}</div>
-              {sec.list.length===0 && <div style={{fontSize:13,color:"#94a3b8",padding:"4px 0 6px"}}>{sec.empty}</div>}
-              {sec.list.map(m=>(
-                <div key={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${dark?"#334155":"#e8e2f0"}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-                  {matCardInner(m, false)}
-                </div>
-              ))}
+      {!loading && activeCat==="playbooks" && (()=>{
+        const combined = [...customerTemplates, ...recruitTemplates];
+        const dragIndex = dragId ? combined.findIndex(x=>x.id===dragId) : -1;
+        const H = (dragState.current && dragState.current.H) || 0;
+        const renderCard = (m) => {
+          const i = combined.findIndex(x=>x.id===m.id);
+          const isDragged = dragId===m.id;
+          let shift = 0;
+          if(!isDragged && dragIndex>=0 && dropIndex!==null){
+            if(i>dragIndex && i<=dropIndex) shift = -H;
+            else if(i<dragIndex && i>=dropIndex) shift = H;
+          }
+          const transform = isDragged ? `translateY(${dragY}px) scale(1.02)` : (shift ? `translateY(${shift}px)` : "none");
+          return (
+            <div key={m.id} data-mat-id={m.id} style={{background:dark?"#1e293b":"#fff",borderRadius:14,padding:"14px 16px",marginBottom:10,border:`1.5px solid ${isDragged?"#f97316":(dark?"#334155":"#e8e2f0")}`,boxShadow:isDragged?"0 12px 28px rgba(0,0,0,0.25)":"0 1px 4px rgba(0,0,0,0.05)",transform:transform,transition:isDragged?"none":"transform 0.18s ease, box-shadow 0.15s, border-color 0.15s",position:"relative",zIndex:isDragged?50:1,opacity:isDragged?0.97:1,touchAction:isDragged?"none":"auto"}}>
+              {matCardInner(m, true)}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        };
+        const hdrStyle = (mt)=>({fontSize:13,fontWeight:800,color:dark?"#cbd5e1":"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,marginTop:mt});
+        const emptyStyle = {fontSize:13,color:"#94a3b8",padding:"4px 0 10px"};
+        return (
+          <div ref={listRef}>
+            <div data-section-header="customers" style={hdrStyle(0)}>👥 Customers</div>
+            {customerTemplates.length===0 && <div style={emptyStyle}>No customer templates yet.{canManage?" Drag one here to make it a customer template.":""}</div>}
+            {customerTemplates.map(renderCard)}
+            <div data-section-header="recruits" style={hdrStyle(14)}>🧲 Recruits</div>
+            {recruitTemplates.length===0 && <div style={emptyStyle}>No recruit templates yet.{canManage?" Drag one here to make it a recruit template.":""}</div>}
+            {recruitTemplates.map(renderCard)}
+          </div>
+        );
+      })()}
 
       {/* Read-only template viewer */}
       {templateView && (
