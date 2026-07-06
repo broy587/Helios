@@ -4001,7 +4001,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{lead.appointment?"Rebook / Change Appointment":"Appointment"}</div>
               <div style={{display:"flex",gap:8}}>
-                <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer Slot" creatorName={creatorName} acReq={acReq}/>
+                <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
                 <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change CB":"↩️ Personal CB"} onSelect={async(val,cbEventId)=>{
                   // Replacing an old comeback? Remove the previous calendar event.
                   if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
@@ -4026,7 +4026,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               {canBookCap && (
                 <div style={{marginTop:8}}>
                   {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
-                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP Appointment":"📋 Book CAP Appointment"}/>
+                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
                 </div>
               )}
               {/* Additional appointments — book any number of extra sits/appointments
@@ -4376,21 +4376,21 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           {/* Booking buttons are ALWAYS available — booking a new one replaces the
               existing appointment date. */}
           <div style={{display:"flex",gap:8}}>
-            {/* Book Closer Slot */}
+            {/* Book Closer */}
             <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
               if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
               else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-            }} label="📅 Book Closer Slot" creatorName={creatorName} acReq={acReq}/>
+            }} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
             {/* Personal Callback */}
             <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
           </div>
           {canBookCap && (
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 {form.cap_event_id?"Change CAP Appointment":"Book CAP Appointment"}</div>
+              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 {form.cap_event_id?"Change CAP":"Book CAP"}</div>
               {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginBottom:8,fontWeight:600}}>{form.cap_appointment}</div>}
               <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
                 setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
-              }} label={form.cap_event_id?"Change CAP Appointment":"Book CAP Appointment"} creatorName={creatorName} capMode={true}/>
+              }} label={form.cap_event_id?"Change CAP":"Book CAP"} creatorName={creatorName} capMode={true}/>
             </div>
           )}
           {/* Additional appointments — any number of extra sits/appointments,
