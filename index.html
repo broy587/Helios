@@ -3232,6 +3232,7 @@ const AC_REQ_ITEMS = [
   {key:"bill",         label:"Utility bill"},
   {key:"confirmation", label:"Confirmation text"},
   {key:"spouses",      label:"Confirmed all decision makers / spouses will be present"},
+  {key:"knows_solar",  label:"Knows solar is / can be involved", miss:"\"Knows solar is / can be involved\" must be checked in the AC checklist"},
   {key:"setter_notes", label:"Setter notes taken", miss:"Setter notes required"},
 ];
 // True if a given requirement item is satisfied on a lead. Accepts both the
@@ -3248,6 +3249,7 @@ function acItemSatisfied(key, lead) {
     case "bill":         return acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved) || (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0);
     case "confirmation": return nonEmpty(lead.confirmed);
     case "spouses":      return !!(lead.decision_makers || lead.decisionMakers);
+    case "knows_solar":  return acHas("Knows solar is / can be involved");
     case "setter_notes": return nonEmpty(lead.notes);
     default:             return false;
   }
@@ -3333,7 +3335,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
           </div>
         )}
         <div style={{fontSize:12,color:"#94a3b8",marginBottom:14,lineHeight:1.5}}>
-          These rules apply only to <b>reps</b> on <b>{teamName}</b> — not closers, self-gen, managers, or owners. A rep must meet them before an account can move to <b>AC / Scheduled</b> or beyond, and before they can book a closer slot (a personal comeback is still allowed). Use either control, or both together.
+          Rules only apply to <b>{teamName}</b>. The following is what will be required from everyone on your team to schedule leads on the closer calendar. For reps, items selected will also be required to move a lead to <b>AC / Scheduled</b> and beyond.
         </div>
         <div style={card}>
           <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Required items</div>
