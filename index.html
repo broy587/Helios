@@ -3223,7 +3223,7 @@ function migrateAcChecklist(arr) {
 // before it can move to "AC / Scheduled" or beyond (and before a closer slot
 // can be booked). Two independent controls, usable together:
 //   • required_items: specific items that must all be satisfied.
-//   • required_count: a minimum number (1–5) of the items below satisfied.
+//   • required_count: a minimum number (1–8) of the items below satisfied.
 // Stored on the team row (teams.ac_required_items, teams.ac_required_count).
 const AC_REQ_ITEMS = [
   {key:"phone",        label:"Phone number"},
@@ -3356,7 +3356,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
           <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Minimum number of items</div>
           <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Select the amount of items required to move an account to AC / Scheduled and beyond. The account needs at least this many of the items above completed (any of them count).</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {[0,1,2,3,4,5].map(n=>{
+            {[0,1,2,3,4,5,6,7,8].map(n=>{
               const on = count===n;
               return (
                 <button key={n} type="button" onClick={()=>setCount(n)}
@@ -6823,6 +6823,20 @@ function leadPinVisual(lead, activeFilters) {
   return {emoji, color};
 }
 
+// Whether a pipeline lead marker should be visible on the canvass map given the
+// active stage/disposition/pile filters. No filter → always visible.
+function leadMatchesCanvassFilters(lead, activeFilters) {
+  if (!activeFilters || activeFilters.length === 0) return true;
+  if (!lead) return false;
+  const stageMatch = activeFilters.includes("stage:" + lead.stage);
+  const dispMatch = activeFilters.includes("disp:lead");
+  const pileMatch =
+    (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
+    (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
+    (lead.is_arc && activeFilters.includes("pile:arc"));
+  return !!(stageMatch || dispMatch || pileMatch);
+}
+
 // Pile filter chips (booleans on the lead, not stage values).
 const CANVASS_PILES = [
   {key:"pile:on_hold", label:"On Hold",          emoji:"⏸️", color:"#f59e0b"},
@@ -7169,14 +7183,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         m.setLabel({text:vis.emoji, fontSize:"14px"});
       }
       if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
-      const stageMatch = lead&&activeFilters.includes("stage:"+lead.stage);
-      const dispMatch = activeFilters.includes("disp:lead"); // lead disposition
-      const pileMatch = lead && (
-        (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
-        (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
-        (lead.is_arc && activeFilters.includes("pile:arc"))
-      );
-      m.setMap(stageMatch||dispMatch||pileMatch?mapInstanceRef.current:null);
+      m.setMap(leadMatchesCanvassFilters(lead, activeFilters) ? mapInstanceRef.current : null);
     });
 
     // Hide/show OSM building bubbles based on filter
@@ -7269,7 +7276,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         const vis = leadPinVisual(lead, activeFiltersRef.current);
         const marker = new window.google.maps.Marker({
           position:{lat:loc.lat,lng:loc.lng},
-          map:mapInstanceRef.current,
+          map: leadMatchesCanvassFilters(lead, activeFiltersRef.current) ? mapInstanceRef.current : null,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
             scale:14,
