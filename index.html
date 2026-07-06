@@ -9067,7 +9067,7 @@ function CopyTextButton({text, label}) {
   );
 }
 
-function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
+function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gmapsKey}) {
   const canManage = isOwner;
   const myRole = isOwner ? "owner" : (currentUser && currentUser.role) || "rep";
   // Access control: a material's `visible_to` is "all" or a comma-list of roles.
@@ -9164,7 +9164,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   const [templateView, setTemplateView] = useState(null); // material whose body is being viewed
   const [activeCat, setActiveCat] = useState("pitches");
   const [editing, setEditing] = useState(null); // "new" | material object | null
-  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers"});
+  const [form, setForm] = useState({title:"",description:"",url:"",category:"pitches",fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers",location:""});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -9298,8 +9298,8 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
   };
   useEffect(()=>{ load(); },[]);
 
-  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers",visibleTo:"all"}); setEditing("new"); };
-  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||"",audience:m.audience||"customers",visibleTo:(m.visible_to&&m.visible_to!=="all")?m.visible_to:"all"}); setEditing(m); };
+  const openNew = (cat) => { setForm({title:"",description:"",url:"",category:cat,fileUrl:"",fileName:"",imageUrl:"",imageName:"",body:"",templateType:"",audience:"customers",location:"",visibleTo:"all"}); setEditing("new"); };
+  const openEdit = (m) => { setForm({title:m.title||"",description:m.description||"",url:m.url||"",category:m.category,fileUrl:m.file_url||"",fileName:m.file_name||"",imageUrl:m.image_url||"",imageName:m.image_name||"",body:m.body||"",templateType:m.template_type||"",audience:m.audience||"customers",location:m.location||"",visibleTo:(m.visible_to&&m.visible_to!=="all")?m.visible_to:"all"}); setEditing(m); };
   const closeForm = () => { setEditing(null); setErrMsg(""); };
 
   const handleFile = async (e) => {
@@ -9353,7 +9353,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
     setSaving(true);
     let url = form.url.trim();
     if(url && !/^https?:\/\//i.test(url)) url = "https://"+url; // tolerate pasted links without scheme
-    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null, audience:(form.category==="playbooks"?(form.audience||"customers"):"customers"), visible_to:form.visibleTo||"all"};
+    const payload = {category:form.category, title:form.title.trim(), description:form.description.trim()||null, url:url||null, file_url:form.fileUrl||null, file_name:form.fileName||null, image_url:form.imageUrl||null, image_name:form.imageName||null, body:form.body.trim()||null, template_type:form.templateType||null, audience:(form.category==="playbooks"?(form.audience||"customers"):"customers"), location:(form.category==="playbooks"?(form.location||null):null), visible_to:form.visibleTo||"all"};
     try {
       if(editing==="new"){
         payload.created_by = userId;
@@ -9417,7 +9417,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
           </div>
         )}
       </div>
-      {(m.url || m.file_url || m.image_url || m.body) && (
+      {(m.url || m.file_url || m.image_url || m.body || m.location) && (
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:10}}>
           {m.body && (
             <button onClick={()=>setTemplateView(m)}
@@ -9466,6 +9466,13 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
             <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Link", body:m.url, audience:"recruits"}); }}
               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               📤 Send Link
+            </button>
+          )}
+          {m.location && <CopyTextButton text={m.location} label="📍 Copy Location"/>}
+          {m.location && (
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Location", body:m.location, audience:"recruits"}); }}
+              style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fef3c7",color:"#b45309",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              📤 Send Location
             </button>
           )}
         </div>
@@ -9812,6 +9819,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads}) {
                       {o.label}
                     </button>
                   ))}
+                </div>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Location <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>(optional)</span></label>
+                <div style={{marginBottom:16}}>
+                  <AddressAutocomplete value={form.location||""} onChange={v=>setForm(f=>({...f,location:v}))} gmapsKey={gmapsKey} inputStyle={inputStyle} placeholder="Search a location…"/>
                 </div>
               </>
             )}
@@ -11012,7 +11023,7 @@ function App() {
           <TeamManagement currentUser={{...profile,id:user.id}} profiles={profiles} setProfiles={setProfiles} leads={leads} teams={teams} teamMembers={teamMembers} setTeamMembers={setTeamMembers} teamGoals={teamGoals} setTeamGoals={setTeamGoals} onDataRefresh={async ()=>{ await loadData(user,profile); }} selectedTeamId={teamTabSelected} setSelectedTeamId={setTeamTabSelected}/>
         )}
         {tab==="vault"&&(
-          <VaultView currentUser={profile} userId={user.id} isOwner={isOwner} isPrivileged={isPrivileged || isCloser} dark={dark} leads={vaultLeads}/>
+          <VaultView currentUser={profile} userId={user.id} isOwner={isOwner} isPrivileged={isPrivileged || isCloser} dark={dark} leads={vaultLeads} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"/>
         )}
       </div>
 
