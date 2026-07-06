@@ -4026,7 +4026,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               {canBookCap && (
                 <div style={{marginTop:8}}>
                   {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
-                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
+                    <div style={{flex:1}}/>
+                  </div>
                 </div>
               )}
               {/* Additional appointments — book any number of extra sits/appointments
@@ -4041,11 +4044,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                         style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
                     </div>
                   ))}
-                </div>
-              )}
-              {((!!(lead.appointment&&String(lead.appointment).trim())&&!!(lead.gcal_event_id||lead.cb_event_id))||(Array.isArray(lead.extra_appointments)&&lead.extra_appointments.length>0)||!!lead.cap_event_id) && (
-                <div style={{marginTop:8}}>
-                  <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} appendMode={true} label="➕ Book Another Appointment"/>
                 </div>
               )}
             </div>
@@ -4388,9 +4386,12 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
             <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
               <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 {form.cap_event_id?"Change CAP":"Book CAP"}</div>
               {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginBottom:8,fontWeight:600}}>{form.cap_appointment}</div>}
-              <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
-              }} label={form.cap_event_id?"Change CAP":"Book CAP"} creatorName={creatorName} capMode={true}/>
+              <div style={{display:"flex",gap:8}}>
+                <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+                  setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
+                }} label={form.cap_event_id?"Change CAP":"Book CAP"} creatorName={creatorName} capMode={true}/>
+                <div style={{flex:1}}/>
+              </div>
             </div>
           )}
           {/* Additional appointments — any number of extra sits/appointments,
@@ -4418,9 +4419,6 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
                     </div>
                   ))}
                 </div>
-              )}
-              {((!!(form.appointment&&String(form.appointment).trim())&&!!(form.gcal_event_id||form.cb_event_id))||(Array.isArray(form.extra_appointments)&&form.extra_appointments.length>0)||!!form.cap_event_id) && (
-                <CalendarSyncButton lead={{...form}} onUpdate={updated=>setForm(f=>({...f,...updated}))} label="➕ Book Another Appointment" creatorName={creatorName} appendMode={true}/>
               )}
             </div>
           )}
@@ -8640,6 +8638,10 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
 function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appendMode}) {
   const dark = useDark();
   const isBooked = capMode ? !!lead.cap_event_id : !!lead.gcal_event_id;
+  // "Book another appointment" from the manage view flips this on so the booking
+  // appends an extra appointment instead of replacing the existing one.
+  const [appendOverride, setAppendOverride] = React.useState(false);
+  const doAppend = appendMode || appendOverride;
   // Resolve which team calendar this booking should use.
   const initialResolve = React.useMemo(()=>TeamCalendars.resolve(),[]);
   // calendarId: the calendar we'll actually read/write. For an already-booked
@@ -8658,7 +8660,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
   const pickCalendar = (opt) => {
     TeamCalendars.lastOwnerPick = opt.calendarId; // remember for the session (owner)
     setCalChoice({calendarId:opt.calendarId, teamName:opt.name});
-    setView((isBooked&&!appendMode)?"manage":"calendar");
+    setView((isBooked&&!doAppend)?"manage":"calendar");
   };
   const [selectedDay, setSelectedDay] = React.useState(null);
   const [slots, setSlots] = React.useState([]);
@@ -8761,7 +8763,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       // Slot" first. CAP and closer-slot bookings are tracked separately, so
       // booking a CAP never disturbs an existing closer-slot booking (or vice versa).
       // In appendMode we're adding an extra appointment, so nothing is released.
-      const oldId = appendMode ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
+      const oldId = doAppend ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
       if(oldId && oldId !== selectedSlot.id) {
         try {
           await fetch(
@@ -8774,9 +8776,9 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       // Update the event with lead info
       const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       const updatedEvent = {
-        summary: appendMode ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
-        description: `${appendMode?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
-        colorId: appendMode ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
+        summary: doAppend ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
+        description: `${doAppend?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        colorId: doAppend ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
         visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
       };
       const res = await fetch(
@@ -8789,7 +8791,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
       const apptStr = `${startTime.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} - ${startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} to ${endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
       let update, local;
-      if(appendMode){
+      if(doAppend){
         // Additional appointment: append to the list, never touch the primary
         // closer slot / CAP, and leave the pipeline stage unchanged.
         const entry = { id:selectedSlot.id, label:apptStr, type:"extra", ts:new Date().toISOString() };
@@ -8888,6 +8890,10 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
             <button onClick={()=>setView("calendar")}
               style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:10}}>
               📅 Change Appointment
+            </button>
+            <button onClick={()=>{ setAppendOverride(true); setView("calendar"); }}
+              style={{width:"100%",padding:"12px 0",borderRadius:10,border:"1.5px solid #6b2d4e",background:"transparent",color:"#6b2d4e",fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:10}}>
+              ➕ Book Another Appointment
             </button>
             <button onClick={handleRemoveBooking}
               style={{width:"100%",padding:"12px 0",borderRadius:10,border:"1.5px solid #fee2e2",background:"transparent",color:"#ef4444",fontWeight:600,fontSize:15,cursor:"pointer"}}>
