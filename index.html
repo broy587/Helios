@@ -2492,7 +2492,16 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
           {[["Phone",recruit.phone],["Email",recruit.email],["Social Media",recruit.social_media]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
-              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{value}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,minWidth:0,fontSize:14,color:dark?"#f1f5f9":"#1e293b",wordBreak:"break-word"}}>{value}</div>
+                {label==="Phone" && (
+                  <>
+                    <a href={`tel:${value}`} style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#d1fae5",textDecoration:"none",fontSize:15,flexShrink:0}}>📞</a>
+                    <a href={`sms:${value}`} style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:"#dbeafe",textDecoration:"none",fontSize:15,flexShrink:0}}>💬</a>
+                  </>
+                )}
+                {label==="Email" && <EmailButton email={value}/>}
+              </div>
             </div>
           ):null)}
           {/* Appointment — 30-min block on the user's own Google Calendar */}
