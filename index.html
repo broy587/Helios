@@ -3203,7 +3203,7 @@ const AC_CHECKLIST_ITEMS = [
   "Bill Acquired",
   "Transitioned Inside",
   "Same Day or Next Day Apt",
-  "Homeowner Asked Questions",
+  "Confirmed all decision makers / spouses will be present",
   "Homeowner Had Objections",
   "Named Drop In Pitch",
   "Knows solar is / can be involved",
@@ -3257,7 +3257,7 @@ function acItemSatisfied(key, lead) {
     case "prescreen":    return acHas("Prescreened");
     case "bill":         return acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved) || (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0);
     case "confirmation": return nonEmpty(lead.confirmed);
-    case "spouses":      return !!(lead.decision_makers || lead.decisionMakers);
+    case "spouses":      return acHas("Confirmed all decision makers / spouses will be present");
     case "knows_solar":  return acHas("Knows solar is / can be involved");
     case "setter_notes": return nonEmpty(lead.notes);
     default:             return false;
