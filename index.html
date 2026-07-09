@@ -4935,11 +4935,22 @@ function matchesPipelineFilters(lead, filters){
     if(st.mode==="hide" && isStale) return false;
     if((!st.mode || st.mode==="show") && !isStale) return false;
   }
+  // Created-date range (leads created on/after "after", on/before "before").
+  if(filters.after){
+    const a = new Date(filters.after + "T00:00:00");
+    if(!isNaN(a.getTime()) && new Date(lead.created_at) < a) return false;
+  }
+  if(filters.before){
+    const b = new Date(filters.before + "T23:59:59.999");
+    if(!isNaN(b.getTime()) && new Date(lead.created_at) > b) return false;
+  }
   return true;
 }
 function pipeFilterCount(filters){
   if(!filters) return 0;
-  return (Array.isArray(filters.active)?filters.active.length:0) + (filters.stale&&filters.stale.on?1:0);
+  return (Array.isArray(filters.active)?filters.active.length:0)
+    + (filters.stale&&filters.stale.on?1:0)
+    + (filters.after?1:0) + (filters.before?1:0);
 }
 
 function analyzeHygiene(leads, staleDays) {
@@ -5369,7 +5380,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           setDraftFilters({...draft, active:[...next]});
         };
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0);
+        const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+        const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0);
         return (
           <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -5383,6 +5396,30 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 <button onClick={()=>setFilterOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
               </div>
               <div style={{padding:"6px 20px 12px",overflowY:"auto",flex:1}}>
+                {/* Created date range — pinned at the top */}
+                <div style={{marginBottom:16,borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingBottom:14}}>
+                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"6px 0 10px"}}>Created date range</div>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:130}}>
+                      <label style={{display:"block",fontSize:11,fontWeight:700,color:dark?"#cbd5e1":"#475569",marginBottom:4}}>Created on/after</label>
+                      <input type="date" value={draft.after||""} max={draft.before||undefined}
+                        onChange={e=>setDraftFilters({...draft, after:e.target.value||undefined})} style={dateInput}/>
+                    </div>
+                    <div style={{flex:1,minWidth:130}}>
+                      <label style={{display:"block",fontSize:11,fontWeight:700,color:dark?"#cbd5e1":"#475569",marginBottom:4}}>Created on/before</label>
+                      <input type="date" value={draft.before||""} min={draft.after||undefined}
+                        onChange={e=>setDraftFilters({...draft, before:e.target.value||undefined})} style={dateInput}/>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                    <button onClick={()=>setDraftFilters({...draft, before:todayStr()})}
+                      style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${draft.before===todayStr()?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:draft.before===todayStr()?"#1a2456":(dark?"#0f172a":"#fff"),color:draft.before===todayStr()?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>Before = Today</button>
+                    {(draft.after||draft.before) && (
+                      <button onClick={()=>setDraftFilters({...draft, after:undefined, before:undefined})}
+                        style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
+                    )}
+                  </div>
+                </div>
                 {PIPELINE_FILTER_GROUPS.map(group=>(
                   <div key={group} style={{marginBottom:16}}>
                     <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"10px 0 8px"}}>{group}</div>
@@ -10154,6 +10191,8 @@ function App() {
       setPipeFilters({
         active: Array.isArray(pf.active)?pf.active:[],
         stale: (pf.stale && typeof pf.stale==="object") ? {on:!!pf.stale.on, mode:pf.stale.mode||"show", days:Number(pf.stale.days)||14} : {on:false,mode:"show",days:14},
+        after: pf.after || undefined,
+        before: pf.before || undefined,
       });
     }
   },[profile && profile.id]);
