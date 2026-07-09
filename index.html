@@ -143,6 +143,19 @@ const STAGES = [
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
+// Short explanations shown in the pipeline column "?" popups so reps know what
+// each stage means. AC / Scheduled has its own requirements popup instead.
+const STAGE_DESCRIPTIONS = {
+  "Lead: Need Bill/Appointment": "Customer is showing interest and wants to explore what we have to offer but could not get the information required or an appointment scheduled.",
+  "No Show / No Contact": "Customer did not answer at the appointment and there is no contact whatsoever.",
+  "No Show / In Contact": "Customer did not answer at the appointment, but they are communicating over text, call, or email.",
+  "Stale / No Reschedule": "Customer answered and was not interested and pushed closer off the door without showing signs of future interest.",
+  "No Close / No Offer": "Closer started the close and went through the process but did not show customer the contract details / payment.",
+  "No Close / Offer Given": "Closer went through the entire process of the close start to finish and the customer did not proceed.",
+  "Failed Credit": "Customer's credit declined, meaning they have below a 650 credit rating.",
+  "VC / SRA": "Verification Call completed and the account was Sunrun Approved.",
+};
+
 // Old/renamed stage values → their current equivalents. Leads saved under an old
 // stage name would otherwise render in NO column (they'd vanish from the board), so
 // we remap them on load. Add new aliases here whenever a stage is renamed.
@@ -5034,6 +5047,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
   const [detailId,setDetailId]=useState(null);
+  const [helpStage,setHelpStage]=useState(null);
   const [acWarnMsg,setAcWarnMsg]=useState("");
   // When the App blocks an AC+ move, open that lead in view mode and surface the
   // specific list of what's missing.
@@ -5146,7 +5160,46 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#faf6f0",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#c8b8a2"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
               <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#f1f5f9"}`}}>
-                <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
+                {(stage==="AC / Scheduled" || STAGE_DESCRIPTIONS[stage]) ? (
+                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
+                    <button type="button"
+                      onClick={(e)=>{e.stopPropagation();setHelpStage(s=>s===stage?null:stage);}}
+                      title="What does this stage mean?"
+                      style={{flexShrink:0,width:16,height:16,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:10,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",background:dark?"#334155":"#e0e7ff",color:dark?"#c7d2fe":"#4338ca"}}>?</button>
+                    {helpStage===stage && (
+                      <>
+                        <div onClick={()=>setHelpStage(null)} style={{position:"fixed",inset:0,zIndex:60}}/>
+                        <div style={{position:"absolute",top:22,left:0,zIndex:61,width:250,background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",padding:"12px 13px",cursor:"default"}} onClick={(e)=>e.stopPropagation()}>
+                          <div style={{fontSize:12.5,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:6}}>{stage}</div>
+                          {stage==="AC / Scheduled" ? (
+                            <>
+                              <div style={{fontSize:11.5,lineHeight:1.5,color:dark?"#cbd5e1":"#475569"}}>
+                                To move a lead here and book a closer appointment, the rep must complete the required Setter AC items on the lead{(acReq&&Array.isArray(acReq.items)&&acReq.items.length)?":":"."}
+                              </div>
+                              {acReq&&Array.isArray(acReq.items)&&acReq.items.length>0 && (
+                                <ul style={{margin:"7px 0 0",paddingLeft:16,fontSize:11.5,lineHeight:1.5,color:dark?"#e2e8f0":"#334155"}}>
+                                  {acReq.items.map(k=>{
+                                    const f=AC_REQ_ITEMS.find(x=>x.key===k);
+                                    return <li key={k} style={{marginBottom:2}}>{f?f.label:k}</li>;
+                                  })}
+                                  {Number(acReq.count)>0 && <li style={{marginBottom:2}}>Complete at least {acReq.count} of the AC items</li>}
+                                </ul>
+                              )}
+                              <div style={{fontSize:10.5,lineHeight:1.45,color:dark?"#64748b":"#94a3b8",marginTop:8}}>
+                                Required items are set by your team in Rep Management. Managers and owners can schedule without these checks.
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{fontSize:11.5,lineHeight:1.5,color:dark?"#cbd5e1":"#475569"}}>{STAGE_DESCRIPTIONS[stage]}</div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1e293b",lineHeight:1.3}}>{stage}</div>
+                )}
               </div>
               <div style={{padding:"10px 10px 6px",minHeight:80}}>
                 {stageLeads.length===0?(
