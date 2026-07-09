@@ -5095,6 +5095,9 @@ function analyzeConversions(leads) {
   const pipeHiIdx = STAGE_PROGRESSION.indexOf("Install Scheduled");
   let pipeCommSum = 0, pipeCommCount = 0, pipeInRange = 0;
   for (const l of (leads||[])) {
+    // Only accounts actually sitting in these stages — skip anything pulled into
+    // an ARC / On Hold / Needs-Cancel-Save pile.
+    if (l.is_arc || l.on_hold || l.needs_cancel_save) continue;
     const idx = getEffectiveStageIndex(l);
     if (idx < pipeLoIdx || idx > pipeHiIdx) continue;
     pipeInRange++;
