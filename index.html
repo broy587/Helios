@@ -3212,7 +3212,7 @@ function UsagePulledToggle({leadId, initialValue, onUpdate}) {
 // ── AC Checklist ──────────────────────────────────────────────────────
 const AC_CHECKLIST_ITEMS = [
   "Contact Info",
-  "Prescreened",
+  "Prescreen Approved",
   "Bill Acquired",
   "Transitioned Inside",
   "Same Day or Next Day Apt",
@@ -3226,6 +3226,7 @@ const AC_CHECKLIST_ITEMS = [
 // Legacy → current AC checklist item names. Any checked item stored under an
 // old name is migrated to the new name so checkmarks/scores aren't lost.
 const AC_CHECKLIST_RENAMES = {
+  "Prescreened": "Prescreen Approved",
   "At Least 2 Take Aways": "Knows solar is / can be involved",
   "Knew solar was/could be involved": "Knows solar is / can be involved",
   "Knows solar was / could be involved": "Knows solar is / can be involved",
@@ -3250,7 +3251,7 @@ function migrateAcChecklist(arr) {
 const AC_REQ_ITEMS = [
   {key:"phone",        label:"Phone number"},
   {key:"email",        label:"Email"},
-  {key:"prescreen",    label:"Prescreen approved"},
+  {key:"prescreen",    label:"Prescreen Approved"},
   {key:"bill",         label:"Utility bill"},
   {key:"confirmation", label:"Confirmation text"},
   {key:"spouses",      label:"Confirmed all decision makers / spouses will be present"},
@@ -3267,7 +3268,7 @@ function acItemSatisfied(key, lead) {
   switch(key){
     case "phone":        return nonEmpty(lead.phone);
     case "email":        return nonEmpty(lead.email);
-    case "prescreen":    return acHas("Prescreened");
+    case "prescreen":    return acHas("Prescreen Approved") || acHas("Prescreened");
     case "bill":         return acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved) || (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0);
     case "confirmation": return nonEmpty(lead.confirmed);
     case "spouses":      return acHas("Confirmed all decision makers / spouses will be present");
@@ -4848,7 +4849,7 @@ const PIPELINE_FILTER_DEFS = [
   {key:"solid",        group:"General",         label:"Solid commitment",                          test:l=>l.soft_solid==="Solid"},
   {key:"confirmed",    group:"General",         label:"Text / call confirmation",                  test:l=>l.confirmed==="Yes"},
   {key:"ac_bill",      group:"Setter AC",       label:"Bill acquired",                             test:l=>acItemSatisfied("bill", l)},
-  {key:"ac_prescreen", group:"Setter AC",       label:"Prescreened",                               test:l=>acItemSatisfied("prescreen", l)},
+  {key:"ac_prescreen", group:"Setter AC",       label:"Prescreen Approved",                       test:l=>acItemSatisfied("prescreen", l)},
   {key:"ac_solar",     group:"Setter AC",       label:"Knows solar is / can be involved",          test:pfKnowsSolar},
   {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
   {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
@@ -5012,7 +5013,7 @@ function analyzeConversions(leads) {
       {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
       {label:"Got contact info", pct:pct(countAc("Contact Info"), acPool.length), n:countAc("Contact Info")},
       {label:"Same/next-day apt", pct:pct(countAc("Same Day or Next Day Apt"), acPool.length), n:countAc("Same Day or Next Day Apt")},
-      {label:"Prescreened", pct:pct(countAc("Prescreened"), acPool.length), n:countAc("Prescreened")},
+      {label:"Prescreen Approved", pct:pct(countAc("Prescreen Approved"), acPool.length), n:countAc("Prescreen Approved")},
       {label:"Text/call confirmation", pct:pct(countAcYes("confirmed"), acPool.length), n:countAcYes("confirmed")},
     ],
     vc: [
