@@ -5413,7 +5413,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   </div>
                   <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
                     <button onClick={()=>setDraftFilters({...draft, before:todayStr()})}
-                      style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${draft.before===todayStr()?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:draft.before===todayStr()?"#1a2456":(dark?"#0f172a":"#fff"),color:draft.before===todayStr()?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>Before = Today</button>
+                      style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${draft.before===todayStr()?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:draft.before===todayStr()?"#1a2456":(dark?"#0f172a":"#fff"),color:draft.before===todayStr()?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>Before - Today</button>
                     {(draft.after||draft.before) && (
                       <button onClick={()=>setDraftFilters({...draft, after:undefined, before:undefined})}
                         style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
