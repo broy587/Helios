@@ -154,6 +154,11 @@ const STAGE_DESCRIPTIONS = {
   "No Close / Offer Given": "Closer went through the entire process of the close start to finish and the customer did not proceed.",
   "Failed Credit": "Customer's credit declined, meaning they have below a 650 credit rating.",
   "VC / SRA": "Verification Call completed and the account was Sunrun Approved.",
+  "CAP": "CAP package is back and ready to be closed.",
+  "Permitting": "CAP Closed.",
+  "Install Scheduled": "Install is on the schedule.",
+  "Install": "Lead has been Installed!",
+  "PTO / REP": "Permission to operate has been received, and customer has battery and utility plan all set up properly.",
 };
 
 // Old/renamed stage values → their current equivalents. Leads saved under an old
@@ -4902,25 +4907,28 @@ function pfStaleDays(l){
   return Math.floor((Date.now() - d.getTime())/86400000);
 }
 const PIPELINE_FILTER_DEFS = [
-  {key:"has_phone",    group:"General",         label:"Has phone number",                          test:l=>pfNonEmpty(l.phone)},
-  {key:"has_email",    group:"General",         label:"Has email",                                 test:l=>pfNonEmpty(l.email)},
-  {key:"has_appt",     group:"General",         label:"Has an appointment",                        test:pfHasAppt},
-  {key:"has_utility",  group:"General",         label:"All utility info (company, ESIID, Meter #)", test:l=>pfNonEmpty(l.utility)&&pfNonEmpty(l.esiid)&&pfNonEmpty(l.meter)},
-  {key:"has_comm",     group:"General",         label:"Commission entered",                        test:l=>pfNonEmpty(l.commission)},
-  {key:"no_comm",      group:"General",         label:"Commission not entered",                    test:l=>!pfNonEmpty(l.commission)},
-  {key:"has_notes",    group:"General",         label:"Has setter notes",                          test:l=>pfNonEmpty(l.notes)},
-  {key:"no_notes",     group:"General",         label:"No setter notes",                           test:l=>!pfNonEmpty(l.notes)},
-  {key:"warm",         group:"General",         label:"🔥 Warm lead",                              test:l=>l.temperature==="hot"},
-  {key:"solid",        group:"General",         label:"Solid commitment",                          test:l=>l.soft_solid==="Solid"},
-  {key:"confirmed",    group:"General",         label:"Text / call confirmation",                  test:l=>l.confirmed==="Yes"},
-  {key:"ac_bill",      group:"Setter AC",       label:"Bill acquired",                             test:l=>acItemSatisfied("bill", l)},
-  {key:"ac_prescreen", group:"Setter AC",       label:"Prescreen Approved",                       test:l=>acItemSatisfied("prescreen", l)},
-  {key:"ac_solar",     group:"Setter AC",       label:"Knows solar is / can be involved",          test:pfKnowsSolar},
+  {key:"has_phone",    group:"General - Lead Includes",         label:"Phone Number",                          test:l=>pfNonEmpty(l.phone)},
+  {key:"has_email",    group:"General - Lead Includes",         label:"Email",                                 test:l=>pfNonEmpty(l.email)},
+  {key:"has_appt",     group:"General - Lead Includes",         label:"Scheduled Appointment",                 test:pfHasAppt},
+  {key:"has_utility",  group:"General - Lead Includes",         label:"Utility Info (Company, ESIID, Meter #)", test:l=>pfNonEmpty(l.utility)&&pfNonEmpty(l.esiid)&&pfNonEmpty(l.meter)},
+  {key:"has_comm",     group:"General - Lead Includes",         label:"Commission Input",                      test:l=>pfNonEmpty(l.commission)},
+  {key:"no_comm",      group:"General - Lead Includes",         label:"Commission Not Input",                  test:l=>!pfNonEmpty(l.commission)},
+  {key:"has_notes",    group:"General - Lead Includes",         label:"Setter Notes",                          test:l=>pfNonEmpty(l.notes)},
+  {key:"no_notes",     group:"General - Lead Includes",         label:"No Setter Notes",                       test:l=>!pfNonEmpty(l.notes)},
+  {key:"warm",         group:"General - Lead Includes",         label:"🔥 Lead",                               test:l=>l.temperature==="hot"},
+  {key:"solid",        group:"General - Lead Includes",         label:"Solid Commitment",                      test:l=>l.soft_solid==="Solid"},
+  {key:"confirmed",    group:"General - Lead Includes",         label:"Text/Call Confirmation",                test:l=>l.confirmed==="Yes"},
+  ...AC_CHECKLIST_ITEMS.map((item,i)=>({
+    key:`acc_${i}`,
+    group:"Setters AC Checklist",
+    label:item,
+    test:l=>Array.isArray(l.ac_checklist)&&l.ac_checklist.includes(item),
+  })),
   {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
   {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
   {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
 ];
-const PIPELINE_FILTER_GROUPS = ["General","Setter AC","Needs attention"];
+const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Needs attention"];
 const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
