@@ -170,6 +170,18 @@ function normalizeStage(stage) {
   return stage;
 }
 
+// Format a timestamp for note stamps, e.g. "Jul 8, 2026 · 6:45 PM".
+function formatNoteTime(ts) {
+  if (!ts) return "";
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})
+      + " · " + d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+  } catch(e) { return ""; }
+}
+function makeNoteId() { return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,8); }
+
 const STAGE_COLORS = {
   "Lead: Need Bill/Appointment":{bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "AC / Scheduled":{bg:"#dbeafe",border:"#10b981",badge:"#1e3a8a"},
@@ -365,7 +377,7 @@ const TIME_SLOTS = [
 ];
 
 const emptyForm = {
-  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",closerNotes:"",temperature:"",commission:"",giftCardDropped:false,
+  name:"",address:"",phone:"",email:"",appointment:"",utility:"",esiid:"",meter:"",usageInput:"",notes:"",closerNotes:"",closerNotesLog:[],notesCreatedAt:null,temperature:"",commission:"",giftCardDropped:false,
   secondaryName:"",secondaryPhone:"",secondaryEmail:"",
   stage:STAGES[0],billPhotos:[],billRetrieved:"",autopayInput:"",knewSolar:"",closerInside:"",
   decisionMakers:"",closerChecklist:[],contactStatus:"",softSolid:"",confirmed:"",isArc:false,arcStage:"",onHold:false,onHoldStage:"",needsCancelSave:false,ncsStage:"",acChecklist:[],followUpAgreed:"",followUpDate:""
@@ -373,6 +385,39 @@ const emptyForm = {
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const getDaysInMonth = (m,y) => new Date(y,m+1,0).getDate();
+
+// Editor for the closer-notes "pile": a list of timestamped notes you can edit
+// or delete, plus a box to add a new one (stamped with the current date/time).
+function CloserNotesEditor({log, onChange, dark}) {
+  const [draft, setDraft] = React.useState("");
+  const list = Array.isArray(log) ? log : [];
+  const ta = {width:"100%",padding:"8px 11px",borderRadius:6,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"};
+  // Newest note lands at the top of the pile, right under the input.
+  const save = () => { const t = draft.trim(); if(!t) return; onChange([{id:makeNoteId(), text:t, ts:new Date().toISOString()}, ...list]); setDraft(""); };
+  const editText = (id,text) => onChange(list.map(n=>n.id===id?{...n,text}:n)); // edits text only; ts is never touched
+  const del = (id) => { if(window.confirm("Delete this closer note?")) onChange(list.filter(n=>n.id!==id)); };
+  return (
+    <div>
+      {/* Add a new note */}
+      <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a new closer note..." rows={2} style={ta}/>
+      <button type="button" onClick={save} disabled={!draft.trim()}
+        style={{marginTop:6,marginBottom:list.length?12:0,padding:"8px 16px",borderRadius:8,border:"none",background:draft.trim()?"#4338ca":(dark?"#334155":"#cbd5e1"),color:"#fff",fontWeight:700,fontSize:13,cursor:draft.trim()?"pointer":"default"}}>
+        💾 Save Note
+      </button>
+      {/* Saved notes drop below, each in its own dated box */}
+      {list.map(n=>(
+        <div key={n.id} style={{marginBottom:8,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px",background:dark?"#0f172a":"#fbfaf7"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontSize:11,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5}}>🕒 {formatNoteTime(n.ts)}</span>
+            <button type="button" onClick={()=>del(n.id)} title="Delete note" style={{background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer",lineHeight:1}}>🗑️</button>
+          </div>
+          <textarea value={n.text||""} onChange={e=>editText(n.id, e.target.value)} rows={2} style={ta}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const inputStyle = {
   width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
   fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit"
@@ -4078,16 +4123,33 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
 
           {lead.notes && (
             <div style={{marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Setter Notes</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setter Notes</div>
+                {(lead.notes_created_at||lead.created_at) && (
+                  <div style={{fontSize:10,fontWeight:700,color:dark?"#94a3b8":"#64748b",flexShrink:0}}>First taken {formatNoteTime(lead.notes_created_at||lead.created_at)}</div>
+                )}
+              </div>
               <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.notes}</div>
             </div>
           )}
-          {lead.closer_notes && (
-            <div style={{marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>Closer Notes</div>
-              <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.closer_notes}</div>
-            </div>
-          )}
+          {(() => {
+            const log = Array.isArray(lead.closer_notes_log) ? lead.closer_notes_log : [];
+            const entries = log.length ? log : (lead.closer_notes ? [{id:"legacy",text:lead.closer_notes,ts:lead.updated_at||lead.created_at}] : []);
+            if(!entries.length) return null;
+            return (
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Closer Notes</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {entries.map(n=>(
+                    <div key={n.id} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"9px 12px"}}>
+                      {n.ts && <div style={{display:"inline-block",fontSize:10,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5,marginBottom:5}}>🕒 {formatNoteTime(n.ts)}</div>}
+                      <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {lead.stage==="Lead: Need Bill/Appointment" && (
             <TemperatureSelector value={lead.temperature||""} dark={dark}
               onChange={async val=>{
@@ -4497,13 +4559,16 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           </div>
         )}
         <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Setter Notes</label>
+          <label style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+            <span>Setter Notes</span>
+            {form.notesCreatedAt && <span style={{fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"none",letterSpacing:0}}>First taken {formatNoteTime(form.notesCreatedAt)}</span>}
+          </label>
           <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
         {form.id && (
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
-          <textarea placeholder="Notes from the closer..." value={form.closerNotes||""} onChange={set("closerNotes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
+          <CloserNotesEditor log={form.closerNotesLog} dark={dark} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
         </div>
         )}
         <div style={{marginBottom:14}}>
@@ -10271,7 +10336,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
         const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
+          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
@@ -10298,7 +10363,7 @@ function App() {
         });
         setTeamGoals(goalsGrouped);
       } else {
-        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
+        const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
         let leadQuery;
@@ -10488,7 +10553,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:form.closerNotes||"",temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -11083,7 +11148,7 @@ function App() {
 
       <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
-        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",temperature:modal.lead.temperature||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
+        initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",closerNotesLog:(Array.isArray(modal.lead.closer_notes_log)&&modal.lead.closer_notes_log.length)?modal.lead.closer_notes_log:(modal.lead.closer_notes?[{id:makeNoteId(),text:modal.lead.closer_notes,ts:modal.lead.updated_at||modal.lead.created_at||new Date().toISOString()}]:[]),notesCreatedAt:modal.lead.notes_created_at||null,temperature:modal.lead.temperature||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||""}:null}/>
 
       {detailId&&(
         <DetailModal lead={detailLead} onClose={()=>setDetailId(null)}
