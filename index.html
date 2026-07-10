@@ -6898,7 +6898,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
         <textarea
           value={onTitleVal}
           onChange={e=>setOnTitleVal(e.target.value)}
-          placeholder={"e.g.\nBarbara Smith\nJohn Smith"}
+          placeholder={"One name per line…"}
           rows={3}
           style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical"}}/>
         <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
@@ -7299,6 +7299,146 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const leadMarkersRef = React.useRef([]);
   const leadGenRef = React.useRef(0); // cancel stale geocoding
   const [jumpLead, setJumpLead] = React.useState(null);
+
+  // ── Area Management ─────────────────────────────────────────────────────
+  // Owner / managers / closers can draw & assign areas; reps & self-gen reps can
+  // only view areas for teams they're on. Areas render only while the panel is open.
+  const canEditAreas = isPrivileged; // owner, manager, or closer
+  const [showAreaPanel, setShowAreaPanel] = React.useState(false);
+  const [areas, setAreas] = React.useState([]);
+  const [areaDrawMode, setAreaDrawMode] = React.useState(false);
+  const [areaDraft, setAreaDraft] = React.useState([]); // [{lat,lng}] while drawing
+  const [areaForm, setAreaForm] = React.useState(null);  // {mode:'new'|'edit', id?, name, team_id, rep_ids, color, path}
+  const [areaSaving, setAreaSaving] = React.useState(false);
+  const areaPolysRef = React.useRef({});   // id -> {poly, label}
+  const areaDraftPolyRef = React.useRef(null);
+  const areaDraftMarkersRef = React.useRef([]);
+  const areaClickListenerRef = React.useRef(null);
+
+  const areaFirstName = s => String(s||"").trim().split(/\s+/)[0]||"";
+  const areaRepName = (uid) => { const p=(profiles||[]).find(x=>x.id===uid); return p?(p.name||p.email||"Rep"):"Rep"; };
+  const areaVisibleTeamIds = () => new Set((visibleTeams||[]).map(t=>t.id));
+  const areaTeamName = (tid) => { const t=(teams||[]).find(x=>x.id===tid); return t?(t.name||"Team"):"Team"; };
+  const areaTeamReps = (teamId) => {
+    const ms=(teamMembers&&teamMembers[teamId])||[];
+    return ms.map(m=>(profiles||[]).find(p=>p.id===m.user_id))
+      .filter(Boolean)
+      .filter(p=>p.role==="rep"||p.role==="self_gen"||p.role==="closer");
+  };
+  const areaCentroid = (path) => {
+    if(!path||!path.length) return null;
+    let lat=0,lng=0; path.forEach(p=>{lat+=Number(p.lat);lng+=Number(p.lng);});
+    return {lat:lat/path.length, lng:lng/path.length};
+  };
+
+  const loadAreas = async () => {
+    try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)) setAreas(data); }
+    catch(e){ console.error("loadAreas:", e); }
+  };
+  React.useEffect(()=>{ loadAreas(); },[]);
+
+  // Render areas as polygons (+ a rep-name label) whenever the panel is open.
+  React.useEffect(()=>{
+    if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
+    Object.values(areaPolysRef.current).forEach(o=>{ o.poly&&o.poly.setMap(null); o.label&&o.label.setMap(null); });
+    areaPolysRef.current = {};
+    if(!showAreaPanel) return;
+    const vis = areaVisibleTeamIds();
+    (areas||[]).filter(a=>!a.team_id||vis.has(a.team_id)).forEach(a=>{
+      const path=(a.path||[]).map(p=>({lat:Number(p.lat),lng:Number(p.lng)}));
+      if(path.length<3) return;
+      const color=a.color||"#6b2d4e";
+      const poly=new window.google.maps.Polygon({paths:path,strokeColor:color,strokeWeight:2,fillColor:color,fillOpacity:0.18,map:mapInstanceRef.current,clickable:true});
+      poly.addListener("click", ()=>onAreaClick(a));
+      let label=null;
+      const c=areaCentroid(path);
+      if(c){
+        const names=(a.rep_ids||[]).map(uid=>areaFirstName(areaRepName(uid))).filter(Boolean).join(", ")||a.name||"Area";
+        label=new window.google.maps.Marker({position:c,map:mapInstanceRef.current,clickable:false,
+          icon:{path:window.google.maps.SymbolPath.CIRCLE,scale:0},
+          label:{text:names,color:"#ffffff",fontSize:"12px",fontWeight:"800"}});
+      }
+      areaPolysRef.current[a.id]={poly,label};
+    });
+  },[areas, showAreaPanel, mapLoaded]);
+
+  // Render the in-progress draft polygon + numbered vertices while drawing.
+  React.useEffect(()=>{
+    if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
+    if(areaDraftPolyRef.current){areaDraftPolyRef.current.setMap(null);areaDraftPolyRef.current=null;}
+    areaDraftMarkersRef.current.forEach(m=>m.setMap(null)); areaDraftMarkersRef.current=[];
+    if(!areaDrawMode||areaDraft.length===0) return;
+    areaDraft.forEach((p,i)=>{
+      const m=new window.google.maps.Marker({position:p,map:mapInstanceRef.current,
+        icon:{path:window.google.maps.SymbolPath.CIRCLE,scale:6,fillColor:"#6b2d4e",fillOpacity:1,strokeColor:"#fff",strokeWeight:2},
+        label:{text:String(i+1),color:"#fff",fontSize:"10px",fontWeight:"700"}});
+      areaDraftMarkersRef.current.push(m);
+    });
+    if(areaDraft.length>=2){
+      areaDraftPolyRef.current=new window.google.maps.Polygon({paths:areaDraft,strokeColor:"#6b2d4e",strokeWeight:2,fillColor:"#6b2d4e",fillOpacity:0.12,map:mapInstanceRef.current});
+    }
+  },[areaDraft, areaDrawMode, mapLoaded]);
+
+  const onAreaClick = (a) => {
+    if(canEditAreas){
+      setAreaForm({mode:"edit", id:a.id, name:a.name||"", team_id:a.team_id||"", rep_ids:[...(a.rep_ids||[])], color:a.color||"#6b2d4e", path:a.path||[]});
+    } else {
+      const names=(a.rep_ids||[]).map(areaRepName).join(", ")||"No reps assigned";
+      setAreaForm({mode:"view", id:a.id, name:a.name||"Area", team:areaTeamName(a.team_id), reps:names});
+    }
+    setShowAreaPanel(true);
+  };
+
+  const startAreaDraw = () => {
+    setAreaDrawMode(true); setAreaDraft([]);
+    if(mapInstanceRef.current){
+      areaClickListenerRef.current=mapInstanceRef.current.addListener("click",(e)=>{
+        setAreaDraft(d=>[...d,{lat:e.latLng.lat(),lng:e.latLng.lng()}]);
+      });
+    }
+  };
+  const stopAreaClicks = () => { if(areaClickListenerRef.current){window.google.maps.event.removeListener(areaClickListenerRef.current);areaClickListenerRef.current=null;} };
+  const finishAreaDraw = () => {
+    stopAreaClicks(); setAreaDrawMode(false);
+    if(areaDraft.length<3){ setAreaDraft([]); return; }
+    setAreaForm(f => (f&&f.mode==="edit")
+      ? {...f, path:[...areaDraft]}
+      : {mode:"new", name:"", team_id:(visibleTeams[0]&&visibleTeams[0].id)||"", rep_ids:[], color:"#6b2d4e", path:[...areaDraft]});
+    setAreaDraft([]);
+  };
+  const cancelAreaDraw = () => { stopAreaClicks(); setAreaDrawMode(false); setAreaDraft([]); };
+
+  const saveArea = async () => {
+    if(!areaForm) return;
+    if(!(areaForm.path&&areaForm.path.length>=3)){ alert("Draw at least 3 points for the area boundary."); return; }
+    if(!areaForm.team_id){ alert("Pick a team for this area."); return; }
+    setAreaSaving(true);
+    const payload={ team_id:areaForm.team_id, name:areaForm.name||null, color:areaForm.color||"#6b2d4e", path:areaForm.path, rep_ids:areaForm.rep_ids||[] };
+    try {
+      if(areaForm.mode==="new"){
+        const id=makeNoteId();
+        const {error}=await sb.from("canvass_areas").insert({id,...payload,created_by:currentUser.id,created_at:new Date().toISOString()});
+        if(error) throw error;
+        setAreas(a=>[...a,{id,...payload,created_by:currentUser.id}]);
+      } else {
+        const {error}=await sb.from("canvass_areas").update(payload).eq("id",areaForm.id);
+        if(error) throw error;
+        setAreas(a=>a.map(x=>x.id===areaForm.id?{...x,...payload}:x));
+      }
+      setAreaForm(null); setAreaDraft([]);
+    } catch(e){ console.error("saveArea:",e); alert("Couldn't save area: "+(e.message||e)); }
+    setAreaSaving(false);
+  };
+  const deleteArea = async (id) => {
+    if(!window.confirm("Delete this area?")) return;
+    try { await sb.from("canvass_areas").delete().eq("id",id); } catch(e){ console.error(e); }
+    setAreas(a=>a.filter(x=>x.id!==id)); setAreaForm(null);
+  };
+  const toggleAreaRep = (uid) => setAreaForm(f=>{
+    if(!f) return f;
+    const has=(f.rep_ids||[]).includes(uid);
+    return {...f, rep_ids: has ? f.rep_ids.filter(x=>x!==uid) : [...(f.rep_ids||[]), uid]};
+  });
 
   const PRESCREEN_COLORS = {yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8","":" #1a2456"};
 
@@ -7874,6 +8014,101 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
             <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
           </button>
+          {/* Area management (everyone sees it) */}
+          <button onClick={()=>{ const n=!showAreaPanel; setShowAreaPanel(n); if(!n){ cancelAreaDraw(); setAreaForm(null); } }}
+            style={{...btnStyle,border:showAreaPanel?"2px solid #10b981":"none",background:showAreaPanel?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title="Area Management">
+            <span style={{fontSize:20}}>🗺️</span>
+          </button>
+        </div>
+      )}
+
+      {/* Area draw banner */}
+      {mapLoaded && areaDrawMode && (
+        <div style={{position:"absolute",top:12,left:"50%",transform:"translateX(-50%)",zIndex:500,background:"rgba(18,18,28,0.97)",borderRadius:12,padding:"10px 14px",boxShadow:"0 6px 20px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{color:"#fff",fontSize:13,fontWeight:600}}>Tap the map to drop points ({areaDraft.length})</span>
+          <button onClick={finishAreaDraw} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#10b981",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Finish</button>
+          <button onClick={cancelAreaDraw} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(255,255,255,0.15)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Cancel</button>
+        </div>
+      )}
+
+      {/* Area management panel */}
+      {mapLoaded && showAreaPanel && !areaDrawMode && (
+        <div style={{position:"absolute",top:12,right:12,zIndex:450,background:"rgba(18,18,28,0.98)",borderRadius:14,padding:"16px",width:270,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{color:"#fff",fontSize:15,fontWeight:800}}>Area Management</div>
+            <button onClick={()=>{setShowAreaPanel(false);setAreaForm(null);cancelAreaDraw();}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontSize:18,cursor:"pointer"}}>✕</button>
+          </div>
+
+          {/* VIEW mode (reps): read-only area info */}
+          {areaForm && areaForm.mode==="view" && (
+            <div style={{background:"rgba(255,255,255,0.06)",borderRadius:10,padding:"12px"}}>
+              <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>{areaForm.name}</div>
+              <div style={{color:"#cbd5e1",fontSize:12,marginBottom:3}}>Team: {areaForm.team}</div>
+              <div style={{color:"#cbd5e1",fontSize:12}}>Reps: {areaForm.reps}</div>
+              <button onClick={()=>setAreaForm(null)} style={{marginTop:10,padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(255,255,255,0.12)",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>Back</button>
+            </div>
+          )}
+
+          {/* EDIT/NEW form (editors) */}
+          {canEditAreas && areaForm && areaForm.mode!=="view" && (
+            <div>
+              <label style={{display:"block",color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Area name</label>
+              <input value={areaForm.name} onChange={e=>setAreaForm(f=>({...f,name:e.target.value}))} placeholder="e.g. North of Main St"
+                style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"#fff",fontSize:13,boxSizing:"border-box",marginBottom:10}}/>
+
+              {(isOwner || visibleTeams.length>1) && (
+                <>
+                  <label style={{display:"block",color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Team</label>
+                  <select value={areaForm.team_id} onChange={e=>setAreaForm(f=>({...f,team_id:e.target.value,rep_ids:[]}))}
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.06)",color:"#fff",fontSize:13,boxSizing:"border-box",marginBottom:10}}>
+                    <option value="" style={{background:"#1e293b"}}>Select team…</option>
+                    {visibleTeams.map(t=><option key={t.id} value={t.id} style={{background:"#1e293b"}}>{t.name||"Team"}</option>)}
+                  </select>
+                </>
+              )}
+
+              <label style={{display:"block",color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Assigned reps</label>
+              <div style={{maxHeight:150,overflowY:"auto",marginBottom:10,border:"1px solid rgba(255,255,255,0.1)",borderRadius:8}}>
+                {areaForm.team_id ? (
+                  areaTeamReps(areaForm.team_id).length>0 ? areaTeamReps(areaForm.team_id).map(p=>(
+                    <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                      <input type="checkbox" checked={(areaForm.rep_ids||[]).includes(p.id)} onChange={()=>toggleAreaRep(p.id)}/>
+                      <span style={{color:"#e2e8f0",fontSize:13}}>{p.name||p.email}</span>
+                    </label>
+                  )) : <div style={{color:"#94a3b8",fontSize:12,padding:"8px 10px"}}>No reps on this team.</div>
+                ) : <div style={{color:"#94a3b8",fontSize:12,padding:"8px 10px"}}>Pick a team to choose reps.</div>}
+              </div>
+
+              <button onClick={startAreaDraw} style={{width:"100%",padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:8}}>✏️ {areaForm.path&&areaForm.path.length>=3?"Redraw boundaries":"Draw boundaries"} {areaForm.path&&areaForm.path.length>=3?`(${areaForm.path.length} pts)`:""}</button>
+
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={saveArea} disabled={areaSaving} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#10b981",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>{areaSaving?"Saving…":"Save area"}</button>
+                <button onClick={()=>{setAreaForm(null);cancelAreaDraw();}} style={{padding:"9px 12px",borderRadius:8,border:"none",background:"rgba(255,255,255,0.12)",color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer"}}>Cancel</button>
+              </div>
+              {areaForm.mode==="edit" && (
+                <button onClick={()=>deleteArea(areaForm.id)} style={{width:"100%",marginTop:8,padding:"8px",borderRadius:8,border:"none",background:"rgba(185,28,28,0.85)",color:"#fff",fontWeight:600,fontSize:12,cursor:"pointer"}}>🗑️ Delete area</button>
+              )}
+            </div>
+          )}
+
+          {/* LIST (default) */}
+          {!areaForm && (
+            <div>
+              {canEditAreas && (
+                <button onClick={startAreaDraw} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#1a2456",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12}}>＋ Add Area</button>
+              )}
+              <div style={{color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Areas on your team{isOwner?"s":""}</div>
+              {(areas||[]).filter(a=>!a.team_id||areaVisibleTeamIds().has(a.team_id)).length===0 && (
+                <div style={{color:"#94a3b8",fontSize:12}}>No areas yet.{canEditAreas?" Tap “Add Area” to draw one.":""}</div>
+              )}
+              {(areas||[]).filter(a=>!a.team_id||areaVisibleTeamIds().has(a.team_id)).map(a=>(
+                <div key={a.id} onClick={()=>onAreaClick(a)} style={{background:"rgba(255,255,255,0.05)",borderRadius:8,padding:"9px 10px",marginBottom:6,cursor:"pointer",borderLeft:`3px solid ${a.color||"#6b2d4e"}`}}>
+                  <div style={{color:"#fff",fontSize:13,fontWeight:600}}>{a.name||"Untitled area"}</div>
+                  <div style={{color:"#94a3b8",fontSize:11,marginTop:2}}>{isOwner?areaTeamName(a.team_id)+" · ":""}{(a.rep_ids||[]).map(areaRepName).join(", ")||"No reps"}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
