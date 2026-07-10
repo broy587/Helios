@@ -7267,7 +7267,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   });
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapError, setMapError] = React.useState(null);
-  const [homes, setHomes] = React.useState([]);
+  const [homes, setHomes] = React.useState(()=>{
+    // Instant load: hydrate pins from the last cached copy so a rep's area shows
+    // immediately even before (or without) a network response.
+    try { const c = localStorage.getItem("pp_canvass_homes"); return c ? JSON.parse(c) : []; }
+    catch(e){ return []; }
+  });
   const [selectedHome, setSelectedHome] = React.useState(null);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [addForm, setAddForm] = React.useState({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
@@ -7305,7 +7310,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // only view areas for teams they're on. Areas render only while the panel is open.
   const canEditAreas = isPrivileged; // owner, manager, or closer
   const [showAreaPanel, setShowAreaPanel] = React.useState(false);
-  const [areas, setAreas] = React.useState([]);
+  const [areas, setAreas] = React.useState(()=>{
+    try { const c = localStorage.getItem("pp_canvass_areas"); return c ? JSON.parse(c) : []; }
+    catch(e){ return []; }
+  });
   const [areaDrawMode, setAreaDrawMode] = React.useState(false);
   const [areaDraft, setAreaDraft] = React.useState([]); // [{lat,lng}] while drawing
   const [areaForm, setAreaForm] = React.useState(null);  // {mode:'new'|'edit', id?, name, team_id, rep_ids, color, path}
@@ -7332,7 +7340,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   };
 
   const loadAreas = async () => {
-    try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)) setAreas(data); }
+    try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)){ setAreas(data); try{ localStorage.setItem("pp_canvass_areas", JSON.stringify(data)); }catch(e){} } }
     catch(e){ console.error("loadAreas:", e); }
   };
   React.useEffect(()=>{ loadAreas(); },[]);
@@ -7512,6 +7520,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     try{
       const {data}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
       setHomes(data||[]);
+      // Save to the local cache for instant/offline load next time.
+      try { localStorage.setItem("pp_canvass_homes", JSON.stringify(data||[])); } catch(e){ /* quota — skip */ }
       homesRef.current=data||[];
     }catch(e){console.error("Canvass load error:",e);}
   };
@@ -7721,49 +7731,51 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google)return;
-    markersRef.current.forEach(m=>m.setMap(null));
-    markersRef.current=[];
-    homes.forEach(home=>{
-      if(!home.lat||!home.lng)return;
-      // Filter by viewing scope
-      if(allowedOwnerIds){
-        const homeOwner = home.added_by || (currentUser&&currentUser.id);
-        if(!allowedOwnerIds.has(homeOwner)) return;
-      }
-      const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
-      const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-      const disp = home.prescreen||"";
-      const emoji = dispEmojis[disp];
-      const color = dispColors[disp]||"rgba(255,255,255,0.7)";
-      const marker = emoji ? new window.google.maps.Marker({
-        position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
-        map:mapInstanceRef.current,
-        label:{text:emoji, fontSize:"14px"},
-        icon:{
-          path:window.google.maps.SymbolPath.CIRCLE,
-          scale:14,
-          fillColor:color,
-          fillOpacity:0.9,
-          strokeColor:"#fff",
-          strokeWeight:2,
-        },
-        title:home.address,
-      }) : new window.google.maps.Marker({
-        position:{lat:parseFloat(home.lat),lng:parseFloat(home.lng)},
-        map:mapInstanceRef.current,
-        icon:{
-          path:window.google.maps.SymbolPath.CIRCLE,
-          scale:11,
-          fillColor:"rgba(255,255,255,0.85)",
-          fillOpacity:0.85,
-          strokeColor:"#1a2456",
-          strokeWeight:2,
-        },
-        title:home.address,
+    const map=mapInstanceRef.current;
+    // Only draw pins inside the current viewport (+ a margin), and redraw when the
+    // map settles after a pan/zoom. This keeps the map fast even with thousands of
+    // homes, because a rep zoomed into their area only renders that area's pins.
+    const render=()=>{
+      const bounds=map.getBounds();
+      if(!bounds) return; // map not settled yet — the 'idle' listener will call us
+      markersRef.current.forEach(m=>m.setMap(null));
+      markersRef.current=[];
+      const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
+      const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
+      const nB=ne.lat()+latPad, sB=sw.lat()-latPad, eB=ne.lng()+lngPad, wB=sw.lng()-lngPad;
+      homes.forEach(home=>{
+        if(!home.lat||!home.lng)return;
+        const la=parseFloat(home.lat), ln=parseFloat(home.lng);
+        if(la>nB||la<sB||ln>eB||ln<wB) return; // outside viewport — skip
+        // Filter by viewing scope
+        if(allowedOwnerIds){
+          const homeOwner = home.added_by || (currentUser&&currentUser.id);
+          if(!allowedOwnerIds.has(homeOwner)) return;
+        }
+        const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
+        const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
+        const disp = home.prescreen||"";
+        const emoji = dispEmojis[disp];
+        const color = dispColors[disp]||"rgba(255,255,255,0.7)";
+        const marker = emoji ? new window.google.maps.Marker({
+          position:{lat:la,lng:ln},
+          map,
+          label:{text:emoji, fontSize:"14px"},
+          icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2 },
+          title:home.address,
+        }) : new window.google.maps.Marker({
+          position:{lat:la,lng:ln},
+          map,
+          icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:11, fillColor:"rgba(255,255,255,0.85)", fillOpacity:0.85, strokeColor:"#1a2456", strokeWeight:2 },
+          title:home.address,
+        });
+        marker.addListener("click",()=>setSelectedHome(home));
+        markersRef.current.push(marker);
       });
-      marker.addListener("click",()=>setSelectedHome(home));
-      markersRef.current.push(marker);
-    });
+    };
+    render();
+    const idle=map.addListener("idle", render);
+    return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
   },[homes,mapLoaded,allowedOwnerIds]);
 
   const geocodeAddress=async(address)=>{
