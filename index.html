@@ -7369,13 +7369,15 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     areaDraftMarkersRef.current.forEach(m=>m.setMap(null)); areaDraftMarkersRef.current=[];
     if(!areaDrawMode||areaDraft.length===0) return;
     areaDraft.forEach((p,i)=>{
-      const m=new window.google.maps.Marker({position:p,map:mapInstanceRef.current,
+      const m=new window.google.maps.Marker({position:p,map:mapInstanceRef.current,clickable:false,
         icon:{path:window.google.maps.SymbolPath.CIRCLE,scale:6,fillColor:"#6b2d4e",fillOpacity:1,strokeColor:"#fff",strokeWeight:2},
         label:{text:String(i+1),color:"#fff",fontSize:"10px",fontWeight:"700"}});
       areaDraftMarkersRef.current.push(m);
     });
     if(areaDraft.length>=2){
-      areaDraftPolyRef.current=new window.google.maps.Polygon({paths:areaDraft,strokeColor:"#6b2d4e",strokeWeight:2,fillColor:"#6b2d4e",fillOpacity:0.12,map:mapInstanceRef.current});
+      // clickable:false so taps INSIDE the in-progress shape still register on the
+      // map as new boundary points (otherwise the polygon swallows the tap).
+      areaDraftPolyRef.current=new window.google.maps.Polygon({paths:areaDraft,strokeColor:"#6b2d4e",strokeWeight:2,fillColor:"#6b2d4e",fillOpacity:0.12,map:mapInstanceRef.current,clickable:false});
     }
   },[areaDraft, areaDrawMode, mapLoaded]);
 
