@@ -6679,6 +6679,12 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
   const [savingOwner, setSavingOwner] = React.useState(false);
   React.useEffect(()=>{ setOwnerName(home.owner_name||""); },[home.owner_name, home.id]);
 
+  // People on title (all homeowners on the deed). Stored as text — one per line.
+  const [onTitleVal, setOnTitleVal] = React.useState(home.on_title||"");
+  const [onTitleSaved, setOnTitleSaved] = React.useState(false);
+  const [savingOnTitle, setSavingOnTitle] = React.useState(false);
+  React.useEffect(()=>{ setOnTitleVal(home.on_title||""); },[home.on_title, home.id]);
+
   const [phoneVal, setPhoneVal] = React.useState(home.phone||"");
   const [emailVal, setEmailVal] = React.useState(home.email||"");
   const [contactSaved, setContactSaved] = React.useState(false);
@@ -6770,6 +6776,38 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     setSavingOwner(false);
   };
 
+  const saveOnTitle = async() => {
+    const val = onTitleVal.trim();
+    setSavingOnTitle(true);
+    setOnTitleSaved(false);
+    try {
+      if(!home.id||home._isTemp||home._isPipelineLead){
+        const {data,error} = await sb.from("canvass_homes").insert({
+          address:home.address,
+          lat:home.lat||null,
+          lng:home.lng||null,
+          owner_name:home.owner_name||null,
+          on_title:val||null,
+          phone:home.phone||null,
+          notes:home.notes||null,
+          prescreen:home.prescreen||null,
+          added_by:currentUser?.id||null,
+          updated_at:new Date().toISOString()
+        }).select().single();
+        if(error) throw error;
+        if(data&&onSaveOwner) await onSaveOwner(data);
+      } else {
+        const {error} = await sb.from("canvass_homes").update({on_title:val||null,updated_at:new Date().toISOString()}).eq("id",home.id);
+        if(error) throw error;
+        if(onSaveOwner) await onSaveOwner({...home,on_title:val||null});
+      }
+      setErrMsg("");
+      setOnTitleSaved(true);
+      setTimeout(()=>setOnTitleSaved(false), 2000);
+    } catch(e){ console.error("Save on-title failed:", e); setErrMsg("Couldn't save people on title: "+((e&&(e.message||e.details))||"unknown error")); }
+    setSavingOnTitle(false);
+  };
+
   return (
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(18,18,28,0.97)",borderRadius:"20px 20px 0 0",maxHeight:"75vh",overflowY:"auto",zIndex:5000,boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
       {/* Header */}
@@ -6850,6 +6888,23 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           <button onClick={saveOwnerName} disabled={savingOwner||ownerName.trim()===(home.owner_name||"").trim()}
             style={{padding:"10px 16px",borderRadius:8,border:"none",background:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.12)":"#f97316",color:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingOwner||ownerName.trim()===(home.owner_name||"").trim())?"default":"pointer",whiteSpace:"nowrap"}}>
             {savingOwner?"Saving...":ownerSaved?"✓ Saved":"Save"}
+          </button>
+        </div>
+      </div>
+
+      {/* People on Title */}
+      <div style={{padding:"0 20px 12px"}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>People on Title <span style={{fontWeight:600,textTransform:"none",letterSpacing:0,color:"rgba(255,255,255,0.35)"}}>(everyone on the deed — one per line)</span></div>
+        <textarea
+          value={onTitleVal}
+          onChange={e=>setOnTitleVal(e.target.value)}
+          placeholder={"e.g.\nBarbara Smith\nJohn Smith"}
+          rows={3}
+          style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none",resize:"vertical"}}/>
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+          <button onClick={saveOnTitle} disabled={savingOnTitle||onTitleVal.trim()===(home.on_title||"").trim()}
+            style={{padding:"8px 16px",borderRadius:8,border:"none",background:(savingOnTitle||onTitleVal.trim()===(home.on_title||"").trim())?"rgba(255,255,255,0.12)":"#f97316",color:(savingOnTitle||onTitleVal.trim()===(home.on_title||"").trim())?"rgba(255,255,255,0.4)":"#fff",fontWeight:700,fontSize:13,cursor:(savingOnTitle||onTitleVal.trim()===(home.on_title||"").trim())?"default":"pointer",whiteSpace:"nowrap"}}>
+            {savingOnTitle?"Saving...":onTitleSaved?"✓ Saved":"Save"}
           </button>
         </div>
       </div>
