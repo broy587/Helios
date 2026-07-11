@@ -7345,6 +7345,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     }
   });
   const [mapLoaded, setMapLoaded] = React.useState(false);
+  const [mapReady, setMapReady] = React.useState(false); // true once the map INSTANCE exists
   const [mapError, setMapError] = React.useState(null);
   const [homes, setHomes] = React.useState(()=>{
     // Instant load: hydrate pins from the last cached copy so a rep's area shows
@@ -7647,6 +7648,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         tiltInteractionEnabled: false,
       });
       mapInstanceRef.current=map;
+      setMapReady(true);
       // Show the compass while the map heading changes (two-finger rotate), then
       // fade it out shortly after the user stops twisting.
       map.addListener("heading_changed", ()=>{
@@ -7891,16 +7893,16 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
   // Register the map's idle listener exactly ONCE — it calls the always-fresh render.
   React.useEffect(()=>{
-    if(!mapLoaded || !mapInstanceRef.current || !window.google) return;
+    if(!mapReady || !mapInstanceRef.current || !window.google) return;
     const map = mapInstanceRef.current;
     const cb = ()=>renderHomesRef.current();
     const idle = map.addListener("idle", cb);
     cb(); // draw immediately
     return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
-  },[mapLoaded]);
+  },[mapReady]);
 
   // Re-cull whenever the underlying data / filters / scope change.
-  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters]);
+  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters, mapReady]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
