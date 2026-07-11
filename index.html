@@ -3064,6 +3064,22 @@ function AppointmentPicker({value,onChange}) {
 function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
   const dark=useDark();
   const [localVals, setLocalVals] = React.useState({});
+  const [showFollowHelp, setShowFollowHelp] = React.useState(false);
+  const followHelp = (
+    <span style={{position:"relative",display:"inline-flex",flexShrink:0}}>
+      <button type="button" onClick={(e)=>{e.stopPropagation();setShowFollowHelp(v=>!v);}}
+        title="What does this mean?"
+        style={{width:16,height:16,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:10,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",background:dark?"#334155":"#e0e7ff",color:dark?"#c7d2fe":"#4338ca"}}>?</button>
+      {showFollowHelp && (
+        <>
+          <div onClick={()=>setShowFollowHelp(false)} style={{position:"fixed",inset:0,zIndex:60}}/>
+          <div onClick={(e)=>e.stopPropagation()} style={{position:"absolute",top:22,left:0,zIndex:61,width:230,background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",padding:"11px 12px",fontSize:11.5,lineHeight:1.5,color:dark?"#cbd5e1":"#475569",fontWeight:500,whiteSpace:"normal"}}>
+            In the close, the customer did not move forward but agreed to follow up at a later date. Put a closer note with the reason.
+          </div>
+        </>
+      )}
+    </span>
+  );
   const questions=[
     {key:"autopayInput",db:"autopay_input",label:"Was autopay input?"},
     {key:"knewSolar",db:"knew_solar",label:"Did homeowner know solar was/could be involved?"},
@@ -3086,7 +3102,10 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         />
         <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",flex:1,lineHeight:1.4,fontWeight:600}}>In close, the customer agreed to a follow up at a later date</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+              <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",lineHeight:1.4,fontWeight:600}}>In close follow up date scheduled</div>
+              {followHelp}
+            </div>
             <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,background:hasFollowUp?(dark?"#064e3b":"#d1fae5"):(dark?"#7f1d1d":"#fee2e2"),color:hasFollowUp?(dark?"#6ee7b7":"#047857"):(dark?"#fca5a5":"#b91c1c")}}>{hasFollowUp?"Yes":"No"}</span>
           </div>
           {hasFollowUp && followUpDate && (
@@ -3110,7 +3129,10 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
       />
       <div style={{marginBottom:22,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,marginBottom:6,lineHeight:1.4}}>In close, the customer agreed to a follow up at a later date</div>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,lineHeight:1.4}}>In close follow up date scheduled</div>
+          {followHelp}
+        </div>
         <div style={{display:"flex",gap:10}}>
           {["Yes","No"].map(opt=>{
             const active = opt==="Yes" ? hasFollowUp : !hasFollowUp && form.followUpAgreed==="No";
@@ -3773,7 +3795,7 @@ function TemperatureSelector({value, onChange, dark}) {
         {info && (
           <div style={{position:"absolute",top:24,left:0,zIndex:60,width:290,maxWidth:"80vw",background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.25)",fontSize:12,lineHeight:1.5,color:dark?"#cbd5e1":"#475569"}}>
             <div style={{marginBottom:6}}>❄️ — Not in contact and little implication that they want you to come back.</div>
-            <div>🔥 — In contact or implied that they want you to come back. Interest shown.</div>
+            <div>🔥 — In contact or implied that they want you to come back. Interest shown. If they are no show at personal comeback, move the lead to ❄️.</div>
           </div>
         )}
       </div>
@@ -4788,6 +4810,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
+          {lead.temperature==="hot" && <span style={{fontSize:13,flexShrink:0}} title="Warm lead">🔥</span>}
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
           {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
           {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#6366f1",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>SAVE</span>}
