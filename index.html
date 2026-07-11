@@ -8031,14 +8031,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             <span style={{fontSize:20}}>🔍</span>
             {activeFilters.length>0&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#6b2d4e",fontSize:9,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilters.length}</div>}
           </button>
-          {/* Add home */}
-          <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
-            <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
-          </button>
           {/* Area management (everyone sees it) */}
           <button onClick={()=>{ const n=!showAreaPanel; setShowAreaPanel(n); if(!n){ cancelAreaDraw(); setAreaForm(null); } }}
             style={{...btnStyle,border:showAreaPanel?"2px solid #10b981":"none",background:showAreaPanel?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title="Area Management">
             <span style={{fontSize:20}}>🗺️</span>
+          </button>
+          {/* Add home */}
+          <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
+            <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
           </button>
         </div>
       )}
