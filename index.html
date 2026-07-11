@@ -7784,10 +7784,11 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         if(!home.lat||!home.lng)return;
         const la=parseFloat(home.lat), ln=parseFloat(home.lng);
         if(la>nB||la<sB||ln>eB||ln<wB) return; // outside viewport — skip
-        // Filter by viewing scope
+        // Filter by viewing scope. Match strictly on who added the pin — do NOT
+        // default a missing added_by to the current user, or unattributed pins
+        // (created before this field existed) would leak into everyone's "mine".
         if(allowedOwnerIds){
-          const homeOwner = home.added_by || (currentUser&&currentUser.id);
-          if(!allowedOwnerIds.has(homeOwner)) return;
+          if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
         }
         const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
         const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
