@@ -7362,7 +7362,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       if(!(mine || (showAreaPanel && onMyTeam))) return;
       const path=(a.path||[]).map(p=>({lat:Number(p.lat),lng:Number(p.lng)}));
       if(path.length<3) return;
-      const color=a.color||"#6b2d4e";
+      // No rep assigned → flag the area bright red so it's obvious it's open turf.
+      const color=((a.rep_ids||[]).length>0) ? (a.color||"#6b2d4e") : "#ff2d2d";
       const poly=new window.google.maps.Polygon({paths:path,strokeColor:color,strokeWeight:2,fillColor:color,fillOpacity:showAreaPanel?0.18:0.10,map:mapInstanceRef.current,clickable:showAreaPanel});
       if(showAreaPanel) poly.addListener("click", ()=>onAreaClick(a));
       let label=null;
@@ -7397,6 +7398,15 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[areaDraft, areaDrawMode, mapLoaded]);
 
   const onAreaClick = (a) => {
+    // Pan/zoom the map to fit this area's boundary.
+    try {
+      const path=(a.path||[]).map(p=>({lat:Number(p.lat),lng:Number(p.lng)}));
+      if(path.length>=3 && mapInstanceRef.current && window.google){
+        const b=new window.google.maps.LatLngBounds();
+        path.forEach(p=>b.extend(p));
+        mapInstanceRef.current.fitBounds(b, 80);
+      }
+    } catch(e){ console.error("area zoom:",e); }
     if(canEditAreas){
       setAreaForm({mode:"edit", id:a.id, name:a.name||"", team_id:a.team_id||"", rep_ids:[...(a.rep_ids||[])], color:a.color||"#6b2d4e", path:a.path||[]});
     } else {
@@ -7420,7 +7430,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     if(areaDraft.length<3){ setAreaDraft([]); return; }
     setAreaForm(f => (f&&f.mode==="edit")
       ? {...f, path:[...areaDraft]}
-      : {mode:"new", name:"", team_id:(visibleTeams[0]&&visibleTeams[0].id)||"", rep_ids:[], color:"#6b2d4e", path:[...areaDraft]});
+      : {mode:"new", name:"", team_id:(visibleTeams[0]&&visibleTeams[0].id)||"", rep_ids:[], color:"#ff2d2d", path:[...areaDraft]});
     setAreaDraft([]);
   };
   const cancelAreaDraw = () => { stopAreaClicks(); setAreaDrawMode(false); setAreaDraft([]); };
@@ -8099,6 +8109,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
                   )) : <div style={{color:"#94a3b8",fontSize:12,padding:"8px 10px"}}>No reps on this team.</div>
                 ) : <div style={{color:"#94a3b8",fontSize:12,padding:"8px 10px"}}>Pick a team to choose reps.</div>}
               </div>
+
+              <label style={{display:"block",color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Area color</label>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                {["#ff2d2d","#3b82f6","#10b981","#f59e0b","#8b5cf6","#14b8a6","#ec4899","#6b2d4e"].map(col=>(
+                  <button key={col} type="button" onClick={()=>setAreaForm(f=>({...f,color:col}))}
+                    title={col==="#ff2d2d"?"Bright red (unassigned)":col}
+                    style={{width:28,height:28,borderRadius:"50%",background:col,cursor:"pointer",border:(areaForm.color===col)?"3px solid #fff":"2px solid rgba(255,255,255,0.25)",boxShadow:(areaForm.color===col)?"0 0 0 2px rgba(16,185,129,0.6)":"none"}}/>
+                ))}
+              </div>
+              {(!areaForm.rep_ids || areaForm.rep_ids.length===0) && (
+                <div style={{color:"#fca5a5",fontSize:11,marginTop:-4,marginBottom:10}}>No reps assigned — this area shows bright red until you assign someone.</div>
+              )}
 
               <button onClick={startAreaDraw} style={{width:"100%",padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:8}}>✏️ {areaForm.path&&areaForm.path.length>=3?"Redraw boundaries":"Draw boundaries"} {areaForm.path&&areaForm.path.length>=3?`(${areaForm.path.length} pts)`:""}</button>
 
