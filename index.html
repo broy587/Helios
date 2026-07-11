@@ -7637,17 +7637,9 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     if(!mapInstanceRef.current||!window.google) return;
     const hasFilter = activeFilters.length > 0;
 
-    // Filter disposition markers (canvass homes)
-    markersRef.current.forEach(m=>{
-      const home = homes.find(h=>{
-        if(!h.lat||!h.lng) return false;
-        const pos=m.getPosition();
-        return pos&&Math.abs(pos.lat()-parseFloat(h.lat))<0.0003&&Math.abs(pos.lng()-parseFloat(h.lng))<0.0003;
-      });
-      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
-      const dispMatch = home&&home.prescreen&&activeFilters.includes("disp:"+home.prescreen);
-      m.setMap(dispMatch?mapInstanceRef.current:null);
-    });
+    // NOTE: canvass home (disposition) markers are filtered inside the viewport-cull
+    // render effect above (it re-runs on activeFilters change), so we don't touch
+    // markersRef here — doing so would fight that effect and re-show filtered pins.
 
     // Filter pipeline lead markers
     leadMarkersRef.current.forEach(m=>{
@@ -7805,6 +7797,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
       const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
       const nB=ne.lat()+latPad, sB=sw.lat()-latPad, eB=ne.lng()+lngPad, wB=sw.lng()-lngPad;
+      const hasFilter = activeFilters && activeFilters.length>0;
+      const warmActive = hasFilter && activeFilters.includes("warm");
+      // Street addresses of warm pipeline leads (Lead stage + 🔥) so we can light up
+      // the matching canvass pins (pins themselves don't carry a temperature).
+      const warmKeys = warmActive
+        ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment" && l.temperature==="hot" && l.address)
+            .map(l=>l.address.split(",")[0].toLowerCase().trim()).filter(Boolean)
+        : [];
       homes.forEach(home=>{
         if(!home.lat||!home.lng)return;
         const la=parseFloat(home.lat), ln=parseFloat(home.lng);
@@ -7815,11 +7815,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         if(allowedOwnerIds){
           if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
         }
+        const disp = home.prescreen||"";
+        const homeWarm = warmActive && home.address && warmKeys.some(k=>home.address.toLowerCase().includes(k));
+        // Apply active filters (dispositions + 🔥 Leads). Skip pins that don't match.
+        if(hasFilter){
+          const dispMatch = disp && activeFilters.includes("disp:"+disp);
+          if(!dispMatch && !homeWarm) return;
+        }
         const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
         const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-        const disp = home.prescreen||"";
-        const emoji = dispEmojis[disp];
-        const color = dispColors[disp]||"rgba(255,255,255,0.7)";
+        // When shown specifically because it's a warm lead, badge it 🔥.
+        const emoji = homeWarm ? "🔥" : dispEmojis[disp];
+        const color = homeWarm ? "#ef4444" : (dispColors[disp]||"rgba(255,255,255,0.7)");
         const marker = emoji ? new window.google.maps.Marker({
           position:{lat:la,lng:ln},
           map,
@@ -7839,7 +7846,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     render();
     const idle=map.addListener("idle", render);
     return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
-  },[homes,mapLoaded,allowedOwnerIds]);
+  },[homes,mapLoaded,allowedOwnerIds,activeFilters,leads]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
