@@ -4810,7 +4810,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
-          {lead.temperature==="hot" && <span style={{fontSize:13,flexShrink:0}} title="Warm lead">🔥</span>}
+          {lead.temperature==="hot" && lead.stage==="Lead: Need Bill/Appointment" && <span style={{fontSize:13,flexShrink:0}} title="Warm lead">🔥</span>}
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
           {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
           {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#6366f1",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>SAVE</span>}
