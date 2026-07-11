@@ -7837,70 +7837,70 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     });
   },[leads, homes, mapLoaded]);
 
-  React.useEffect(()=>{
-    if(!mapInstanceRef.current||!window.google)return;
-    const map=mapInstanceRef.current;
-    // Only draw pins inside the current viewport (+ a margin), and redraw when the
-    // map settles after a pan/zoom. This keeps the map fast even with thousands of
-    // homes, because a rep zoomed into their area only renders that area's pins.
-    const render=()=>{
-      const bounds=map.getBounds();
-      if(!bounds) return; // map not settled yet — the 'idle' listener will call us
-      markersRef.current.forEach(m=>m.setMap(null));
-      markersRef.current=[];
-      const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
-      const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
-      const nB=ne.lat()+latPad, sB=sw.lat()-latPad, eB=ne.lng()+lngPad, wB=sw.lng()-lngPad;
-      const hasFilter = activeFilters && activeFilters.length>0;
-      const warmActive = hasFilter && activeFilters.includes("warm");
-      // Street addresses of warm pipeline leads (Lead stage + 🔥) so we can light up
-      // the matching canvass pins (pins themselves don't carry a temperature).
-      const warmKeys = warmActive
-        ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment" && l.temperature==="hot" && l.address)
-            .map(l=>l.address.split(",")[0].toLowerCase().trim()).filter(Boolean)
-        : [];
-      homes.forEach(home=>{
-        if(!home.lat||!home.lng)return;
-        const la=parseFloat(home.lat), ln=parseFloat(home.lng);
-        if(la>nB||la<sB||ln>eB||ln<wB) return; // outside viewport — skip
-        // Filter by viewing scope. Match strictly on who added the pin — do NOT
-        // default a missing added_by to the current user, or unattributed pins
-        // (created before this field existed) would leak into everyone's "mine".
-        if(allowedOwnerIds){
-          if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
-        }
-        const disp = home.prescreen||"";
-        const homeWarm = warmActive && home.address && warmKeys.some(k=>home.address.toLowerCase().includes(k));
-        // Apply active filters (dispositions + 🔥 Leads). Skip pins that don't match.
-        if(hasFilter){
-          const dispMatch = disp && activeFilters.includes("disp:"+disp);
-          if(!dispMatch && !homeWarm) return;
-        }
-        const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
-        const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-        // When shown specifically because it's a warm lead, badge it 🔥.
-        const emoji = homeWarm ? "🔥" : dispEmojis[disp];
-        const color = homeWarm ? "#ef4444" : (dispColors[disp]||"rgba(255,255,255,0.7)");
-        const marker = emoji ? new window.google.maps.Marker({
-          position:{lat:la,lng:ln},
-          map,
-          label:{text:emoji, fontSize:"14px"},
-          icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2 },
-          title:home.address,
-        }) : new window.google.maps.Marker({
-          position:{lat:la,lng:ln},
-          map,
-          icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:11, fillColor:"rgba(255,255,255,0.85)", fillOpacity:0.85, strokeColor:"#1a2456", strokeWeight:2 },
-          title:home.address,
-        });
-        marker.addListener("click",()=>setSelectedHome(home));
-        markersRef.current.push(marker);
+  // Keep the latest home-render function in a ref so the map's idle listener (below)
+  // always runs with current homes/filters/leads and never goes stale. This fixes
+  // pins not re-drawing when panning to a new area.
+  const renderHomesRef = React.useRef(()=>{});
+  renderHomesRef.current = () => {
+    const map = mapInstanceRef.current;
+    if(!map || !window.google) return;
+    const bounds = map.getBounds();
+    if(!bounds) return; // map not settled yet
+    markersRef.current.forEach(m=>m.setMap(null));
+    markersRef.current=[];
+    const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
+    const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
+    const nB=ne.lat()+latPad, sB=sw.lat()-latPad, eB=ne.lng()+lngPad, wB=sw.lng()-lngPad;
+    const hasFilter = activeFilters && activeFilters.length>0;
+    const warmActive = hasFilter && activeFilters.includes("warm");
+    const warmKeys = warmActive
+      ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment" && l.temperature==="hot" && l.address)
+          .map(l=>l.address.split(",")[0].toLowerCase().trim()).filter(Boolean)
+      : [];
+    homes.forEach(home=>{
+      if(!home.lat||!home.lng)return;
+      const la=parseFloat(home.lat), ln=parseFloat(home.lng);
+      if(la>nB||la<sB||ln>eB||ln<wB) return; // outside viewport — skip
+      if(allowedOwnerIds){
+        if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
+      }
+      const disp = home.prescreen||"";
+      const homeWarm = warmActive && home.address && warmKeys.some(k=>home.address.toLowerCase().includes(k));
+      if(hasFilter){
+        const dispMatch = disp && activeFilters.includes("disp:"+disp);
+        if(!dispMatch && !homeWarm) return;
+      }
+      const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
+      const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
+      const emoji = homeWarm ? "🔥" : dispEmojis[disp];
+      const color = homeWarm ? "#ef4444" : (dispColors[disp]||"rgba(255,255,255,0.7)");
+      const marker = emoji ? new window.google.maps.Marker({
+        position:{lat:la,lng:ln}, map,
+        label:{text:emoji, fontSize:"14px"},
+        icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2 },
+        title:home.address,
+      }) : new window.google.maps.Marker({
+        position:{lat:la,lng:ln}, map,
+        icon:{ path:window.google.maps.SymbolPath.CIRCLE, scale:11, fillColor:"rgba(255,255,255,0.85)", fillOpacity:0.85, strokeColor:"#1a2456", strokeWeight:2 },
+        title:home.address,
       });
-    };
-    render();
-    const idle=map.addListener("idle", render);
+      marker.addListener("click",()=>setSelectedHome(home));
+      markersRef.current.push(marker);
+    });
+  };
+
+  // Register the map's idle listener exactly ONCE — it calls the always-fresh render.
+  React.useEffect(()=>{
+    if(!mapLoaded || !mapInstanceRef.current || !window.google) return;
+    const map = mapInstanceRef.current;
+    const cb = ()=>renderHomesRef.current();
+    const idle = map.addListener("idle", cb);
+    cb(); // draw immediately
     return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
-  },[homes,mapLoaded,allowedOwnerIds,activeFilters,leads]);
+  },[mapLoaded]);
+
+  // Re-cull whenever the underlying data / filters / scope change.
+  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
