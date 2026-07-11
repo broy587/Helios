@@ -7560,6 +7560,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         fullscreenControl:false,
         gestureHandling:"greedy",
         rotateControl:false, // we show our own compass instead of Google's control
+        // Vector rendering is required for map rotation. renderingType:VECTOR works
+        // without a Map ID. headingInteractionEnabled turns on the two-finger twist
+        // to rotate; tilt is left off so the map stays flat/top-down for canvassing.
+        renderingType: (window.google.maps.RenderingType && window.google.maps.RenderingType.VECTOR) || "VECTOR",
+        headingInteractionEnabled: true,
+        tiltInteractionEnabled: false,
       });
       mapInstanceRef.current=map;
       // Show the compass while the map heading changes (two-finger rotate), then
@@ -8005,7 +8011,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[showFilter]);
 
   return(
-    <div ref={containerRef} style={{position:"relative",height:isFs?"100vh":"calc(100vh - 110px)",overflow:"hidden"}}>
+    <div ref={containerRef} style={{position:"relative",height:isFs?"100dvh":"100%",overflow:"hidden"}}>
 
       {/* Map fills everything */}
       {!mapLoaded?(
@@ -8589,7 +8595,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
 
   if(!CALENDAR_EMBED){
     return (
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0",textAlign:"center",padding:"0 30px"}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"calc(100dvh - 110px)",background:dark?"#0f172a":"#f5ede0",textAlign:"center",padding:"0 30px"}}>
         <div style={{fontSize:42,marginBottom:14}}>📅</div>
         <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No calendar to show</div>
         <div style={{fontSize:13,color:dark?"#94a3b8":"#6b2d4e",lineHeight:1.5,maxWidth:340}}>
@@ -8602,7 +8608,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   }
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100dvh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
       <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
         {browsable.length>1 ? (
           <select value={selectedTid||""} onChange={e=>{chooseCalendar(e.target.value);setCalKey(k=>k+1);}}
@@ -11342,7 +11348,7 @@ function App() {
 
   return (
     <DarkCtx.Provider value={dark}>
-    <div style={{minHeight:"100vh",background:dark?"#0f172a":"#f5ede0",display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100dvh",background:dark?"#0f172a":"#f5ede0",display:"flex",flexDirection:"column"}}>
       {(pullDist>0 || refreshing) && (
         <div style={{position:"fixed",top:0,left:0,right:0,display:"flex",alignItems:"flex-start",justifyContent:"center",height:refreshing?54:pullDist,zIndex:400,pointerEvents:"none",overflow:"hidden",transition:refreshing?"height 0.2s ease":"none"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(26,36,86,0.96)",borderRadius:99,padding:"8px 16px",boxShadow:"0 4px 16px rgba(0,0,0,0.3)",marginTop:10,color:"#fff"}}>
@@ -11424,7 +11430,7 @@ function App() {
         </a>
       </div>
 
-      <div style={{flex:1,overflowY:"auto"}}>
+      <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
         {tab==="pipeline" && (
           <>
             {/* Pipeline sub-tab bar */}
