@@ -7329,9 +7329,9 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const areaTeamName = (tid) => { const t=(teams||[]).find(x=>x.id===tid); return t?(t.name||"Team"):"Team"; };
   const areaTeamReps = (teamId) => {
     const ms=(teamMembers&&teamMembers[teamId])||[];
-    return ms.map(m=>(profiles||[]).find(p=>p.id===m.user_id))
-      .filter(Boolean)
-      .filter(p=>p.role==="rep"||p.role==="self_gen"||p.role==="closer");
+    // Everyone on the team can be assigned to an area — reps, self-gen, closers, and
+    // managers/owner (who also canvass) — so leadership can put themselves on a turf.
+    return ms.map(m=>(profiles||[]).find(p=>p.id===m.user_id)).filter(Boolean);
   };
   const areaCentroid = (path) => {
     if(!path||!path.length) return null;
