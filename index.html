@@ -7118,11 +7118,15 @@ function leadMatchesCanvassFilters(lead, activeFilters) {
   if (!lead) return false;
   const stageMatch = activeFilters.includes("stage:" + lead.stage);
   const dispMatch = activeFilters.includes("disp:lead");
+  // 🔥 Leads: warm leads still sitting in the Lead stage.
+  const warmMatch = activeFilters.includes("warm")
+    && lead.stage === "Lead: Need Bill/Appointment"
+    && lead.temperature === "hot";
   const pileMatch =
     (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
     (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
     (lead.is_arc && activeFilters.includes("pile:arc"));
-  return !!(stageMatch || dispMatch || pileMatch);
+  return !!(stageMatch || dispMatch || warmMatch || pileMatch);
 }
 
 // Pile filter chips (booleans on the lead, not stage values).
@@ -8272,6 +8276,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
               </div>
             );
           })}
+          {(()=>{ const isOn=activeFilters.includes("warm"); return (
+            <div onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="warm"):[...f,"warm"])}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(239,68,68,0.18)":"transparent",border:`1px solid ${isOn?"rgba(239,68,68,0.5)":"rgba(255,255,255,0.06)"}`}}>
+              <span style={{fontSize:14,width:26,textAlign:"center"}}>🔥</span>
+              <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>🔥 Leads</span>
+              {isOn&&<span style={{color:"#ef4444",fontSize:13}}>✓</span>}
+            </div>
+          ); })()}
           <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Piles</div>
           {CANVASS_PILES.map(p=>{
             const isOn=activeFilters.includes(p.key);
