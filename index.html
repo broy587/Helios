@@ -8407,16 +8407,22 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           onDelete={handleDeleteHome}
           onRecordPitch={async(home,disp)=>{
             // Log a pitch event for the current rep (counts toward the Pitches stat).
+            const row = {
+              id: makeNoteId(),
+              owner_id: currentUser?.id || null,
+              home_id: (home&&home.id) || null,
+              disposition: disp || null,
+              created_at: new Date().toISOString(),
+            };
+            // Update the count live right away, then persist.
+            if(typeof onPitchRecorded==="function") onPitchRecorded(row);
             try {
-              await sb.from("pitches").insert({
-                id: makeNoteId(),
-                owner_id: currentUser?.id || null,
-                home_id: (home&&home.id) || null,
-                disposition: disp || null,
-                created_at: new Date().toISOString(),
-              });
-              if(typeof onPitchRecorded==="function") onPitchRecorded();
-            } catch(e){ console.error("record pitch:", e); }
+              const {error} = await sb.from("pitches").insert(row);
+              if(error) throw error;
+            } catch(e){
+              console.error("record pitch:", e);
+              alert("Couldn't save pitch: "+(e.message||e)+"\n\nMake sure the 'pitches' table exists and RLS is disabled.");
+            }
           }}
           onDisposition={async(home,disp)=>{
             const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
@@ -11696,7 +11702,7 @@ function App() {
       setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",email:home.email||"",notes:home.notes||""}});
     }
   },100);
-}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))} onPitchRecorded={loadPitches}/>
+}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))} onPitchRecorded={(row)=>{ if(row) setPitches(p=>[...p, row]); loadPitches(); }}/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
