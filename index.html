@@ -7345,19 +7345,26 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   };
   React.useEffect(()=>{ loadAreas(); },[]);
 
-  // Render areas as polygons (+ a rep-name label) whenever the panel is open.
+  // Areas on the map: a rep's OWN assigned areas stay visible 24/7 (even with the
+  // panel closed); everyone else's areas only appear while Area Management is open.
+  // When shown always-on (panel closed), polygons are non-clickable so they don't
+  // block tapping the home pins underneath.
   React.useEffect(()=>{
     if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
     Object.values(areaPolysRef.current).forEach(o=>{ o.poly&&o.poly.setMap(null); o.label&&o.label.setMap(null); });
     areaPolysRef.current = {};
-    if(!showAreaPanel) return;
     const vis = areaVisibleTeamIds();
-    (areas||[]).filter(a=>!a.team_id||vis.has(a.team_id)).forEach(a=>{
+    const myId = currentUser && currentUser.id;
+    (areas||[]).forEach(a=>{
+      const mine = (a.rep_ids||[]).includes(myId);
+      const onMyTeam = !a.team_id || vis.has(a.team_id);
+      // Show it if it's mine (always) OR the panel is open and it's on a team I can see.
+      if(!(mine || (showAreaPanel && onMyTeam))) return;
       const path=(a.path||[]).map(p=>({lat:Number(p.lat),lng:Number(p.lng)}));
       if(path.length<3) return;
       const color=a.color||"#6b2d4e";
-      const poly=new window.google.maps.Polygon({paths:path,strokeColor:color,strokeWeight:2,fillColor:color,fillOpacity:0.18,map:mapInstanceRef.current,clickable:true});
-      poly.addListener("click", ()=>onAreaClick(a));
+      const poly=new window.google.maps.Polygon({paths:path,strokeColor:color,strokeWeight:2,fillColor:color,fillOpacity:showAreaPanel?0.18:0.10,map:mapInstanceRef.current,clickable:showAreaPanel});
+      if(showAreaPanel) poly.addListener("click", ()=>onAreaClick(a));
       let label=null;
       const c=areaCentroid(path);
       if(c){
