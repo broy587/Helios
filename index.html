@@ -7106,6 +7106,8 @@ function leadPinVisual(lead, activeFilters) {
   if (lead.is_arc && activeFilters.includes("pile:arc")) return {emoji:"🔴", color:"#ef4444"};
   if (lead.on_hold && activeFilters.includes("pile:on_hold")) return {emoji:"⏸️", color:"#f59e0b"};
   if (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) return {emoji:"🛟", color:"#6366f1"};
+  // 🔥 Leads filter: warm leads still in the Lead stage show a fire pin.
+  if (activeFilters.includes("warm") && lead.stage==="Lead: Need Bill/Appointment" && lead.temperature==="hot") return {emoji:"🔥", color:"#ef4444"};
   const emoji = STAGE_EMOJIS[lead.stage] || "⚡";
   const color = (STAGE_COLORS[lead.stage] && STAGE_COLORS[lead.stage].border) || "#10b981";
   return {emoji, color};
