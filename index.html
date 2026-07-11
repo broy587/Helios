@@ -816,20 +816,26 @@ class StatsErrorBoundary extends React.Component {
 // Hype leaderboard: pick a stat (Leads / ACs / VCs / Permits / Installs) and a
 // timeframe; shows the top 3 reps as big profile bubbles, then the rest ranked.
 const LEADERBOARD_STATS = [
+  {key:"pitches", label:"Pitches"},
   {key:"leads",   label:"Leads"},
   {key:"AC",      label:"ACs"},
   {key:"VC",      label:"VCs"},
   {key:"Permits", label:"Permits"},
   {key:"Install", label:"Installs"}, // literal Install stage or beyond (NOT Install Scheduled)
 ];
-function LeaderboardView({reps, leadsByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
-  const [stat,setStat]=React.useState("leads");
+function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
+  const [stat,setStat]=React.useState("pitches");
   const [statOpen,setStatOpen]=React.useState(false);
   const [listOpen,setListOpen]=React.useState(true);
   const LITERAL_INSTALL_IDX = STAGE_PROGRESSION.indexOf("Install");
 
   const statValue = (rep) => {
     const repLeads = leadsByOwner[rep.id] || [];
+    if(stat==="pitches"){
+      const ps = (pitchesByOwner && pitchesByOwner[rep.id]) || [];
+      if(!range) return ps.length;
+      return ps.filter(p=>{ const t=new Date(p.created_at); return t>=range.start && t<=range.end; }).length;
+    }
     if(stat==="leads") return leadsInRange(repLeads, range).length;
     if(stat==="Install"){
       let count=0;
@@ -938,7 +944,7 @@ function LeaderboardView({reps, leadsByOwner, range, timeFilter, setTimeFilter, 
 }
 
 // ── Stats View ────────────────────────────────────────────────────────
-function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPersonalGoals, teamGoals, setTeamGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
+function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals, setPersonalGoals, teamGoals, setTeamGoals, teamStatLeadsForGoals, profiles, currentUser, teams, teamMembers,
   timeFilter, setTimeFilter, customRange, setCustomRange,
   selectedTeamId, setSelectedTeamId, repSearch, setRepSearch, selectedRepId, setSelectedRepId}) {
   const dark=useDark();
@@ -959,6 +965,9 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   const myLeads = uniqueLeads.filter(l=>l.owner_id===currentUser.id);
   // My active leads (non-ARC) created in range — for "Leads" count
   const myLeadsInRange = leadsInRange(myLeads, range);
+  // My pitches (logged from canvass) in range.
+  const myPitches = (pitches||[]).filter(p=>p&&p.owner_id===currentUser.id);
+  const myPitchesInRange = range ? myPitches.filter(p=>{const t=new Date(p.created_at);return t>=range.start&&t<=range.end;}) : myPitches;
   const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
   // Helper: milestone count with time range
   const mc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
@@ -1010,6 +1019,13 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   };
   const teamLeads = getTeamLeads();
   const teamLeadsInRange = leadsInRange(teamLeads, range);
+  const getTeamPitches = () => {
+    if(selectedTeamId==="all") return (pitches||[]);
+    const memberIds = (teamMembers[selectedTeamId]||[]).map(m=>m.user_id);
+    return (pitches||[]).filter(p=>p&&memberIds.includes(p.owner_id));
+  };
+  const teamPitches = getTeamPitches();
+  const teamPitchesInRange = range ? teamPitches.filter(p=>{const t=new Date(p.created_at);return t>=range.start&&t<=range.end;}) : teamPitches;
   const tmc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
 
   const rangeLabel = (() => {
@@ -1038,6 +1054,11 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
   const leadsByOwner = (()=>{
     const map={};
     for(const l of teamStatSource){ (map[l.owner_id] = map[l.owner_id] || []).push(l); }
+    return map;
+  })();
+  const pitchesByOwner = (()=>{
+    const map={};
+    for(const p of (pitches||[])){ if(!p||!p.owner_id) continue; (map[p.owner_id] = map[p.owner_id] || []).push(p); }
     return map;
   })();
 
@@ -1069,6 +1090,7 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
           <LeaderboardView
             reps={teamReps}
             leadsByOwner={leadsByOwner}
+            pitchesByOwner={pitchesByOwner}
             range={range}
             timeFilter={timeFilter}
             setTimeFilter={(k)=>{setTimeFilter(k);setCustomRange(null);}}
@@ -1172,13 +1194,16 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
       <div style={{marginBottom:28}}>
         <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:14}}>Personal</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+          <StatCard label="Pitches" value={myPitchesInRange.length} color="#ef4444"/>
           <StatCard label="Leads" value={myLeadsInRange.length} color="#6b2d4e"/>
           <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
-          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
           <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6"/>
           <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
           <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
         </div>
       </div>
@@ -1197,13 +1222,16 @@ function StatsView({leads, teamStatLeads, currentUserId, personalGoals, setPerso
           </div>
           {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+            <StatCard label="Pitches" value={teamPitchesInRange.length} color="#ef4444"/>
             <StatCard label="Leads" value={teamLeadsInRange.length} color="#6b2d4e"/>
             <StatCard label="AC" value={tmc(teamLeads,"AC")} color="#3b82f6"/>
-            <StatCard label="VC" value={tmc(teamLeads,"VC")} color="#6366f1"/>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+            <StatCard label="VC" value={tmc(teamLeads,"VC")} color="#6366f1"/>
             <StatCard label="CAP" value={tmc(teamLeads,"CAP")} color="#8b5cf6"/>
             <StatCard label="Install" value={tmc(teamLeads,"Install")} color="#10b981"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
             <StatCard label="PTO" value={tmc(teamLeads,"PTO")} color="#f59e0b"/>
           </div>
         </div>
@@ -6629,11 +6657,12 @@ const DISPOSITIONS = [
   {key:"nq",   label:"NQ",   color:"#ef4444", icon:"🚫"},
 ];
 
-function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, leads, onStageChange, currentUser, acReq, profiles}) {
+function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOwner, onCreateLead, onRecordPitch, leads, onStageChange, currentUser, acReq, profiles}) {
   const [note, setNote] = React.useState(home.notes||"");
   const [noteSaved, setNoteSaved] = React.useState(false);
   const [errMsg, setErrMsg] = React.useState("");
   const [isEditingNote, setIsEditingNote] = React.useState(false);
+  const [pitchPrompt, setPitchPrompt] = React.useState(null); // {disp, proceed}
   // Re-sync note when home prop updates (after save)
   React.useEffect(()=>{ setNote(home.notes||""); setIsEditingNote(false); },[home.notes]);
 
@@ -6875,8 +6904,16 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
               <div key={d.key} onClick={()=>{
                 // Toggle off if already active
                 const newDisp = home.prescreen===d.key ? "" : d.key;
-                onDisposition(home, newDisp);
-                if(d.key==="lead" && newDisp==="lead") onCreateLead(home, null);
+                const proceed = ()=>{
+                  onDisposition(home, newDisp);
+                  if(d.key==="lead" && newDisp==="lead") onCreateLead(home, null);
+                };
+                // Selecting Lead / CB / NN prompts "was this a pitch?" before moving on.
+                if(newDisp && (d.key==="lead"||d.key==="cb"||d.key==="nn")){
+                  setPitchPrompt({ disp:d.key, proceed });
+                } else {
+                  proceed();
+                }
               }}
                 style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,cursor:"pointer"}}>
                 <div style={{
@@ -6896,7 +6933,22 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
         </div>
       </div>
 
-      {/* Homeowner */}
+      {/* "Was this a pitch?" prompt — shown before Lead / CB / NN proceed */}
+      {pitchPrompt && (
+        <div onClick={()=>{ pitchPrompt.proceed(); setPitchPrompt(null); }}
+          style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#1a1a28",borderRadius:16,padding:"22px 20px",width:"100%",maxWidth:320,boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+            <div style={{fontSize:17,fontWeight:800,color:"#fff",textAlign:"center",marginBottom:6}}>Was this a pitch?</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.6)",textAlign:"center",marginBottom:18,lineHeight:1.4}}>Counts toward your pitch total in Stats.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{ if(onRecordPitch) onRecordPitch(home, pitchPrompt.disp); const p=pitchPrompt.proceed; setPitchPrompt(null); p(); }}
+                style={{flex:1,padding:"13px",borderRadius:12,border:"none",background:"#10b981",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Yes</button>
+              <button onClick={()=>{ const p=pitchPrompt.proceed; setPitchPrompt(null); p(); }}
+                style={{flex:1,padding:"13px",borderRadius:12,border:"none",background:"rgba(255,255,255,0.14)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>No</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{padding:"0 20px 12px"}}>
         <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Homeowner</div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -7269,7 +7321,7 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
 }
 
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds}) {
+function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds, onPitchRecorded}) {
   const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
   const isManager = myProfile&&myProfile.role==="manager";
   const isCloser = myProfile&&myProfile.role==="closer";
@@ -8353,6 +8405,19 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           profiles={profiles}
           onClose={()=>setSelectedHome(null)}
           onDelete={handleDeleteHome}
+          onRecordPitch={async(home,disp)=>{
+            // Log a pitch event for the current rep (counts toward the Pitches stat).
+            try {
+              await sb.from("pitches").insert({
+                id: makeNoteId(),
+                owner_id: currentUser?.id || null,
+                home_id: (home&&home.id) || null,
+                disposition: disp || null,
+                created_at: new Date().toISOString(),
+              });
+              if(typeof onPitchRecorded==="function") onPitchRecorded();
+            } catch(e){ console.error("record pitch:", e); }
+          }}
           onDisposition={async(home,disp)=>{
             const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
             const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
@@ -10642,6 +10707,12 @@ function App() {
   // Slim, PII-free team leads used ONLY for Team Stats aggregates (so reps can
   // see team numbers without their teammates' names/addresses/phones loading).
   const [teamStatLeads,setTeamStatLeads]=useState([]);
+  const [pitches,setPitches]=useState([]);
+  const loadPitches = React.useCallback(async()=>{
+    try { const {data}=await sb.from("pitches").select("*"); if(Array.isArray(data)) setPitches(data); }
+    catch(e){ console.error("loadPitches:", e); }
+  },[]);
+  React.useEffect(()=>{ loadPitches(); },[loadPitches]);
   const [profiles,setProfiles]=useState([]);
   // Saved pipeline filters (persist per-user in profiles.pipeline_filters).
   const [pipeFilters,setPipeFilters]=useState({active:[], stale:{on:false,mode:"show",days:14}});
@@ -11625,11 +11696,11 @@ function App() {
       setModal({open:true,lead:{name:home.owner_name||"",address:home.address||"",phone:home.phone||"",email:home.email||"",notes:home.notes||""}});
     }
   },100);
-}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))}/>
+}} onStageChange={(leadId,newStage,entry)=>setLeads(ls=>ls.map(l=>l.id===leadId?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l))} onPitchRecorded={loadPitches}/>
         )}
         {tab==="stats"&&(
           <StatsErrorBoundary>
-          <StatsView leads={leads} teamStatLeads={teamStatLeads} currentUserId={user.id} personalGoals={personalGoals} setPersonalGoals={setPersonalGoals} teamGoals={teamGoals} setTeamGoals={setTeamGoals} teamStatLeadsForGoals={teamStatLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
+          <StatsView leads={leads} teamStatLeads={teamStatLeads} pitches={pitches} currentUserId={user.id} personalGoals={personalGoals} setPersonalGoals={setPersonalGoals} teamGoals={teamGoals} setTeamGoals={setTeamGoals} teamStatLeadsForGoals={teamStatLeads} profiles={profiles} currentUser={profile} teams={teams} teamMembers={teamMembers}
             timeFilter={statsTimeFilter} setTimeFilter={setStatsTimeFilter}
             customRange={statsCustomRange} setCustomRange={setStatsCustomRange}
             selectedTeamId={statsTeamId} setSelectedTeamId={setStatsTeamId}
