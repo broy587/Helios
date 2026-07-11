@@ -7848,16 +7848,6 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     if(!map || !window.google) return;
     markersRef.current.forEach(m=>m.setMap(null));
     markersRef.current=[];
-    // Cull to the viewport only if bounds are available; otherwise draw everything
-    // (bounds can be momentarily null right after the map is created).
-    const bounds = map.getBounds();
-    let nB,sB,eB,wB, cull=false;
-    if(bounds){
-      const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
-      const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
-      nB=ne.lat()+latPad; sB=sw.lat()-latPad; eB=ne.lng()+lngPad; wB=sw.lng()-lngPad;
-      cull=true;
-    }
     const hasFilter = activeFilters && activeFilters.length>0;
     const warmActive = hasFilter && activeFilters.includes("warm");
     const warmKeys = warmActive
@@ -7867,7 +7857,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
       const la=parseFloat(home.lat), ln=parseFloat(home.lng);
-      if(cull && (la>nB||la<sB||ln>eB||ln<wB)) return; // outside viewport — skip
+      if(isNaN(la)||isNaN(ln)) return;
       if(allowedOwnerIds){
         if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
       }
@@ -7896,20 +7886,16 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     });
   };
 
-  // Register the map's idle listener exactly ONCE — it calls the always-fresh render.
-  React.useEffect(()=>{
-    if(!mapReady || !mapInstanceRef.current || !window.google) return;
-    const map = mapInstanceRef.current;
-    const cb = ()=>renderHomesRef.current();
-    const idle = map.addListener("idle", cb);
-    cb(); // draw immediately
-    // A couple of nudges in case the map's first 'idle' fired before we attached.
-    setTimeout(cb, 300); setTimeout(cb, 1200);
-    return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
-  },[mapReady]);
-
-  // Re-cull whenever the underlying data / filters / scope change.
+  // Draw pins whenever the data / filters / scope change or the map becomes ready.
   React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters, leads, mapReady]);
+  // Safety redraw shortly after the map instance exists (covers slow mobile init).
+  React.useEffect(()=>{
+    if(!mapReady) return;
+    renderHomesRef.current();
+    const t1=setTimeout(()=>renderHomesRef.current(),500);
+    const t2=setTimeout(()=>renderHomesRef.current(),1500);
+    return ()=>{ clearTimeout(t1); clearTimeout(t2); };
+  },[mapReady]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
