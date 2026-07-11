@@ -3789,18 +3789,16 @@ function TemperatureSelector({value, onChange, dark}) {
   return (
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,position:"relative"}}>
-        <span style={{fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Temperature</span>
+        <span style={{fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Warm Lead</span>
         <button type="button" onClick={()=>setInfo(o=>!o)}
           style={{width:17,height:17,borderRadius:"50%",border:`1px solid ${dark?"#475569":"#cbd5e1"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",lineHeight:1,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>?</button>
         {info && (
           <div style={{position:"absolute",top:24,left:0,zIndex:60,width:290,maxWidth:"80vw",background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",boxShadow:"0 6px 24px rgba(0,0,0,0.25)",fontSize:12,lineHeight:1.5,color:dark?"#cbd5e1":"#475569"}}>
-            <div style={{marginBottom:6}}>❄️ — Not in contact and little implication that they want you to come back.</div>
-            <div>🔥 — In contact or implied that they want you to come back. Interest shown. If they are no show at personal comeback, move the lead to ❄️.</div>
+            <div>In contact or implied that they want you to come back. Interest shown. If they are no show at personal comeback, remove the 🔥.</div>
           </div>
         )}
       </div>
       <div style={{display:"flex",gap:8}}>
-        {btn("cold","❄️","#38bdf8","#e0f2fe")}
         {btn("hot","🔥","#ef4444","#fee2e2")}
       </div>
     </div>
