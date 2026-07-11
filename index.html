@@ -7846,13 +7846,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   renderHomesRef.current = () => {
     const map = mapInstanceRef.current;
     if(!map || !window.google) return;
-    const bounds = map.getBounds();
-    if(!bounds) return; // map not settled yet
     markersRef.current.forEach(m=>m.setMap(null));
     markersRef.current=[];
-    const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
-    const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
-    const nB=ne.lat()+latPad, sB=sw.lat()-latPad, eB=ne.lng()+lngPad, wB=sw.lng()-lngPad;
+    // Cull to the viewport only if bounds are available; otherwise draw everything
+    // (bounds can be momentarily null right after the map is created).
+    const bounds = map.getBounds();
+    let nB,sB,eB,wB, cull=false;
+    if(bounds){
+      const ne=bounds.getNorthEast(), sw=bounds.getSouthWest();
+      const latPad=(ne.lat()-sw.lat())*0.35, lngPad=(ne.lng()-sw.lng())*0.35;
+      nB=ne.lat()+latPad; sB=sw.lat()-latPad; eB=ne.lng()+lngPad; wB=sw.lng()-lngPad;
+      cull=true;
+    }
     const hasFilter = activeFilters && activeFilters.length>0;
     const warmActive = hasFilter && activeFilters.includes("warm");
     const warmKeys = warmActive
@@ -7862,7 +7867,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
       const la=parseFloat(home.lat), ln=parseFloat(home.lng);
-      if(la>nB||la<sB||ln>eB||ln<wB) return; // outside viewport — skip
+      if(cull && (la>nB||la<sB||ln>eB||ln<wB)) return; // outside viewport — skip
       if(allowedOwnerIds){
         if(!home.added_by || !allowedOwnerIds.has(home.added_by)) return;
       }
@@ -7898,11 +7903,13 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     const cb = ()=>renderHomesRef.current();
     const idle = map.addListener("idle", cb);
     cb(); // draw immediately
+    // A couple of nudges in case the map's first 'idle' fired before we attached.
+    setTimeout(cb, 300); setTimeout(cb, 1200);
     return ()=>{ if(idle) window.google.maps.event.removeListener(idle); };
   },[mapReady]);
 
   // Re-cull whenever the underlying data / filters / scope change.
-  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters, mapReady]);
+  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters, leads, mapReady]);
 
   const geocodeAddress=async(address)=>{
     const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
