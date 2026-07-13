@@ -9986,15 +9986,16 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
 
   const handleFile = async (e) => {
     const file = e.target.files && e.target.files[0];
-    e.target.value = ""; // allow re-selecting the same file later
-    if(!file) return;
-    if(file.type!=="application/pdf" && !/\.pdf$/i.test(file.name)){ setErrMsg("Please choose a PDF file."); return; }
-    if(file.size > 25*1024*1024){ setErrMsg("That PDF is too large (max 25 MB)."); return; }
+    if(!file){ e.target.value=""; return; }
+    if(file.type!=="application/pdf" && !/\.pdf$/i.test(file.name)){ setErrMsg("Please choose a PDF file."); e.target.value=""; return; }
+    if(file.size > 25*1024*1024){ setErrMsg("That PDF is too large (max 25 MB)."); e.target.value=""; return; }
     setUploading(true); setErrMsg("");
     try {
+      const buf = await file.arrayBuffer(); // read bytes BEFORE clearing the input
+      if(!buf || buf.byteLength===0) throw new Error("The selected PDF appears to be empty — try choosing it again.");
       const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
       const path = `${userId}/${Date.now()}_${safe}`;
-      const {error} = await sb.storage.from("vault-files").upload(path, file, {contentType:"application/pdf", upsert:false});
+      const {error} = await sb.storage.from("vault-files").upload(path, buf, {contentType:"application/pdf", upsert:false});
       if(error) throw error;
       const {data} = sb.storage.from("vault-files").getPublicUrl(path);
       setForm(f=>({...f, fileUrl:(data&&data.publicUrl)||"", fileName:file.name}));
@@ -10003,21 +10004,23 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
       if(/bucket|not found/i.test(msg)) setErrMsg("File storage isn't set up yet — the 'vault-files' bucket needs to be created.");
       else setErrMsg("Upload failed: "+(msg||"unknown error"));
     }
+    e.target.value = ""; // allow re-selecting the same file later
     setUploading(false);
   };
   const removeFile = () => setForm(f=>({...f, fileUrl:"", fileName:""}));
 
   const handleImage = async (e) => {
     const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if(!file) return;
-    if(!/^image\//.test(file.type) && !/\.(png|jpe?g|gif|webp|heic)$/i.test(file.name)){ setErrMsg("Please choose an image file."); return; }
-    if(file.size > 15*1024*1024){ setErrMsg("That image is too large (max 15 MB)."); return; }
+    if(!file){ e.target.value=""; return; }
+    if(!/^image\//.test(file.type) && !/\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name)){ setErrMsg("Please choose an image file."); e.target.value=""; return; }
+    if(file.size > 15*1024*1024){ setErrMsg("That image is too large (max 15 MB)."); e.target.value=""; return; }
     setUploadingImg(true); setErrMsg("");
     try {
+      const buf = await file.arrayBuffer(); // read bytes BEFORE clearing the input
+      if(!buf || buf.byteLength===0) throw new Error("The selected image appears to be empty — try choosing it again.");
       const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
       const path = `${userId}/img_${Date.now()}_${safe}`;
-      const {error} = await sb.storage.from("vault-files").upload(path, file, {contentType:file.type||"image/jpeg", upsert:false});
+      const {error} = await sb.storage.from("vault-files").upload(path, buf, {contentType:file.type||"image/jpeg", upsert:false});
       if(error) throw error;
       const {data} = sb.storage.from("vault-files").getPublicUrl(path);
       setForm(f=>({...f, imageUrl:(data&&data.publicUrl)||"", imageName:file.name}));
@@ -10026,6 +10029,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
       if(/bucket|not found/i.test(msg)) setErrMsg("File storage isn't set up yet — the 'vault-files' bucket needs to be created.");
       else setErrMsg("Upload failed: "+(msg||"unknown error"));
     }
+    e.target.value = "";
     setUploadingImg(false);
   };
   const removeImage = () => setForm(f=>({...f, imageUrl:"", imageName:""}));
