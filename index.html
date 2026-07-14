@@ -7886,8 +7886,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     });
   };
 
-  // Draw pins whenever the data / filters / scope change or the map becomes ready.
-  React.useEffect(()=>{ renderHomesRef.current(); },[homes, allowedOwnerIds, activeFilters, leads, mapReady]);
+  // Stable content signals so we only rebuild markers on REAL changes — not on every
+  // render (leads/allowedOwnerIds are fresh objects each render, which was destroying
+  // and recreating every pin constantly and breaking clicks / making pins vanish).
+  const scopeKey = allowedOwnerIds ? Array.from(allowedOwnerIds).sort().join(",") : "__all__";
+  const homesKey = (homes||[]).length + ":" + (homes||[]).map(h=>h.id).join(",");
+  const filterKey = (activeFilters||[]).join(",");
+  const warmLeadKey = (activeFilters||[]).includes("warm")
+    ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment"&&l.temperature==="hot").map(l=>l.id).join(",")
+    : "";
+
+  // Draw pins whenever the data / filters / scope actually change or the map is ready.
+  React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, warmLeadKey, mapReady]);
   // Safety redraw shortly after the map instance exists (covers slow mobile init).
   React.useEffect(()=>{
     if(!mapReady) return;
@@ -8394,6 +8404,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       {/* Selected home popup */}
       {selectedHome&&(
         <HomePopup
+          key={selectedHome.id || selectedHome.address}
           home={selectedHome}
           currentUser={currentUser}
           acReq={acReq}
