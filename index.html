@@ -11294,8 +11294,16 @@ function App() {
       }
     }
     const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Stage: "${lead.stage}" to "${newStage}"`]};
-    await sb.from("leads").update({stage:newStage,history:[entry,...(lead.history||[])],updated_at:new Date().toISOString()}).eq("id",id);
+    // Move the card immediately (optimistic), then persist in the background so
+    // there's no wait on the network. Roll back if the save fails.
+    const prevStage = lead.stage;
+    const prevHistory = lead.history || [];
     setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
+    const {error:stageErr} = await sb.from("leads").update({stage:newStage,history:[entry,...prevHistory],updated_at:new Date().toISOString()}).eq("id",id);
+    if(stageErr){
+      setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:prevStage,history:prevHistory}:l));
+      window.alert("Couldn't move lead: "+(stageErr.message||"unknown error"));
+    }
   };
 
   const handleTransfer=async(leadId,toRepId)=>{
