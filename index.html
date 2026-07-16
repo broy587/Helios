@@ -7379,12 +7379,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const [mapLoaded, setMapLoaded] = React.useState(false);
   const [mapReady, setMapReady] = React.useState(false); // true once the map INSTANCE exists
   const [mapError, setMapError] = React.useState(null);
-  const [homes, setHomes] = React.useState(()=>{
-    // Instant load: hydrate pins from the last cached copy so a rep's area shows
-    // immediately even before (or without) a network response.
-    try { const c = localStorage.getItem("pp_canvass_homes"); return c ? JSON.parse(c) : []; }
-    catch(e){ return []; }
-  });
+  const [homes, setHomes] = React.useState([]);
+  // Free up any previously-cached homes/areas — storing them in localStorage could
+  // fill the quota and knock out the saved login session (caused refresh sign-outs).
+  React.useEffect(()=>{ try{ localStorage.removeItem("pp_canvass_homes"); localStorage.removeItem("pp_canvass_areas"); }catch(e){} },[]);
   const [selectedHome, setSelectedHome] = React.useState(null);
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [addForm, setAddForm] = React.useState({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
@@ -7426,10 +7424,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // only view areas for teams they're on. Areas render only while the panel is open.
   const canEditAreas = isPrivileged; // owner, manager, or closer
   const [showAreaPanel, setShowAreaPanel] = React.useState(false);
-  const [areas, setAreas] = React.useState(()=>{
-    try { const c = localStorage.getItem("pp_canvass_areas"); return c ? JSON.parse(c) : []; }
-    catch(e){ return []; }
-  });
+  const [areas, setAreas] = React.useState([]);
   const [areaDrawMode, setAreaDrawMode] = React.useState(false);
   const [areaDraft, setAreaDraft] = React.useState([]); // [{lat,lng}] while drawing
   const [areaForm, setAreaForm] = React.useState(null);  // {mode:'new'|'edit', id?, name, team_id, rep_ids, color, path}
@@ -7456,7 +7451,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   };
 
   const loadAreas = async () => {
-    try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)){ setAreas(data); try{ localStorage.setItem("pp_canvass_areas", JSON.stringify(data)); }catch(e){} } }
+    try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)){ setAreas(data); } }
     catch(e){ console.error("loadAreas:", e); }
   };
   React.useEffect(()=>{ loadAreas(); },[]);
@@ -7653,8 +7648,6 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     try{
       const {data}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
       setHomes(data||[]);
-      // Save to the local cache for instant/offline load next time.
-      try { localStorage.setItem("pp_canvass_homes", JSON.stringify(data||[])); } catch(e){ /* quota — skip */ }
       homesRef.current=data||[];
     }catch(e){console.error("Canvass load error:",e);}
   };
