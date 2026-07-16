@@ -8573,6 +8573,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlot, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
+  const [calView, setCalView] = React.useState(()=>{
+    // Remember each rep's chosen view across refreshes / reopens.
+    try { return localStorage.getItem("pp_cal_view") || "WEEK"; } catch(e){ return "WEEK"; }
+  }); // DAY | WEEK | MONTH | AGENDA (Schedule)
   const [iframeUrl, setIframeUrl] = React.useState(null);
   // Add Meeting modal state
   const [meetOpen, setMeetOpen] = React.useState(false);
@@ -8776,8 +8780,17 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
           <iframe src={iframeUrl} style={{flex:1,border:"none",width:"100%"}} frameBorder="0" title="New Event"/>
         </div>
       ) : (
+        <div style={{display:"flex",gap:6,padding:"8px 10px 4px",flexWrap:"wrap"}}>
+          {[{k:"AGENDA",l:"Schedule"},{k:"DAY",l:"Day"},{k:"WEEK",l:"Week"},{k:"MONTH",l:"Month"}].map(v=>{
+            const on=calView===v.k;
+            return (
+              <button key={v.k} onClick={()=>{ setCalView(v.k); try{ localStorage.setItem("pp_cal_view", v.k); }catch(e){} setCalKey(k=>k+1); }}
+                style={{flex:1,minWidth:64,padding:"7px 0",borderRadius:8,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#1e293b":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{v.l}</button>
+            );
+          })}
+        </div>
         <iframe
-          src={CALENDAR_EMBED}
+          src={CALENDAR_EMBED.replace(/mode=[A-Z]+/, "mode="+calView).replace("showTabs=1","showTabs=0")}
           style={{flex:1,border:"none",width:"100%",filter:dark?"invert(0.9) hue-rotate(180deg)":"none",background:dark?"#0f172a":"transparent"}}
           frameBorder="0"
           scrolling="no"
