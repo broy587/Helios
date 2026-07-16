@@ -10979,19 +10979,20 @@ function App() {
       const p=prof||profile;
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       if (isPrivileged) {
-        const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,cents_kwh,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false}),
+        // Start the heavy leads query in parallel, but resolve the small team/profile
+        // queries FIRST and set them immediately — so the calendar and team UI work
+        // right away instead of waiting on the full leads payload.
+        const leadsP = sb.from("leads").select("id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,cents_kwh,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at").order("created_at",{ascending:false});
+        const [profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
-        if(leadsRes.error) console.error("leads error:",leadsRes.error);
         if(profilesRes.error) console.error("profiles error:",profilesRes.error);
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
@@ -11006,6 +11007,9 @@ function App() {
           goalsGrouped[g.team_id][g.period]=g;
         });
         setTeamGoals(goalsGrouped);
+        const leadsRes = await leadsP;
+        if(leadsRes.error) console.error("leads error:",leadsRes.error);
+        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
       } else {
         const LEAD_COLS = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,cents_kwh,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
         const isCloser = p && p.role==="closer";
@@ -11026,19 +11030,16 @@ function App() {
         } else {
           leadQuery = sb.from("leads").select(LEAD_COLS).eq("owner_id",u.id).order("created_at",{ascending:false});
         }
-        const [leadsRes,profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          leadQuery,
+        const [profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
           sb.from("profiles").select("*"),
           sb.from("teams").select("*").order("created_at",{ascending:false}),
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
-        if(leadsRes.error) console.error("leads error:",leadsRes.error);
         if(profilesRes.error) console.error("profiles error:",profilesRes.error);
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
         setProfiles(profilesRes.data||[]);
         setTeams(teamsRes.data||[]);
         const grouped={};
@@ -11053,6 +11054,9 @@ function App() {
           goalsGrouped[g.team_id][g.period]=g;
         });
         setTeamGoals(goalsGrouped);
+        const leadsRes = await leadQuery;
+        if(leadsRes.error) console.error("leads error:",leadsRes.error);
+        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
       }
     } catch(e) {
       console.error("loadData error:",e);
