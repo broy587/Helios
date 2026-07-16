@@ -9489,6 +9489,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       const updatedEvent = {
         summary: doAppend ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
+        location: lead.address || "", // puts a tappable address on the calendar event for directions
         description: `${doAppend?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
         colorId: doAppend ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
         visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
