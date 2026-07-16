@@ -8587,10 +8587,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   const [meetRepeatDays, setMeetRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
   const RRULE_DAYS = ["SU","MO","TU","WE","TH","FR","SA"];
   const MEETING_TYPES = ["Main Meeting","Boot Camp","Huddle","Hood Meet","Lunch","Call","Drip and Drive Call"];
-  // 30-min time options across the full day.
+  // 30-min time options from 7:00 AM through 10:00 PM.
   const MEET_TIME_OPTIONS = React.useMemo(()=>{
     const out=[];
-    for(let h=0;h<24;h++){ for(const mm of [0,30]){ const ap=h>=12?"PM":"AM"; const h12=h%12||12; out.push({value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`,label:`${h12}:${String(mm).padStart(2,"0")} ${ap}`}); } }
+    for(let h=7;h<=22;h++){ for(const mm of [0,30]){ if(h===22&&mm===30) continue; const ap=h>=12?"PM":"AM"; const h12=h%12||12; out.push({value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`,label:`${h12}:${String(mm).padStart(2,"0")} ${ap}`}); } }
     return out;
   },[]);
   // When start time changes, auto-set end to +1 hour (but only nudge end forward;
@@ -9249,11 +9249,12 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
   const [adding, setAdding] = React.useState(false);
   const dark = useDark();
   const iStyle = {width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-  // All 30-minute slots across the full day (00:00 → 23:30) as { value:"HH:MM", label:"h:mm AM/PM" }.
+  // 30-minute slots from 7:00 AM through 10:00 PM as { value:"HH:MM", label:"h:mm AM/PM" }.
   const TIME_OPTIONS = React.useMemo(()=>{
     const out=[];
-    for(let h=0;h<24;h++){
+    for(let h=7;h<=22;h++){
       for(const mm of [0,30]){
+        if(h===22&&mm===30) continue;
         const ap = h>=12?"PM":"AM";
         const h12 = h%12||12;
         out.push({ value:`${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`, label:`${h12}:${String(mm).padStart(2,"0")} ${ap}` });
