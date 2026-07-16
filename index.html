@@ -4186,6 +4186,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
             </div>
           )}
 
+          <ACStatus softSolid={lead.soft_solid||""} confirmed={lead.confirmed||""}
+            onChange={(field,val)=>{
+              const dbField = field==="softSolid"?"soft_solid":"confirmed";
+              handleUpdate({...lead,[dbField]:val});
+              sb.from("leads").update({[dbField]:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
+            }} dark={dark}/>
           {lead.notes && (
             <div style={{marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4,flexWrap:"wrap"}}>
@@ -4195,6 +4201,20 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                 )}
               </div>
               <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.notes}</div>
+            </div>
+          )}
+          {photosLoading && <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Loading photos...</div>}
+          {photos.length>0 && (
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Utility Bills ({photos.length})</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {photos.map((p,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={p} onClick={()=>setImgOpen(i)} style={{width:"100%",height:90,borderRadius:8,border:"1.5px solid #e2e8f0",cursor:"zoom-in",objectFit:"cover"}}/>
+                    <div style={{position:"absolute",bottom:4,right:5,fontSize:10,color:"#fff",background:"rgba(0,0,0,0.5)",borderRadius:4,padding:"1px 4px"}}>{i+1}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {(() => {
@@ -4223,32 +4243,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                 if(error) console.error("Temperature save failed:",error);
               }}/>
           )}
-          <ACStatus softSolid={lead.soft_solid||""} confirmed={lead.confirmed||""}
-            onChange={(field,val)=>{
-              const dbField = field==="softSolid"?"soft_solid":"confirmed";
-              handleUpdate({...lead,[dbField]:val});
-              sb.from("leads").update({[dbField]:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
-            }} dark={dark}/>
-          {photosLoading && <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>Loading photos...</div>}
-          {photos.length>0 && (
-            <div style={{marginBottom:18}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Utility Bills ({photos.length})</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                {photos.map((p,i)=>(
-                  <div key={i} style={{position:"relative"}}>
-                    <img src={p} onClick={()=>setImgOpen(i)} style={{width:"100%",height:90,borderRadius:8,border:"1.5px solid #e2e8f0",cursor:"zoom-in",objectFit:"cover"}}/>
-                    <div style={{position:"absolute",bottom:4,right:5,fontSize:10,color:"#fff",background:"rgba(0,0,0,0.5)",borderRadius:4,padding:"1px 4px"}}>{i+1}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           <ACChecklist
             leadId={lead.id}
             initialChecked={lead.ac_checklist||[]}
             collapsible={true}
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
+          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.commission && String(lead.commission).trim() && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
@@ -4265,7 +4266,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               )}
             </div>
           )}
-          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
           )}
@@ -4651,6 +4651,7 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
             </div>
           </div>
         )}
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         <div style={{marginBottom:14}}>
           <label style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
             <span>Setter Notes</span>
@@ -4658,23 +4659,6 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           </label>
           <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
-        {form.id && (
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
-          <CloserNotesEditor log={form.closerNotesLog} dark={dark} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
-        </div>
-        )}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
-          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
-            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        {form.stage==="Lead: Need Bill/Appointment" && (
-          <TemperatureSelector value={form.temperature||""} dark={dark}
-            onChange={val=>setForm(f=>({...f,temperature:val}))}/>
-        )}
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
             Utility Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
@@ -4694,12 +4678,30 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
         </div>
+        {form.id && (
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
+          <CloserNotesEditor log={form.closerNotesLog} dark={dark} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
+        </div>
+        )}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
+          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
+            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        {form.stage==="Lead: Need Bill/Appointment" && (
+          <TemperatureSelector value={form.temperature||""} dark={dark}
+            onChange={val=>setForm(f=>({...f,temperature:val}))}/>
+        )}
         {/* AC Checklist */}
         <ACChecklist
           leadId={form.id||null}
           initialChecked={form.acChecklist||[]}
           onUpdate={next=>setForm(f=>({...f,acChecklist:next}))}
         />
+
+        <CloseSection form={form} setForm={setForm} readOnly={false}/>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</label>
           <div style={{display:"flex",alignItems:"center",position:"relative"}}>
@@ -4711,7 +4713,6 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           </div>
         </div>
 
-        <CloseSection form={form} setForm={setForm} readOnly={false}/>
 
         {/* Needs Cancel Save toggle */}
         <div style={{marginBottom:18,background:form.needsCancelSave?(dark?"#312e81":"#eef2ff"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.needsCancelSave?(dark?"#6366f1":"#a5b4fc"):(dark?"#334155":"#e2e8f0")}`}}>
