@@ -8780,6 +8780,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
           <iframe src={iframeUrl} style={{flex:1,border:"none",width:"100%"}} frameBorder="0" title="New Event"/>
         </div>
       ) : (
+        <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
         <div style={{display:"flex",gap:6,padding:"8px 10px 4px",flexWrap:"wrap"}}>
           {[{k:"AGENDA",l:"Schedule"},{k:"DAY",l:"Day"},{k:"WEEK",l:"Week"},{k:"MONTH",l:"Month"}].map(v=>{
             const on=calView===v.k;
@@ -8796,6 +8797,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
           scrolling="no"
           title={CALENDAR_NAME} key={calKey}
         />
+        </div>
       )}
       {/* Add Meeting modal */}
       {meetOpen && (
