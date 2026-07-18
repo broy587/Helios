@@ -8731,9 +8731,11 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   // Publish open slots: set any "open slot" events on this calendar to PUBLIC visibility
   // so reps can see/book them. Fixes slots that were added as private and show as "busy".
   const [publishingSlots, setPublishingSlots] = React.useState(false);
+  const [publishMsg, setPublishMsg] = React.useState("");
+  React.useEffect(()=>{ if(!publishMsg) return; const t=setTimeout(()=>setPublishMsg(""), 8000); return ()=>clearTimeout(t); },[publishMsg]);
   const publishOpenSlots = async (calendarId) => {
-    if(!calendarId) return "No team calendar is selected.";
-    setPublishingSlots(true);
+    if(!calendarId){ setPublishMsg("No team calendar is selected."); return; }
+    setPublishingSlots(true); setPublishMsg("");
     let msg = "";
     try {
       const token = await GCal.signIn();
@@ -8743,7 +8745,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if(!res.ok){
         setPublishingSlots(false);
-        return "Couldn't read this calendar — you may not have full access to it. Ask the calendar's owner to share it with you as \"See all event details.\"";
+        setPublishMsg("Couldn't read this calendar — you may not have full access to it. Ask the calendar's owner to share it with you as \"See all event details.\"");
+        return;
       }
       const items = (await res.json()).items || [];
       const slots = items.filter(e=> e.summary && e.summary.toLowerCase().includes("open slot") && e.visibility!=="public" && !((e.description||"").includes("BOOKED:")));
@@ -8759,10 +8762,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
       if(fixed>0) msg = `✓ Published ${fixed} open slot${fixed===1?"":"s"} — reps can now see and book them.`;
       else if(anyReadableOpen) msg = "All open slots on this calendar are already public.";
       else msg = "No open slots found to publish. If you know there are some but they show as \"busy,\" this calendar isn't shared with you as \"See all event details\" — ask its owner to change the sharing.";
-      setCalKey(k=>k+1);
     } catch(e){ console.error(e); msg = "Error: "+((e&&e.message)||"unknown error"); }
     setPublishingSlots(false);
-    return msg;
+    setCalKey(k=>k+1); // refresh the embedded calendar so the now-public slots show
+    setPublishMsg(msg);
   };
 
   // When a new event URL comes in, show it in the iframe
@@ -8853,7 +8856,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
             </button>
           )}
           {canAddOpenSlot && (
-            <button onClick={async()=>{ const m = await publishOpenSlots(teamCfg && teamCfg.calendarId); if(m) window.alert(m); }} disabled={publishingSlots}
+            <button onClick={()=>publishOpenSlots(teamCfg && teamCfg.calendarId)} disabled={publishingSlots}
               title="Make existing open slots on this calendar visible and bookable to reps"
               style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:publishingSlots?"default":"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap",opacity:publishingSlots?0.6:1}}>
               {publishingSlots?"Publishing…":"📢 Publish slots"}
@@ -8869,6 +8872,14 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
           </a>
         </div>
       </div>
+      {publishMsg && (
+        <div style={{margin:"8px 16px 0",padding:"9px 12px",borderRadius:8,fontSize:12,fontWeight:600,
+          background:publishMsg.startsWith("✓")?(dark?"rgba(16,185,129,0.15)":"#ecfdf5"):(dark?"#1e293b":"#fef3c7"),
+          border:`1px solid ${publishMsg.startsWith("✓")?(dark?"#065f46":"#a7f3d0"):(dark?"#334155":"#fcd34d")}`,
+          color:publishMsg.startsWith("✓")?(dark?"#6ee7b7":"#065f46"):(dark?"#fcd34d":"#92400e")}}>
+          {publishMsg}
+        </div>
+      )}
       {iframeUrl ? (
         <div style={{flex:1,display:"flex",flexDirection:"column"}}>
           <div style={{padding:"8px 16px",background:dark?"#1e293b":"#ede3d6",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${dark?"#334155":"#c8b8a2"}`}}>
