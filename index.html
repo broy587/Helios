@@ -4718,7 +4718,9 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
               return {
                 ...f,
                 needsCancelSave: turningOn,
-                ncsStage: turningOn ? f.stage : ""
+                ncsStage: turningOn ? f.stage : "",
+                // Only one of the three pile flags at a time — clear the others.
+                ...(turningOn ? {onHold:false, onHoldStage:"", isArc:false, arcStage:""} : {})
                 // stage does NOT change — Needs Cancel Save is a flag, not a stage
               };
             })}
@@ -4745,7 +4747,9 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
               return {
                 ...f,
                 onHold: turningOn,
-                onHoldStage: turningOn ? f.stage : ""
+                onHoldStage: turningOn ? f.stage : "",
+                // Only one of the three pile flags at a time — clear the others.
+                ...(turningOn ? {needsCancelSave:false, ncsStage:"", isArc:false, arcStage:""} : {})
                 // stage does NOT change — On Hold is a flag, not a stage
               };
             })}
@@ -4772,7 +4776,9 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
               return {
                 ...f,
                 isArc: turningOn,
-                arcStage: turningOn ? f.stage : ""
+                arcStage: turningOn ? f.stage : "",
+                // Only one of the three pile flags at a time — clear the others.
+                ...(turningOn ? {needsCancelSave:false, ncsStage:"", onHold:false, onHoldStage:""} : {})
                 // stage does NOT change — ARC is a flag, not a stage
               };
             })}
