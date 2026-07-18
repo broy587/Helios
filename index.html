@@ -4554,15 +4554,13 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
             <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
           </div>
           {canBookCap && (
-            <div style={{marginTop:10,background:"#fff7ed",border:"1.5px solid #ea580c",borderRadius:10,padding:"12px 14px"}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#ea580c",marginBottom:8}}>📋 {form.cap_event_id?"Change CAP":"Book CAP"}</div>
-              {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginBottom:8,fontWeight:600}}>{form.cap_appointment}</div>}
+            <div style={{marginTop:8}}>
               <div style={{display:"flex",gap:8}}>
                 <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
                   setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
-                }} label={form.cap_event_id?"Change CAP":"Book CAP"} creatorName={creatorName} capMode={true}/>
-                <div style={{flex:1}}/>
+                }} label={form.cap_event_id?"📋 Change CAP":"📋 Book CAP"} creatorName={creatorName} capMode={true}/>
               </div>
+              {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginTop:6,fontWeight:600}}>{form.cap_appointment}</div>}
             </div>
           )}
           {/* Additional appointments — any number of extra sits/appointments,
@@ -4684,12 +4682,6 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           <CloserNotesEditor log={form.closerNotesLog} dark={dark} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
         </div>
         )}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
-          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
-            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
         {form.stage==="Lead: Need Bill/Appointment" && (
           <TemperatureSelector value={form.temperature||""} dark={dark}
             onChange={val=>setForm(f=>({...f,temperature:val}))}/>
@@ -4795,6 +4787,12 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           )}
         </div>
 
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
+          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
+            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:saving?0.85:1,transition:"all 0.15s"}}>
