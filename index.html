@@ -8728,6 +8728,43 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
     }
   };
 
+  // Publish open slots: set any "open slot" events on this calendar to PUBLIC visibility
+  // so reps can see/book them. Fixes slots that were added as private and show as "busy".
+  const [publishingSlots, setPublishingSlots] = React.useState(false);
+  const publishOpenSlots = async (calendarId) => {
+    if(!calendarId) return "No team calendar is selected.";
+    setPublishingSlots(true);
+    let msg = "";
+    try {
+      const token = await GCal.signIn();
+      const now = new Date();
+      const end = new Date(now.getTime() + 120*24*60*60*1000); // scan the next ~4 months
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&maxResults=2500`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if(!res.ok){
+        setPublishingSlots(false);
+        return "Couldn't read this calendar — you may not have full access to it. Ask the calendar's owner to share it with you as \"See all event details.\"";
+      }
+      const items = (await res.json()).items || [];
+      const slots = items.filter(e=> e.summary && e.summary.toLowerCase().includes("open slot") && e.visibility!=="public" && !((e.description||"").includes("BOOKED:")));
+      let fixed = 0;
+      for(const ev of slots){
+        try {
+          const r = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({visibility:"public"})});
+          if(r.ok) fixed++;
+        } catch(e){ console.error("publish slot failed:",e); }
+      }
+      const anyReadableOpen = items.some(e=> e.summary && e.summary.toLowerCase().includes("open slot"));
+      if(fixed>0) msg = `✓ Published ${fixed} open slot${fixed===1?"":"s"} — reps can now see and book them.`;
+      else if(anyReadableOpen) msg = "All open slots on this calendar are already public.";
+      else msg = "No open slots found to publish. If you know there are some but they show as \"busy,\" this calendar isn't shared with you as \"See all event details\" — ask its owner to change the sharing.";
+      setCalKey(k=>k+1);
+    } catch(e){ console.error(e); msg = "Error: "+((e&&e.message)||"unknown error"); }
+    setPublishingSlots(false);
+    return msg;
+  };
+
   // When a new event URL comes in, show it in the iframe
   React.useEffect(()=>{
     if(newEventUrl){
@@ -8813,6 +8850,13 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
             <button onClick={()=>{resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
               style={{background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
               + Add Open Slot
+            </button>
+          )}
+          {canAddOpenSlot && (
+            <button onClick={async()=>{ const m = await publishOpenSlots(teamCfg && teamCfg.calendarId); if(m) window.alert(m); }} disabled={publishingSlots}
+              title="Make existing open slots on this calendar visible and bookable to reps"
+              style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:publishingSlots?"default":"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap",opacity:publishingSlots?0.6:1}}>
+              {publishingSlots?"Publishing…":"📢 Publish slots"}
             </button>
           )}
           <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
