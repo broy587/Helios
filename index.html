@@ -3215,7 +3215,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             </div>
             <div style={{marginBottom:14}}>
               <label style={soldLabel}>Sun Hours</label>
-              <input type="text" inputMode="decimal" placeholder="e.g. 5.5" value={form.soldSunHours||""} onChange={e=>setForm(f=>({...f,soldSunHours:e.target.value.replace(/[^0-9.]/g,"")}))} style={soldInput}/>
+              <input type="text" inputMode="decimal" placeholder="e.g. 2350" value={form.soldSunHours||""} onChange={e=>setForm(f=>({...f,soldSunHours:e.target.value.replace(/[^0-9.]/g,"")}))} style={soldInput}/>
             </div>
             <div style={{marginBottom:14}}>
               <label style={soldLabel}>KWH Rate</label>
