@@ -9188,8 +9188,15 @@ const GCal = {
       const check=setInterval(()=>{if(window.google?.accounts?.oauth2){clearInterval(check);res();}},300);
       setTimeout(()=>{clearInterval(check);res();},10000);
     });
-    // Already have valid token — return immediately
+    // Already have a valid token in memory — return immediately
     if(this.isSignedIn()) return this._accessToken;
+    // Or reuse a still-valid token saved from a previous page load, so reps aren't
+    // asked to sign in again for every booking within the token's lifetime.
+    try {
+      const t = localStorage.getItem("gcal_token");
+      const exp = parseInt(localStorage.getItem("gcal_token_expiry")||"0",10);
+      if(t && exp && Date.now() < exp){ this._accessToken=t; this._tokenExpiry=exp; return t; }
+    } catch(e){}
     return new Promise((resolve, reject) => {
       if(!window.google?.accounts?.oauth2) {
         reject(new Error("Google Sign-In not available. Please refresh the app and try again."));
@@ -9202,9 +9209,15 @@ const GCal = {
           callback: (resp) => {
             if(resp.error) { reject(new Error(resp.error_description||resp.error)); return; }
             this._accessToken = resp.access_token;
-            this._tokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
-            // Save email hint for silent re-auth next time
-            try { if(resp.email) localStorage.setItem("gcal_hint", resp.email); } catch(e){}
+            const ttl = (resp.expires_in && resp.expires_in>0) ? resp.expires_in : 3600;
+            this._tokenExpiry = Date.now() + (ttl - 60) * 1000;
+            // Save the token + email hint so reps aren't re-prompted for every booking
+            // (survives page refreshes/reopens for the token's ~1-hour lifetime).
+            try {
+              if(resp.email) localStorage.setItem("gcal_hint", resp.email);
+              localStorage.setItem("gcal_token", resp.access_token);
+              localStorage.setItem("gcal_token_expiry", String(this._tokenExpiry));
+            } catch(e){}
             resolve(resp.access_token);
           },
           error_callback: (err) => { reject(new Error(err.message||"Sign-in failed")); },
@@ -9249,7 +9262,7 @@ const GCal = {
       summary: title,
       start: { dateTime: startISO, timeZone: "America/Chicago" },
       end:   { dateTime: endISO,   timeZone: "America/Chicago" },
-      colorId: "5", // banana
+      colorId: (title && title.toLowerCase().includes("open slot")) ? "7" : "5", // open slots = peacock, meetings = banana
       visibility: "public", // show the event title/details to everyone who can see the calendar (not just "busy")
     };
     if (Array.isArray(recurrence) && recurrence.length) event.recurrence = recurrence;
