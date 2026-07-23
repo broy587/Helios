@@ -140,6 +140,28 @@ const CalendarBackend = {
   },
 };
 
+// Diagnostic helper — run `ppCalendarCheck()` in the browser console to see
+// exactly why the calendar backend isn't being used (if it isn't).
+window.ppCalendarCheck = async function(){
+  try {
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session?.access_token){ console.log("❌ Not signed in to Pipeline Push."); return; }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/calendar`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey: SUPABASE_KEY },
+      body: JSON.stringify({ action:"ping" }),
+    });
+    const text = await res.text();
+    console.log("HTTP status:", res.status);
+    console.log("Response:", text);
+    if(res.status===401) console.log("→ Turn OFF 'Verify JWT' for the calendar function in Supabase (Edge Functions → calendar → Settings).");
+    if(res.status===404) console.log("→ No function named 'calendar' found. Check the name is exactly 'calendar'.");
+  } catch(e){
+    console.log("❌ Could not reach the function:", e.message||e);
+    console.log("→ Usually means the function isn't deployed, or the name isn't exactly 'calendar'.");
+  }
+};
+
 // ── YOUR owner user ID – set this to your actual Supabase auth user id ──
 // To find it: Supabase → Authentication → Users → copy your UUID
 const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
