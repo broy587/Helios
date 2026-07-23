@@ -90,6 +90,52 @@ const SUPABASE_URL = "https://hnjsezlfefduyihoiqbb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── Calendar backend ───────────────────────────────────────────────────────
+// Routes calendar work through our Supabase Edge Function, which uses a Google
+// service account. That means reps never have to sign in to Google.
+// If the backend is unavailable, callers fall back to the older browser-based
+// Google sign-in path (kept during rollout) so booking never hard-stops.
+const CalendarBackend = {
+  _down: false,          // set true after a backend failure (per page load)
+  enabled(){ return !this._down; },
+  async call(action, body){
+    const { data:{ session } } = await sb.auth.getSession();
+    if(!session?.access_token) throw new Error("NO_SESSION");
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/calendar`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        Authorization:`Bearer ${session.access_token}`,
+        apikey: SUPABASE_KEY,
+      },
+      body: JSON.stringify({ action, ...body }),
+    });
+    let out = {};
+    try { out = await res.json(); } catch(e){}
+    if(!res.ok){
+      // 5xx / missing function → treat as backend down so we can fall back.
+      if(res.status>=500 || res.status===404) this._down = true;
+      throw new Error(out.error || `Calendar backend error (${res.status})`);
+    }
+    return out;
+  },
+  // Wrapper: try the backend, fall back to the legacy path on infrastructure
+  // failures (not on genuine "you can't do that" errors).
+  async tryCall(action, body){
+    if(!this.enabled()) return null;
+    try { return await this.call(action, body); }
+    catch(e){
+      const msg = String(e.message||e);
+      if(msg==="NO_SESSION" || this._down || /Failed to fetch|NetworkError|not configured/i.test(msg)){
+        this._down = true;
+        console.warn("Calendar backend unavailable, falling back to Google sign-in:", msg);
+        return null;
+      }
+      throw e; // a real, actionable error — surface it
+    }
+  },
+};
+
 // ── YOUR owner user ID – set this to your actual Supabase auth user id ──
 // To find it: Supabase → Authentication → Users → copy your UUID
 const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
@@ -106,30 +152,30 @@ function isCloserRole(role){ return role==="closer"; }
 function isSelfGenRole(role){ return role==="self_gen"; }
 function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer" || role==="self_gen"; }
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
-const GCAL_CALENDAR_ID="c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com";
+const GCAL_CALENDAR_ID="ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986@group.calendar.google.com";
 // Team calendar map — add new teams here as they get calendars
 const TEAM_CALENDARS = {
   "b1f166c3-661e-4e02-b839-3b9560c9237b": { // Helios
-    calendarId: "c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5@group.calendar.google.com",
-    embedUrl: "https://calendar.google.com/calendar/embed?src=c_24654a1713b9d48ddcbf893dbb79e541f1d52cf24cccff8bad4272dd5072d0b5%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    calendarId: "ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
     name: "Helios Calendar"
   },
   // ── The Culture ──────────────────────────────────────────────────────
   "d857508d-b3ea-4b33-a461-081c7464ef32": {
-    calendarId: "c_9cefbc53b8d6cdf00d25578ee9c2d49b7368d9a90a333b3b2bd2bb90808270d2@group.calendar.google.com",
-    embedUrl: "https://calendar.google.com/calendar/embed?src=c_9cefbc53b8d6cdf00d25578ee9c2d49b7368d9a90a333b3b2bd2bb90808270d2%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    calendarId: "c21af6cd5ea9378b39559b92a0d507c676f59cf1d131e4b53b40075faa2e447c@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=c21af6cd5ea9378b39559b92a0d507c676f59cf1d131e4b53b40075faa2e447c%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
     name: "The Culture Calendar"
   },
   // ── Kilowatt Kartels ─────────────────────────────────────────────────
   "44c7f3cd-6a24-4b7f-9d2b-36acec019401": {
-    calendarId: "c_09ad725e61dfe32ee29b4d86c070c7928fbe96619b8891436bbf089042ac0640@group.calendar.google.com",
-    embedUrl: "https://calendar.google.com/calendar/embed?src=c_09ad725e61dfe32ee29b4d86c070c7928fbe96619b8891436bbf089042ac0640%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    calendarId: "4b18d12a593a8f9d3f4086e433c53114c9ac9b6c24a75549348781e6ecee432e@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=4b18d12a593a8f9d3f4086e433c53114c9ac9b6c24a75549348781e6ecee432e%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
     name: "Kilowatt Kartels Calendar"
   },
   // ── All Gas No Breaks ────────────────────────────────────────────────
   "cd30b931-f1c7-4a57-a010-ddb6f54f0dc3": {
-    calendarId: "c_5898877819f3d550e7297ce9adb30c219d987fd6d5c95c72b68b95dca3745e9e@group.calendar.google.com",
-    embedUrl: "https://calendar.google.com/calendar/embed?src=c_5898877819f3d550e7297ce9adb30c219d987fd6d5c95c72b68b95dca3745e9e%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
+    calendarId: "8f21b5adff356042cfd2747b2a544681f89f754d74e3bfa1cebbcc075dea0725@group.calendar.google.com",
+    embedUrl: "https://calendar.google.com/calendar/embed?src=8f21b5adff356042cfd2747b2a544681f89f754d74e3bfa1cebbcc075dea0725%40group.calendar.google.com&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK",
     name: "All Gas No Breaks Calendar"
   },
   // Add more teams here:
@@ -8874,6 +8920,17 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
     setPublishingSlots(true); setPublishMsg("");
     let msg = "";
     try {
+      // Preferred path: backend service account (no Google sign-in needed).
+      const viaBackend = await CalendarBackend.tryCall("publishSlots", {calendarId});
+      if(viaBackend && viaBackend.ok){
+        if(viaBackend.fixed>0) msg = `✓ Published ${viaBackend.fixed} open slot${viaBackend.fixed===1?"":"s"} — reps can now see and book them.`;
+        else if(viaBackend.anyOpen) msg = "All open slots on this calendar are already public.";
+        else msg = "No open slots found to publish on this calendar.";
+        setPublishingSlots(false);
+        setCalKey(k=>k+1);
+        setPublishMsg(msg);
+        return;
+      }
       const token = await GCal.signIn();
       const now = new Date();
       const end = new Date(now.getTime() + 120*24*60*60*1000); // scan the next ~4 months
@@ -9257,6 +9314,12 @@ const GCal = {
   // Create a meeting event on a specific team calendar.
   // title = the meeting name; startISO/endISO = ISO datetime strings.
   async createMeeting(title, startISO, endISO, calendarId, recurrence) {
+    // Prefer the backend (service account) so no Google sign-in is needed.
+    const viaBackend = await CalendarBackend.tryCall("createMeeting", {
+      calendarId: calendarId || GCAL_CALENDAR_ID,
+      summary: title, startISO, endISO, recurrence: recurrence || null,
+    });
+    if(viaBackend && viaBackend.ok) return viaBackend;
     const token = await this.signIn();
     const event = {
       summary: title,
@@ -9667,13 +9730,21 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
     try {
       const dayStart = new Date(day); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(day); dayEnd.setHours(23,59,59,999);
-      // Read with the signed-in user's OAuth token (NOT an API key). An API key can
-      // only read calendars that are shared "Make available to public"; the team
-      // calendar may only be shared privately with reps. Using the user's token lets
-      // us see open slots on any calendar the user has access to, and returns full
-      // event details (so slots created before events were made public still show).
+      const calId = calendarId||GCAL_CALENDAR_ID;
+      // Preferred path: our backend (service account) — no Google sign-in needed.
+      const viaBackend = await CalendarBackend.tryCall("listSlots", {
+        calendarId: calId,
+        timeMin: dayStart.toISOString(),
+        timeMax: dayEnd.toISOString(),
+      });
+      if(viaBackend){
+        setSlots((viaBackend.items||[]).filter(e=>e.isOpen));
+        setLoadingSlots(false);
+        return;
+      }
+      // Fallback: read with the signed-in user's Google token.
       const token = await GCal.signIn();
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${dayStart.toISOString()}&timeMax=${dayEnd.toISOString()}&singleEvents=true&orderBy=startTime`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if(!res.ok){
         const err = await res.json().catch(()=>({}));
@@ -9707,6 +9778,14 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
     if(calendarId) candidates.push(calendarId);
     try { Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); } catch(e){}
     if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
+    // Preferred path: our backend (service account) — no Google sign-in needed.
+    for(const calId of candidates){
+      try {
+        const r = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:evId});
+        if(r && r.ok) return true;
+        if(r===null) break; // backend unavailable — use the fallback below
+      } catch(e){ /* not on this calendar; try the next */ }
+    }
     for(const calId of candidates){
       try {
         const r = await fetch(
@@ -9778,23 +9857,15 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
     if(!selectedSlot) return;
     setBooking(true);
     try {
-      const token = await GCal.signIn();
+      const calId = calendarId||GCAL_CALENDAR_ID;
+      // Prefer the backend (service account); only sign in to Google if it's down.
+      const useBackend = CalendarBackend.enabled();
+      const token = useBackend ? null : await GCal.signIn();
       // If THIS booking type already has a slot, restore that old slot to "Open
       // Slot" first. CAP and closer-slot bookings are tracked separately, so
       // booking a CAP never disturbs an existing closer-slot booking (or vice versa).
       // In appendMode we're adding an extra appointment, so nothing is released.
       const oldId = doAppend ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
-      if(oldId && oldId !== selectedSlot.id) {
-        try {
-          await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${oldId}`,
-            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-             body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
-          );
-        } catch(e){ console.error("Error restoring old slot:",e); }
-      }
-      // Update the event with lead info
-      const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       const updatedEvent = {
         summary: doAppend ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
         location: lead.address || "", // puts a tappable address on the calendar event for directions
@@ -9802,11 +9873,41 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         colorId: doAppend ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
         visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
       };
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId||GCAL_CALENDAR_ID)}/events/${selectedSlot.id}`,
-        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
-      );
-      if(!res.ok) throw new Error(await res.text());
+      let booked = false;
+      if(useBackend){
+        if(oldId && oldId !== selectedSlot.id){
+          try { await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:oldId}); }
+          catch(e){ console.error("Error restoring old slot:",e); }
+        }
+        const r = await CalendarBackend.tryCall("book", {
+          calendarId: calId,
+          eventId: selectedSlot.id,
+          summary: updatedEvent.summary,
+          description: updatedEvent.description,
+          location: updatedEvent.location,
+          colorId: updatedEvent.colorId,
+        });
+        booked = !!(r && r.ok);
+      }
+      if(!booked){
+        // Fallback: do it with the rep's own Google sign-in.
+        const tk = token || await GCal.signIn();
+        if(oldId && oldId !== selectedSlot.id) {
+          try {
+            await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${oldId}`,
+              {method:"PATCH",headers:{Authorization:`Bearer ${tk}`,"Content-Type":"application/json"},
+               body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
+            );
+          } catch(e){ console.error("Error restoring old slot:",e); }
+        }
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${selectedSlot.id}`,
+          {method:"PATCH",headers:{Authorization:`Bearer ${tk}`,"Content-Type":"application/json"},body:JSON.stringify(updatedEvent)}
+        );
+        if(!res.ok) throw new Error(await res.text());
+      }
+      const bookedStage = capMode ? "CAP" : "AC / Scheduled";
       // Build the appointment label from the slot times.
       const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
