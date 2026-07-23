@@ -2504,75 +2504,6 @@ function RecruitModal({open,onClose,onSave,initial}) {
           <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Notes</label>
           <textarea placeholder="Notes about this recruit..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
-        {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
-        <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
-          <button type="button" onClick={()=>setShowUtilInfo(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
-            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info</span>
-            <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>{showUtilInfo?"▲":"▼"}</span>
-          </button>
-          {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
-          <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={inputStyle}/>
-        </div>
-        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
-          <div key={k} style={{marginBottom:14}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
-              {k==="esiid" && (
-                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
-                  target="_blank" rel="noreferrer"
-                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none"}}>
-                  🔍 Lookup
-                </a>
-              )}
-            </div>
-            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
-          </div>
-        ))}
-        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
-          <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
-            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
-            Open ›
-          </button>
-        </div>
-        {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-            <input type="text" inputMode="decimal" placeholder=".16"
-              value={form.centsKwh||""}
-              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
-              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
-            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
-          </div>
-        </div>
-        {/* Annual kWh — a plain kWh number */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Annual kWh <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <input type="text" inputMode="decimal" placeholder="e.g. 14000"
-              value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
-              style={{...inputStyle,paddingRight:52}}/>
-            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
-          </div>
-        </div>
-        {/* Average Bill — a dollar amount */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Average Bill <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-            <input type="text" inputMode="decimal" placeholder="0.00"
-              value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
-              style={{...inputStyle,paddingLeft:24}}/>
-          </div>
-        </div>
-          </div>)}
-        </div>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
           {form.appointment && (
@@ -4781,6 +4712,75 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
           </div>
         )}
 
+        {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
+        <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
+          <button type="button" onClick={()=>setShowUtilInfo(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info</span>
+            <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>{showUtilInfo?"▲":"▼"}</span>
+          </button>
+          {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
+          <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={inputStyle}/>
+        </div>
+        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
+          <div key={k} style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+              {k==="esiid" && (
+                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
+                  target="_blank" rel="noreferrer"
+                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none"}}>
+                  🔍 Lookup
+                </a>
+              )}
+            </div>
+            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
+          </div>
+        ))}
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
+          <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+            Open ›
+          </button>
+        </div>
+        {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+            <input type="text" inputMode="decimal" placeholder=".16"
+              value={form.centsKwh||""}
+              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
+              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
+            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
+          </div>
+        </div>
+        {/* Annual kWh — a plain kWh number */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Annual kWh <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <input type="text" inputMode="decimal" placeholder="e.g. 14000"
+              value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
+              style={{...inputStyle,paddingRight:52}}/>
+            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
+          </div>
+        </div>
+        {/* Average Bill — a dollar amount */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Average Bill <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+            <input type="text" inputMode="decimal" placeholder="0.00"
+              value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
+              style={{...inputStyle,paddingLeft:24}}/>
+          </div>
+        </div>
+          </div>)}
+        </div>
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
