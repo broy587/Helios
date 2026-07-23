@@ -126,7 +126,11 @@ const CalendarBackend = {
     try { return await this.call(action, body); }
     catch(e){
       const msg = String(e.message||e);
-      if(msg==="NO_SESSION" || this._down || /Failed to fetch|NetworkError|not configured/i.test(msg)){
+      // Network/infrastructure failures → fall back to the Google sign-in path.
+      // Browsers word these differently: Chrome "Failed to fetch",
+      // Safari/iOS "Load failed", Firefox "NetworkError".
+      const networkish = /failed to fetch|load failed|networkerror|network request failed|timed out|timeout|cors|not configured|failed to send a request/i.test(msg);
+      if(msg==="NO_SESSION" || this._down || networkish){
         this._down = true;
         console.warn("Calendar backend unavailable, falling back to Google sign-in:", msg);
         return null;
