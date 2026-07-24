@@ -4104,11 +4104,19 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const cancelExtraAppt = async (entry) => {
     if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
     try {
-      const token = await GCal.signIn();
       const r = TeamCalendars.resolve();
       const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
+      // Try the backend first (service account) so no Google sign-in is needed.
+      let released = false;
       if(entry.id){
         try {
+          const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:entry.id});
+          released = !!(br && br.ok);
+        } catch(e){ console.error(e); }
+      }
+      if(entry.id && !released){
+        try {
+          const token = await GCal.signIn();
           await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${entry.id}`,
             {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})});
         } catch(e){ console.error("Couldn't restore slot:",e); }
@@ -4897,10 +4905,15 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
                       <button type="button" onClick={async()=>{
                         if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
                         try {
-                          const token = await GCal.signIn();
                           const r = TeamCalendars.resolve();
                           const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
-                          if(a.id){ try{ await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
+                          // Backend first (service account) — no Google sign-in needed.
+                          let released = false;
+                          if(a.id){
+                            try { const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:a.id}); released = !!(br && br.ok); }
+                            catch(e){ console.error(e); }
+                          }
+                          if(a.id && !released){ try{ const token = await GCal.signIn(); await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
                           const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
                           await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",form.id);
                           setForm(f=>({...f,extra_appointments:next}));
@@ -9869,19 +9882,27 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
   // Revert a booked event back to an open slot. We don't always know which calendar
   // the event lives on (owner/multi-team), so try the resolved one, then every known
   // team calendar, until one actually succeeds. Returns true only if it was reverted.
-  const revertEventToOpenSlot = async(token, evId) => {
+  // Revert a booked event back to an open slot. Tries the backend (service account)
+  // first so no Google sign-in is needed; only falls back to the rep's own Google
+  // login if the backend can't do it. `getToken` is called lazily for that reason.
+  const revertEventToOpenSlot = async(getToken, evId) => {
     const candidates = [];
     if(calendarId) candidates.push(calendarId);
     try { Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); } catch(e){}
     if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
     // Preferred path: our backend (service account) — no Google sign-in needed.
+    let backendDown = false;
     for(const calId of candidates){
       try {
         const r = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:evId});
         if(r && r.ok) return true;
-        if(r===null) break; // backend unavailable — use the fallback below
+        if(r===null){ backendDown = true; break; } // backend unavailable — fall back
       } catch(e){ /* not on this calendar; try the next */ }
     }
+    // Fallback: use the rep's own Google token (prompts sign-in only if needed).
+    let token;
+    try { token = await getToken(); } catch(e){ return false; }
+    if(!token) return false;
     for(const calId of candidates){
       try {
         const r = await fetch(
@@ -9897,12 +9918,13 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
 
   const handleRemoveBooking = async() => {
     try {
-      const token = await GCal.signIn();
+      // Don't sign in up front — only if the backend can't handle the removal.
+      const getToken = () => GCal.signIn();
       const evId = capMode ? lead.cap_event_id : lead.gcal_event_id;
       // Restore calendar event back to Open Slot — and confirm it actually worked
       // before clearing the lead, so the two never get out of sync.
       if(evId){
-        const ok = await revertEventToOpenSlot(token, evId);
+        const ok = await revertEventToOpenSlot(getToken, evId);
         if(!ok){
           alert("Couldn't remove this appointment from the calendar — you may not have access to the calendar it's on. It was left on the lead so nothing gets out of sync. Try from an account with access, or ask the calendar's owner to remove it.");
           return;
@@ -9933,9 +9955,10 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
   // lead has more than one closer slot). Releases its slot back to open and drops it.
   const removeExtraAppt = async(entry) => {
     try {
-      const token = await GCal.signIn();
+      // Don't sign in up front — only if the backend can't handle the removal.
+      const getToken = () => GCal.signIn();
       if(entry.id){
-        const ok = await revertEventToOpenSlot(token, entry.id);
+        const ok = await revertEventToOpenSlot(getToken, entry.id);
         if(!ok){
           alert("Couldn't remove this appointment from the calendar — you may not have access to the calendar it's on. It was left on the lead so nothing gets out of sync.");
           return;
