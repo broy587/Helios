@@ -90,6 +90,75 @@ const SUPABASE_URL = "https://hnjsezlfefduyihoiqbb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_3SWo1Nksg3D1hRur0VjJxw_7FPjKeTB";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── Pending lead saves (offline safety net) ────────────────────────────────
+// If a save can't reach the server (bad service), we stash the full lead on the
+// device and keep retrying — including after a refresh or app restart — so reps
+// never lose typed-in work.
+const PendingSaves = {
+  KEY: "pp_pending_leads",
+  all(){
+    try { const raw = localStorage.getItem(this.KEY); const v = raw?JSON.parse(raw):[]; return Array.isArray(v)?v:[]; }
+    catch(e){ return []; }
+  },
+  write(list){
+    try { localStorage.setItem(this.KEY, JSON.stringify(list)); return true; }
+    catch(e){ console.error("Couldn't store pending save:", e); return false; }
+  },
+  put(entry){
+    const list = this.all().filter(x=>x.viewId!==entry.viewId); // newest wins per lead
+    list.push({...entry, savedAt:new Date().toISOString()});
+    if(this.write(list)) return true;
+    // Storage is full (bill photos are large). The LEAD DATA matters far more than
+    // the photos, so retry without them rather than losing the whole lead.
+    const slim = list.map(x=> x.viewId===entry.viewId ? {...x, photos:[], photosDropped:true} : x);
+    if(this.write(slim)) return true;
+    // Still too big — drop other entries' photos too, then keep only this lead.
+    const slimmer = slim.map(x=>({...x, photos:[], photosDropped:true}));
+    if(this.write(slimmer)) return true;
+    return this.write([{...entry, photos:[], photosDropped:true, savedAt:new Date().toISOString()}]);
+  },
+  remove(viewId){ this.write(this.all().filter(x=>x.viewId!==viewId)); },
+  count(){ return this.all().length; },
+  // Try to flush everything that's waiting. Returns how many saved.
+  async flush(){
+    const list = this.all();
+    if(!list.length) return 0;
+    let saved = 0;
+    for(const item of list){
+      try {
+        if(item.isUpdate){
+          const {error} = await sb.from("leads").update(item.payload).eq("id", item.viewId);
+          if(error) throw error;
+          if(item.photos && item.photos.length){
+            // Photos are a bonus — never let them block the lead itself from saving.
+            try { await sb.from("leads").update({bill_photos:item.photos}).eq("id", item.viewId); }
+            catch(pe){ console.warn("Photos didn't upload for", item.viewId, pe); }
+          }
+        } else {
+          const row = {...item.payload, bill_photos:item.photos||[], id:item.viewId, owner_id:item.ownerId, created_at:item.createdAt};
+          // upsert so a half-completed earlier attempt can't cause a duplicate error
+          const {error} = await sb.from("leads").upsert(row, {onConflict:"id"});
+          if(error) throw error;
+        }
+        this.remove(item.viewId);
+        saved++;
+      } catch(e){
+        console.warn("Pending save still failing for", item.viewId, e);
+        // leave it queued and try again later
+      }
+    }
+    return saved;
+  },
+};
+// Retry queued saves when the connection returns, when the app regains focus,
+// and periodically while it's open.
+if(typeof window!=="undefined"){
+  window.addEventListener("online", ()=>{ PendingSaves.flush(); });
+  window.addEventListener("focus", ()=>{ PendingSaves.flush(); });
+  setInterval(()=>{ if(navigator.onLine!==false && PendingSaves.count()) PendingSaves.flush(); }, 30000);
+}
+
+
 // ── Calendar backend ───────────────────────────────────────────────────────
 // Routes calendar work through our Supabase Edge Function, which uses a Google
 // service account. That means reps never have to sign in to Google.
@@ -5098,6 +5167,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
           {lead.temperature==="hot" && lead.stage==="Lead: Need Bill/Appointment" && <span style={{fontSize:13,flexShrink:0}} title="Warm lead">🔥</span>}
+          {lead._pending && <span style={{fontSize:10,fontWeight:800,flexShrink:0,color:"#b45309",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:5,padding:"1px 5px"}} title="Saved on this device — will upload when you have service">⏳ Saving</span>}
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
           {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
           {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#6366f1",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>SAVE</span>}
@@ -11428,6 +11498,23 @@ function App() {
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
         setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
+        // Re-try anything that couldn't be saved earlier (bad service), and keep those
+        // leads visible in the pipeline so nothing ever looks "lost".
+        try {
+          await PendingSaves.flush();
+          const stillPending = PendingSaves.all();
+          if(stillPending.length){
+            setLeads(ls=>{
+              const copy=[...ls];
+              stillPending.forEach(p=>{
+                const row={...p.payload, id:p.viewId, owner_id:p.ownerId, created_at:p.createdAt, bill_photos:p.photos||[], _pending:true};
+                const i=copy.findIndex(l=>l.id===p.viewId);
+                if(i>=0) copy[i]={...copy[i],...row}; else copy.unshift(row);
+              });
+              return copy;
+            });
+          }
+        } catch(e){ console.error("pending flush:", e); }
       } else {
         const isCloser = p && p.role==="closer";
         // Closers see leads from everyone on their team(s); reps see only their own.
@@ -11469,6 +11556,23 @@ function App() {
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
         setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
+        // Re-try anything that couldn't be saved earlier (bad service), and keep those
+        // leads visible in the pipeline so nothing ever looks "lost".
+        try {
+          await PendingSaves.flush();
+          const stillPending = PendingSaves.all();
+          if(stillPending.length){
+            setLeads(ls=>{
+              const copy=[...ls];
+              stillPending.forEach(p=>{
+                const row={...p.payload, id:p.viewId, owner_id:p.ownerId, created_at:p.createdAt, bill_photos:p.photos||[], _pending:true};
+                const i=copy.findIndex(l=>l.id===p.viewId);
+                if(i>=0) copy[i]={...copy[i],...row}; else copy.unshift(row);
+              });
+              return copy;
+            });
+          }
+        } catch(e){ console.error("pending flush:", e); }
       }
     } catch(e) {
       console.error("loadData error:",e);
@@ -11640,6 +11744,14 @@ function App() {
     setDetailId(viewId);
 
     // Persist to the database in the background, retrying transient network errors.
+    // IMPORTANT: stash the lead on the device FIRST. If the rep has bad service, the
+    // app is closed mid-save, or the page reloads, the lead is already safe on the
+    // device and will retry automatically. It's only removed once the save succeeds.
+    PendingSaves.put({
+      viewId, isUpdate, payload, photos:newPhotos, ownerId,
+      createdAt: isUpdate ? (existing&&existing.created_at) || new Date().toISOString() : new Date().toISOString(),
+      name: payload.name || "(no name)",
+    });
     (async()=>{
       // A "Load failed" / network TypeError is usually a transient connection blip,
       // not a real data problem — retry a few times before giving up.
@@ -11675,18 +11787,23 @@ function App() {
         }
       }
       if(!lastErr){
-        // Saved successfully. Local state was already updated optimistically before
-        // the save, so we DON'T re-download everything here — that full reload was the
-        // main field slowdown. Pull-to-refresh syncs other people's changes on demand.
+        // Saved successfully — clear the device backup we stashed before the attempt.
+        PendingSaves.remove(viewId);
         return;
       }
-      // Still failing after retries. Keep the optimistic lead in view (don't reload),
-      // and show a message tailored to whether it was a network blip or a real error.
+      // Still failing after retries. The lead is ALREADY stashed on this device (we
+      // queued it before attempting), so it will keep retrying automatically and
+      // survives a refresh, an app close, or a dead battery.
       const msg=(lastErr&&(lastErr.message||lastErr.details||lastErr.hint))||"unknown error";
+      const queued = PendingSaves.all().some(x=>x.viewId===viewId);
       if(isNetworkErr(lastErr)){
-        window.alert("Couldn't reach the server to save this lead — looks like a connection problem.\n\nYour entry is still on screen. Check your internet connection and re-open the lead and hit Save again. If it keeps happening, the lead may not be saved, so don't refresh until it saves.");
+        if(queued){
+          window.alert("No connection right now — but your lead is SAVED ON THIS DEVICE.\n\nIt will upload automatically as soon as you're back online. It's safe to refresh or close the app; nothing will be lost.");
+        } else {
+          window.alert("Couldn't reach the server AND couldn't save a backup on this device.\n\nPlease don't refresh — write down the details, or move somewhere with service and hit Save again.");
+        }
       } else {
-        window.alert("This lead did NOT save to the database.\n\nReason: "+msg+"\n\nThis may mean a database column is missing. Take a screenshot of this message.");
+        window.alert("This lead did NOT save to the database.\n\nReason: "+msg+"\n\n"+(queued?"A copy is stored on this device and will retry automatically.":"Take a screenshot of this message."));
       }
     })();
   };
