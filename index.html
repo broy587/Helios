@@ -4085,6 +4085,116 @@ function TemperatureSelector({value, onChange, dark}) {
   );
 }
 
+// Fullscreen image viewer with pinch-to-zoom (touch) and trackpad/wheel zoom.
+// Pinch or scroll to zoom, drag to pan when zoomed, double-tap/click to toggle zoom.
+function ZoomableImage({src, onClose}) {
+  const wrapRef = React.useRef(null);
+  const st = React.useRef({ scale:1, tx:0, ty:0, // current transform
+    // gesture bookkeeping
+    startDist:0, startScale:1, lastX:0, lastY:0, panning:false,
+    startMidX:0, startMidY:0, startTx:0, startTy:0, lastTap:0, moved:false });
+  const imgRef = React.useRef(null);
+
+  const apply = () => {
+    if(imgRef.current){
+      const s = st.current;
+      imgRef.current.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+    }
+  };
+  const clamp = () => {
+    const s = st.current;
+    if(s.scale < 1.01){ s.scale = 1; s.tx = 0; s.ty = 0; }
+    if(s.scale > 6) s.scale = 6;
+  };
+
+  React.useEffect(()=>{
+    const el = wrapRef.current;
+    if(!el) return;
+    const dist = (t)=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+    const mid  = (t)=>({x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2});
+
+    const onTouchStart = (e)=>{
+      const s = st.current; s.moved=false;
+      if(e.touches.length===2){
+        e.preventDefault();
+        s.startDist = dist(e.touches);
+        s.startScale = s.scale;
+        const m = mid(e.touches);
+        s.startMidX = m.x; s.startMidY = m.y; s.startTx = s.tx; s.startTy = s.ty;
+      } else if(e.touches.length===1){
+        s.lastX = e.touches[0].clientX; s.lastY = e.touches[0].clientY;
+        s.panning = s.scale > 1;
+      }
+    };
+    const onTouchMove = (e)=>{
+      const s = st.current;
+      if(e.touches.length===2){
+        e.preventDefault(); s.moved=true;
+        const newDist = dist(e.touches);
+        if(s.startDist>0){
+          s.scale = Math.max(1, Math.min(6, s.startScale * (newDist/s.startDist)));
+          // pan with the pinch midpoint so zoom feels anchored
+          const m = mid(e.touches);
+          s.tx = s.startTx + (m.x - s.startMidX);
+          s.ty = s.startTy + (m.y - s.startMidY);
+        }
+        apply();
+      } else if(e.touches.length===1 && s.panning){
+        e.preventDefault(); s.moved=true;
+        s.tx += e.touches[0].clientX - s.lastX;
+        s.ty += e.touches[0].clientY - s.lastY;
+        s.lastX = e.touches[0].clientX; s.lastY = e.touches[0].clientY;
+        apply();
+      }
+    };
+    const onTouchEnd = (e)=>{
+      const s = st.current;
+      clamp(); apply();
+      if(e.touches.length===0){
+        // double-tap to toggle zoom
+        const now = Date.now();
+        if(!s.moved){
+          if(now - s.lastTap < 300){
+            s.scale = s.scale > 1 ? 1 : 2.5; clamp(); apply();
+            s.lastTap = 0;
+          } else {
+            s.lastTap = now;
+          }
+        }
+        s.panning = false;
+      }
+    };
+    // Trackpad pinch shows up as wheel + ctrlKey; plain wheel also zooms here.
+    const onWheel = (e)=>{
+      e.preventDefault();
+      const s = st.current;
+      const factor = e.ctrlKey ? 0.01 : 0.0025; // pinch gestures send larger deltas
+      s.scale = Math.max(1, Math.min(6, s.scale * (1 - e.deltaY*factor)));
+      clamp(); apply();
+    };
+
+    el.addEventListener("touchstart", onTouchStart, {passive:false});
+    el.addEventListener("touchmove",  onTouchMove,  {passive:false});
+    el.addEventListener("touchend",   onTouchEnd,   {passive:false});
+    el.addEventListener("wheel",      onWheel,      {passive:false});
+    return ()=>{
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove",  onTouchMove);
+      el.removeEventListener("touchend",   onTouchEnd);
+      el.removeEventListener("wheel",      onWheel);
+    };
+  },[src]);
+
+  return (
+    <div ref={wrapRef}
+      style={{position:"absolute",inset:0,overflow:"hidden",touchAction:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <img ref={imgRef} src={src} draggable={false}
+        onDoubleClick={()=>{ const s=st.current; s.scale = s.scale>1?1:2.5; clamp(); apply(); }}
+        style={{maxWidth:"95vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain",transformOrigin:"center center",transition:"transform 0.05s linear",userSelect:"none",WebkitUserSelect:"none"}}/>
+    </div>
+  );
+}
+
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
@@ -4566,14 +4676,14 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
         </div>
       </div>
       {imgOpen!==null && photos && photos[imgOpen] && (
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10}} onClick={()=>setImgOpen(null)}>
-          <img src={photos[imgOpen]} style={{maxWidth:"95vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}/>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.95)",zIndex:10}}>
+          <ZoomableImage src={photos[imgOpen]} onClose={()=>setImgOpen(null)}/>
           <button onClick={e=>savePhoto(photos[imgOpen],imgOpen,e)}
-            style={{position:"absolute",top:16,left:20,display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1.5px solid rgba(255,255,255,0.35)",color:"#fff",fontSize:14,fontWeight:700,padding:"8px 16px",borderRadius:10,cursor:"pointer",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)"}}>
+            style={{position:"absolute",top:16,left:20,display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1.5px solid rgba(255,255,255,0.35)",color:"#fff",fontSize:14,fontWeight:700,padding:"8px 16px",borderRadius:10,cursor:"pointer",WebkitBackdropFilter:"blur(4px)",backdropFilter:"blur(4px)",zIndex:12}}>
             ⬇ Save
           </button>
-          <div onClick={()=>setImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer"}}>✕</div>
-          <div style={{position:"absolute",bottom:16,color:"#fff",fontSize:13,opacity:0.7,background:"rgba(0,0,0,0.4)",padding:"4px 12px",borderRadius:20}}>{imgOpen+1} of {photos.length} — tap to close</div>
+          <div onClick={()=>setImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer",zIndex:12,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</div>
+          <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",color:"#fff",fontSize:13,opacity:0.75,background:"rgba(0,0,0,0.45)",padding:"4px 12px",borderRadius:20,zIndex:12,whiteSpace:"nowrap"}}>{imgOpen+1} of {photos.length} · pinch or scroll to zoom · double-tap to reset</div>
         </div>
       )}
     </div>
