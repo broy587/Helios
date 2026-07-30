@@ -4795,8 +4795,12 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [showUtilInfo,setShowUtilInfo]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const fileInputRef=useRef(null);
+  const leadFileRef=useRef(null);
+  const [uploadingFile,setUploadingFile]=useState(false);
+  const [fileErr,setFileErr]=useState("");
   useEffect(()=>{
     setConfirmDelete(false); // never open the form already showing a delete prompt
+    setFileErr(""); setUploadingFile(false);
     if(initial&&initial.id&&open){
       // Lazy load photos when editing
       setForm({...initial,billPhotos:[]});
@@ -4826,9 +4830,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const removePhoto=idx=>setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
   // Attached files (PDFs/docs) — uploaded to storage; only a small URL is stored on
   // the lead, so a file NEVER bloats the lead or slows loading no matter its size.
-  const leadFileRef=useRef(null);
-  const [uploadingFile,setUploadingFile]=useState(false);
-  const [fileErr,setFileErr]=useState("");
   const handleLeadFile=async(e)=>{
     const file=e.target.files&&e.target.files[0];
     if(!file){ if(leadFileRef.current)leadFileRef.current.value=""; return; }
