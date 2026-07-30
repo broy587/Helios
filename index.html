@@ -4543,20 +4543,9 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               </div>
             </div>
           )}
-          {confirmDelete && (
-            <div style={{background:"#fff5f5",border:"1.5px solid #fca5a5",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:14,color:"#b91c1c",marginBottom:4}}>Are you sure?</div>
-              <div style={{fontSize:13,color:"#7f1d1d",marginBottom:12,lineHeight:1.5}}>This cannot be undone.</div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setConfirmDelete(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
-                <button onClick={()=>onDelete(lead.id)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Delete</button>
-              </div>
-            </div>
-          )}
-          {!confirmDelete&&!showTransfer && (
+          {!showTransfer && (
             <div style={{display:"flex",gap:10,marginTop:6}}>
               <button onClick={()=>setShowTransfer(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #3b82f6",background:"#fff",color:"#3b82f6",fontWeight:600,cursor:"pointer",fontSize:13}}>Transfer</button>
-              <button onClick={()=>setConfirmDelete(true)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>Delete</button>
             </div>
           )}
         </div>
@@ -4673,14 +4662,16 @@ function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
   );
 }
 
-function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,acReq}) {
+function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,canBookCap,acReq}) {
   const dark=useDark();
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
   const [showSecondary,setShowSecondary]=useState(false);
   const [showUtilInfo,setShowUtilInfo]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
   const fileInputRef=useRef(null);
   useEffect(()=>{
+    setConfirmDelete(false); // never open the form already showing a delete prompt
     if(initial&&initial.id&&open){
       // Lazy load photos when editing
       setForm({...initial,billPhotos:[]});
@@ -5093,6 +5084,24 @@ function LeadModal({open,onClose,onSave,initial,gmapsKey,creatorName,canBookCap,
             {saving?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save Changes":"Add Lead")}
           </button>
         </div>
+        {/* Delete — only for existing leads, at the very bottom of the form. */}
+        {initial && initial.id && onDelete && (
+          confirmDelete ? (
+            <div style={{background:dark?"rgba(239,68,68,0.10)":"#fff5f5",border:"1.5px solid #fca5a5",borderRadius:10,padding:"14px 16px",marginTop:16}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#b91c1c",marginBottom:4}}>Delete this lead?</div>
+              <div style={{fontSize:13,color:dark?"#fca5a5":"#7f1d1d",marginBottom:12,lineHeight:1.5}}>This cannot be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setConfirmDelete(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+                <button onClick={()=>onDelete(initial.id)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Delete</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setConfirmDelete(true)}
+              style={{width:"100%",marginTop:16,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:dark?"transparent":"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
+              🗑️ Delete Lead
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -5547,6 +5556,13 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
+  // Mirror dragOver in a ref so the drag-end handler reads the latest drop target
+  // without going through a state updater (which must stay side-effect free).
+  const dragOverRef=React.useRef(null);
+  React.useEffect(()=>{ dragOverRef.current=dragOver; },[dragOver]);
+  // The current stage of the lead being dragged, so a drop onto its own column is a
+  // no-op and never triggers a save.
+  const currentStageRef=React.useRef(null);
   const [detailId,setDetailId]=useState(null);
   const [helpStage,setHelpStage]=useState(null);
   const [acWarnMsg,setAcWarnMsg]=useState("");
@@ -5574,6 +5590,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
 
   const startDrag = (id, x, y, isMouse) => {
     setDragId(id); setDragPos({x,y});
+    // Remember the lead's current stage so a drop onto its own column does nothing.
+    try { const dl=(leads||[]).find(l=>l.id===id); currentStageRef.current = dl ? dl.stage : null; } catch(e){ currentStageRef.current=null; }
+    dragOverRef.current=null;
     // While dragging with the mouse, prevent the browser from selecting/highlighting
     // any text the card is dragged over.
     if(isMouse){
@@ -5596,13 +5615,20 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
       // Restore text selection.
       document.body.style.userSelect="";
       document.body.style.webkitUserSelect="";
-      setDragId(null);setDragOver(over=>{
-        // Prevent dragging into ARC column via drag-drop
-        if(over && over!=="ARC / Cancels") onStageChange(id,over);
-        return null;
-      });stopScroll();
+      // Capture where it was dropped, THEN clear drag state. Never call
+      // onStageChange from inside a state updater — that updater must stay pure,
+      // and doing side effects there caused an update cascade that froze/crashed
+      // the app on drop.
+      const target = dragOverRef.current;
+      setDragId(null);
+      setDragOver(null);
+      stopScroll();
       if(isMouse){window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onEnd);}
       else{window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onEnd);}
+      // Prevent dragging into ARC column via drag-drop.
+      if(target && target!=="ARC / Cancels" && target!==currentStageRef.current){
+        onStageChange(id,target);
+      }
     };
     if(isMouse){window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onEnd);}
     else{window.addEventListener("touchmove",onMove,{passive:false});window.addEventListener("touchend",onEnd);}
@@ -12361,7 +12387,7 @@ function App() {
         )}
       </div>
 
-      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
+      <LeadModal open={modal.open} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} onDelete={id=>{setModal({open:false,lead:null});setDetailId(null);deleteLead(id);}} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
         initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",centsKwh:modal.lead.cents_kwh||"",annualKwh:modal.lead.annual_kwh||"",averageBill:modal.lead.average_bill||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",closerNotesLog:(Array.isArray(modal.lead.closer_notes_log)&&modal.lead.closer_notes_log.length)?modal.lead.closer_notes_log:(modal.lead.closer_notes?[{id:makeNoteId(),text:modal.lead.closer_notes,ts:modal.lead.updated_at||modal.lead.created_at||new Date().toISOString()}]:[]),notesCreatedAt:modal.lead.notes_created_at||null,temperature:modal.lead.temperature||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||"",systemSize:modal.lead.system_size||"",batteryCount:modal.lead.battery_count||"",soldSunHours:modal.lead.sold_sun_hours||"",kwhRate:modal.lead.kwh_rate||"",monthly:modal.lead.monthly||"",offset:modal.lead.offset_pct||"",spanPanel:modal.lead.span_panel||"",flex:modal.lead.flex||""}:null}/>
 
