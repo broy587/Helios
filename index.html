@@ -4295,13 +4295,18 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   useEffect(()=>{
     if(!lead) return;
     setPhotos([]);
-    // Lazy load bill_photos only when modal opens
+    // Lazy load bill_photos only when modal opens.
     setPhotosLoading(true);
-    sb.from("leads").select("bill_photos").eq("id",lead.id).single()
-      .then(({data})=>{
-        setPhotos(data?.bill_photos||[]);
+    sb.from("leads").select("bill_photos").eq("id",lead.id).maybeSingle()
+      .then(({data,error})=>{
+        if(error){ console.error("bill_photos load failed:",error); }
+        // Fall back to any photos already on the lead object if the fetch came back empty.
+        const fromFetch = data && Array.isArray(data.bill_photos) ? data.bill_photos : null;
+        const fromLead  = Array.isArray(lead.bill_photos) ? lead.bill_photos : (Array.isArray(lead.billPhotos) ? lead.billPhotos : []);
+        setPhotos(fromFetch && fromFetch.length ? fromFetch : fromLead);
         setPhotosLoading(false);
-      });
+      })
+      .catch(err=>{ console.error("bill_photos load threw:",err); setPhotos(Array.isArray(lead.bill_photos)?lead.bill_photos:[]); setPhotosLoading(false); });
   },[lead?.id]);
 
   if (!lead) return null;
