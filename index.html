@@ -5102,50 +5102,50 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
           <textarea placeholder="Additional notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {/* Photos */}
             <div>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
                 Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
               </label>
+              <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:10,padding:"13px 10px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc",fontSize:14,color:dark?"#cbd5e1":"#475569",fontWeight:600}}>
+                📷 Add Photo
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
               {form.billPhotos&&form.billPhotos.length>0 && (
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:8}}>
                   {form.billPhotos.map((p,i)=>(
-                    <div key={i} style={{position:"relative"}}>
-                      <img src={p} style={{width:"100%",height:64,borderRadius:8,border:"1.5px solid #e2e8f0",objectFit:"cover"}}/>
-                      <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:3,right:3,background:"rgba(15,23,42,0.75)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>✕</button>
+                    <div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:10,overflow:"hidden",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <img src={p} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                      <button onClick={()=>removePhoto(i)} style={{position:"absolute",top:4,right:4,background:"rgba(15,23,42,0.8)",color:"#fff",border:"none",borderRadius:"50%",width:22,height:22,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1}}>✕</button>
                     </div>
                   ))}
                 </div>
               )}
-              <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:8,padding:"14px 10px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
-                <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:500}}>📷 Add photo</div>
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhoto} style={{display:"none"}}/>
             </div>
             {/* Files */}
             <div>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
                 Files {form.leadFiles&&form.leadFiles.length>0&&<span style={{color:"#f97316"}}>({form.leadFiles.length})</span>}
               </label>
+              <div onClick={()=>{ if(!uploadingFile&&leadFileRef.current) leadFileRef.current.click(); }} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:10,padding:"13px 10px",textAlign:"center",cursor:uploadingFile?"default":"pointer",background:dark?"#0f172a":"#f8fafc",fontSize:14,color:dark?"#cbd5e1":"#475569",fontWeight:600}}>
+                {uploadingFile?"Uploading…":"📎 Add File"}
+              </div>
+              <input ref={leadFileRef} type="file" onChange={handleLeadFile} style={{display:"none"}}/>
               {form.leadFiles&&form.leadFiles.length>0 && (
-                <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8}}>
                   {form.leadFiles.map((f,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 9px",borderRadius:8,background:dark?"#0f172a":"#f1f5f9",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
-                      <span style={{fontSize:14,flexShrink:0}}>📄</span>
-                      <a href={f.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:dark?"#93c5fd":"#2563eb",textDecoration:"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name||"File"}</a>
-                      <button onClick={()=>removeLeadFile(i)} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>✕</button>
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <span style={{fontSize:18,flexShrink:0}}>📄</span>
+                      <a href={f.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:dark?"#93c5fd":"#2563eb",textDecoration:"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name||"File"}</a>
+                      <button onClick={()=>removeLeadFile(i)} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:16,cursor:"pointer",padding:"0 2px",lineHeight:1}}>✕</button>
                     </div>
                   ))}
                 </div>
               )}
-              <div onClick={()=>{ if(!uploadingFile&&leadFileRef.current) leadFileRef.current.click(); }} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:8,padding:"14px 10px",textAlign:"center",cursor:uploadingFile?"default":"pointer",background:dark?"#0f172a":"#f8fafc"}}>
-                <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:500}}>{uploadingFile?"Uploading…":"📎 Add file"}</div>
-              </div>
-              <input ref={leadFileRef} type="file" onChange={handleLeadFile} style={{display:"none"}}/>
             </div>
           </div>
-          {fileErr && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginTop:6}}>{fileErr}</div>}
+          {fileErr && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginTop:8}}>{fileErr}</div>}
         </div>
         {form.id && (
         <div style={{marginBottom:14}}>
