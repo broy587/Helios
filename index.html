@@ -9186,7 +9186,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
         const days = meetRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
         recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
       }
-      await GCal.createMeeting(meetType, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
+      await GCal.createMeeting(`🟡 ${meetType}`, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setMeetSaving(false);
       setMeetOpen(false);
       resetMeet();
@@ -10203,7 +10203,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       // In appendMode we're adding an extra appointment, so nothing is released.
       const oldId = doAppend ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
       const updatedEvent = {
-        summary: doAppend ? `APPT - ${lead.name||"Lead"}` : (capMode ? `CAP-${lead.name||"Lead"}` : `AC - ${lead.name||"Lead"}`),
+        summary: doAppend ? `🔵 APPT - ${lead.name||"Lead"}` : (capMode ? `🟠 CAP - ${lead.name||"Lead"}` : `🟢 AC - ${lead.name||"Lead"}`),
         location: lead.address || "", // puts a tappable address on the calendar event for directions
         description: `${doAppend?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
         colorId: doAppend ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
