@@ -9566,9 +9566,9 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
             </button>
           )}
           <button onClick={()=>{ setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
-            title="Tag or remove appointments"
+            title="Tag, or remove appointments, meetings and open slots"
             style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap"}}>
-            🏷️ Tag
+            🏷️ Manage
           </button>
           <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
             style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:14,color:dark?"#94a3b8":"#6b2d4e"}}>
