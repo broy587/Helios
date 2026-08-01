@@ -9126,7 +9126,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
-function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlot, creatorName}) {
+function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlot, isSelfGen, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
   const [calView, setCalView] = React.useState(()=>{
@@ -9156,6 +9156,24 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   const [tagMsg, setTagMsg] = React.useState("");
   const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
+  const [showOpenSlots, setShowOpenSlots] = React.useState(false); // include open slots (removable) in the list
+  const [removingId, setRemovingId] = React.useState(null);
+  const createdByMe = (ev)=>{
+    const by = (ev.description||"").match(/Created by:\s*(.*)/i);
+    const who = by ? (by[1]||"").trim().toLowerCase() : "";
+    const me = (creatorName||"").trim().toLowerCase();
+    return !!me && who===me;
+  };
+  // Who can REMOVE an event:
+  //  • booked appointment → closers/managers/owners (any) + self-gen (their own)
+  //  • open slot / meeting → closers/managers/owners only
+  const canRemoveEvent = (ev)=>{
+    const isBooked = (ev.description||"").includes("BOOKED:");
+    const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
+    if(isBooked && !isOpen) return canAddMeeting || (isSelfGen && createdByMe(ev));
+    return canAddMeeting; // open slots & meetings: privileged only
+  };
+  const canRemoveAny = canAddMeeting || isSelfGen; // shows the removal hint in the header
   const canTagEvent = (ev)=>{
     if(canAddMeeting) return true; // closers/managers/owners can tag anything
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
@@ -9337,8 +9355,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
         const data = await res.json();
         items = (data.items||[]).map(e=>({id:e.id, summary:e.summary||"", description:e.description||"", start:e.start, recurringEventId:e.recurringEventId||null, isOpen:(e.summary||"").toLowerCase().includes("open slot")}));
       }
-      // Skip open slots — you tag appointments/meetings, not empty slots.
-      const evts = (items||[]).filter(e=>!e.isOpen && !((e.summary||"").toLowerCase().includes("open slot")));
+      // Keep open slots too (they can be removed); the display toggles them.
+      const evts = (items||[]);
       // Sort nearest-to-today first (recent past + upcoming on top, oldest at bottom).
       const nowMs = Date.now();
       const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
@@ -9380,26 +9398,76 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
     setTagBusyId(null);
   };
 
-  // Apply the date/day filter to the loaded events.
+  // Apply the date/day filter (and open-slots toggle) to the loaded events.
   const filteredTagEvents = React.useMemo(()=>{
     const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
+    const isOpen = (e)=> e.isOpen || (e.summary||"").toLowerCase().includes("open slot");
+    let base = tagEvents.filter(e=> showOpenSlots ? true : !isOpen(e));
     if(tagDate){
       const d0 = new Date(tagDate+"T00:00:00").getTime();
       const d1 = d0 + 24*60*60*1000;
-      return tagEvents.filter(e=>{ const t=startMs(e); return t>=d0 && t<d1; });
+      return base.filter(e=>{ const t=startMs(e); return t>=d0 && t<d1; });
     }
-    if(tagFilter==="all") return tagEvents;
+    if(tagFilter==="all") return base;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
     const todayEnd = todayStart + 24*60*60*1000;
-    return tagEvents.filter(e=>{
+    return base.filter(e=>{
       const t = startMs(e);
       if(tagFilter==="today") return t>=todayStart && t<todayEnd;
       if(tagFilter==="upcoming") return t>=todayStart;
       if(tagFilter==="past") return t<todayStart;
       return true;
     });
-  },[tagEvents,tagFilter,tagDate]);
+  },[tagEvents,tagFilter,tagDate,showOpenSlots]);
+
+  // Remove an event: booked appointments are released back to an open slot (and the
+  // linked lead is cleared); open slots and meetings are deleted outright.
+  const removeEventFromList = async (calendarId, ev) => {
+    if(!canRemoveEvent(ev)) return;
+    const isBooked = (ev.description||"").includes("BOOKED:");
+    const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
+    const release = isBooked && !isOpen; // release to open slot vs delete
+    const label = isOpen ? "open slot" : (isBooked ? "appointment" : "meeting");
+    const confirmMsg = release
+      ? "Remove this appointment? It will be released back to an open slot on the calendar."
+      : `Delete this ${label}? This removes it from the calendar.`;
+    if(!window.confirm(confirmMsg)) return;
+    setRemovingId(ev.id);
+    try {
+      let ok = false;
+      const action = release ? "remove" : "deleteEvent";
+      const r = await CalendarBackend.tryCall(action, {calendarId, eventId:ev.id});
+      if(r && r.ok) ok = true;
+      if(r===null){
+        // Fallback via the rep's own Google sign-in.
+        const token = await GCal.signIn();
+        if(release){
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})});
+          ok = res.ok;
+        } else {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+            {method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
+          ok = res.ok || res.status===410 || res.status===404;
+        }
+      }
+      if(ok){
+        // If it was a booked appointment, clear it off any lead so the two stay in sync.
+        if(release){
+          try {
+            await sb.from("leads").update({gcal_event_id:null,appointment:null,updated_at:new Date().toISOString()}).eq("gcal_event_id",ev.id);
+            await sb.from("leads").update({cap_event_id:null,cap_appointment:null,updated_at:new Date().toISOString()}).eq("cap_event_id",ev.id);
+          } catch(e){ console.error("lead sync after remove failed:",e); }
+        }
+        setTagEvents(list=>list.filter(x=>x.id!==ev.id));
+        setCalKey(k=>k+1);
+      } else {
+        setTagMsg("Couldn't remove that event.");
+      }
+    } catch(e){ console.error(e); setTagMsg("Error removing: "+((e&&e.message)||"unknown")); }
+    setRemovingId(null);
+  };
 
   // When a new event URL comes in, show it in the iframe
   React.useEffect(()=>{
@@ -9496,7 +9564,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
             </button>
           )}
           <button onClick={()=>{ setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
-            title="Add a colored marker to an appointment"
+            title="Tag or remove appointments"
             style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap"}}>
             🏷️ Tag
           </button>
@@ -9543,12 +9611,12 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setTagOpen(false)}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"22px 18px 32px",width:"min(100vw,480px)",maxHeight:"88vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>🏷️ Tag Appointments</div>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>🏷️ Tag & Manage</div>
               <button onClick={()=>setTagOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:12,lineHeight:1.4}}>
-              Tap a marker to color-tag an appointment. One marker at a time — picking a new one replaces it; tap the same one again to clear.
-              {!canAddMeeting && <span> You can only tag appointments you created.</span>}
+              Tap a marker to color-tag an appointment (one at a time — tap it again to clear).{canRemoveAny?" Use 🗑️ to remove an event from the calendar.":""}
+              {!canAddMeeting && <span> You can only tag/remove appointments you created.</span>}
             </div>
             {/* Emoji key */}
             <div style={{background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
@@ -9575,6 +9643,12 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
                 style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#1a2456",background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
               {tagDate && <button onClick={()=>setTagDate("")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
+            {canAddMeeting && (
+              <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,cursor:"pointer",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>
+                <input type="checkbox" checked={showOpenSlots} onChange={e=>setShowOpenSlots(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
+                Show open slots (to remove them)
+              </label>
+            )}
             {tagLoading ? (
               <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>Loading appointments…</div>
             ) : tagMsg && tagEvents.length===0 ? (
@@ -9586,25 +9660,36 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
                 {tagMsg && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600}}>{tagMsg}</div>}
                 {filteredTagEvents.map(ev=>{
                   const allowed = canTagEvent(ev);
+                  const isOpenSlot = ev.isOpen || (ev.summary||"").toLowerCase().includes("open slot");
                   const current = (ev.summary||"").match(/^(🟢|🟠|🔵|🟡|🔴|🟣|⚪|🟤|🟩|🟧|🟦|🟨)/u);
                   const curMark = current ? current[0] : null;
                   const when = ev.start && (ev.start.dateTime||ev.start.date) ? new Date(ev.start.dateTime||ev.start.date) : null;
                   const busy = tagBusyId===ev.id;
                   const recurring = !!ev.recurringEventId;
+                  const removable = canRemoveEvent(ev);
+                  const isRemoving = removingId===ev.id;
+                  const canTag = allowed && !isOpenSlot; // open slots aren't tagged, only removed
                   return (
-                    <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:allowed?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:allowed?1:0.55}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:allowed?10:0}}>
+                    <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:(canTag||removable)?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:(canTag||removable)?1:0.55}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:canTag?10:0}}>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stripMarker(ev.summary)||"(untitled)"}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isOpenSlot?"🟦 Open Slot":(stripMarker(ev.summary)||"(untitled)")}</div>
                           <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
                             {when && <span>{when.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} · {when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>}
                             {recurring && <span title="Repeating event — tagging updates the whole series"> · 🔁 repeats</span>}
                           </div>
                         </div>
-                        {!allowed && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
+                        {!canTag && !isOpenSlot && !removable && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
+                        {removable && (
+                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev)} disabled={isRemoving}
+                            title={((ev.description||"").includes("BOOKED:")&&!isOpenSlot)?"Remove appointment (releases the slot)":"Delete from calendar"}
+                            style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fecaca`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>
+                            {isRemoving?"…":"🗑️"}
+                          </button>
+                        )}
                       </div>
-                      {allowed && (
+                      {canTag && (
                         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                           {APPT_MARKERS.map(m=>(
                             <button key={m} disabled={busy} onClick={()=>applyMarker(teamCfg && teamCfg.calendarId, ev, curMark===m?null:m)}
@@ -12707,7 +12792,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&onCalendarTeam&&(
-          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} canAddOpenSlot={canAddOpenSlot} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} canAddOpenSlot={canAddOpenSlot} isSelfGen={(profile&&profile.role)==="self_gen"} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
