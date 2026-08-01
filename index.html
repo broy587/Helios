@@ -4228,7 +4228,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
         try {
           const token = await GCal.signIn();
           await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${entry.id}`,
-            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})});
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
         } catch(e){ console.error("Couldn't restore slot:",e); }
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
@@ -5061,7 +5061,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                             try { const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:a.id}); released = !!(br && br.ok); }
                             catch(e){ console.error(e); }
                           }
-                          if(a.id && !released){ try{ const token = await GCal.signIn(); await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
+                          if(a.id && !released){ try{ const token = await GCal.signIn(); await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
                           const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
                           await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",form.id);
                           setForm(f=>({...f,extra_appointments:next}));
@@ -9126,7 +9126,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
-function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlot, isSelfGen, creatorName}) {
+function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManageEvents, canAddOpenSlot, isSelfGen, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
   const [calView, setCalView] = React.useState(()=>{
@@ -9166,16 +9166,18 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   };
   // Who can REMOVE an event:
   //  • booked appointment → closers/managers/owners (any) + self-gen (their own)
-  //  • open slot / meeting → closers/managers/owners only
+  //  • open slot          → closers/managers/owners
+  //  • meeting / other    → managers & owners only
   const canRemoveEvent = (ev)=>{
     const isBooked = (ev.description||"").includes("BOOKED:");
     const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
-    if(isBooked && !isOpen) return canAddMeeting || (isSelfGen && createdByMe(ev));
-    return canAddMeeting; // open slots & meetings: privileged only
+    if(isOpen) return canManageEvents;
+    if(isBooked) return canManageEvents || (isSelfGen && createdByMe(ev));
+    return canManageMeetings; // meetings & standalone events: manager/owner only
   };
-  const canRemoveAny = canAddMeeting || isSelfGen; // shows the removal hint in the header
+  const canRemoveAny = canManageEvents || isSelfGen; // shows the removal hint in the header
   const canTagEvent = (ev)=>{
-    if(canAddMeeting) return true; // closers/managers/owners can tag anything
+    if(canManageEvents) return true; // closers/managers/owners can tag anything
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
     const who = by ? (by[1]||"").trim().toLowerCase() : "";
     const me = (creatorName||"").trim().toLowerCase();
@@ -9271,7 +9273,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
       const [sh,sm] = slotStart.split(":").map(Number);
       const startD = new Date(yy,mm-1,dd,sh,sm,0);
       const endD = new Date(startD.getTime() + SLOT_MINUTES*60000); // start + 1.5 hr
-      await GCal.createMeeting("open slot", startD.toISOString(), endD.toISOString(), calendarId, null);
+      await GCal.createMeeting("🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, null);
       setSlotSaving(false);
       setSlotOpen(false);
       resetSlot();
@@ -9444,7 +9446,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
         const token = await GCal.signIn();
         if(release){
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
-            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})});
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
           ok = res.ok;
         } else {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
@@ -9544,7 +9546,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
           </select>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flex:"1 1 auto"}}>
-          {canAddMeeting && (
+          {canManageMeetings && (
             <button onClick={()=>{resetMeet();setMeetOpen(true);}}
               style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
               + Add Meeting
@@ -9616,7 +9618,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
             </div>
             <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:12,lineHeight:1.4}}>
               Tap a marker to color-tag an appointment (one at a time — tap it again to clear).{canRemoveAny?" Use 🗑️ to remove an event from the calendar.":""}
-              {!canAddMeeting && <span> You can only tag/remove appointments you created.</span>}
+              {!canManageEvents && <span> You can only tag/remove appointments you created.</span>}
             </div>
             {/* Emoji key */}
             <div style={{background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
@@ -9643,7 +9645,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
                 style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#1a2456",background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
               {tagDate && <button onClick={()=>setTagDate("")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
-            {canAddMeeting && (
+            {canManageEvents && (
               <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,cursor:"pointer",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>
                 <input type="checkbox" checked={showOpenSlots} onChange={e=>setShowOpenSlots(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
                 Show open slots (to remove them)
@@ -10414,7 +10416,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         const r = await fetch(
           `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${evId}`,
           {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-           body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
+           body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}
         );
         if(r.ok) return true;
       } catch(e){ console.error("revert attempt failed on",calId,e); }
@@ -10522,7 +10524,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
             await fetch(
               `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${oldId}`,
               {method:"PATCH",headers:{Authorization:`Bearer ${tk}`,"Content-Type":"application/json"},
-               body:JSON.stringify({summary:"Open Slot",description:"",colorId:"7",visibility:"public"})}
+               body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}
             );
           } catch(e){ console.error("Error restoring old slot:",e); }
         }
@@ -12792,7 +12794,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&onCalendarTeam&&(
-          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canAddMeeting={isPrivileged} canAddOpenSlot={canAddOpenSlot} isSelfGen={(profile&&profile.role)==="self_gen"} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canManageMeetings={isPrivileged} canManageEvents={isPrivileged || isCloser} canAddOpenSlot={canAddOpenSlot} isSelfGen={(profile&&profile.role)==="self_gen"} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
