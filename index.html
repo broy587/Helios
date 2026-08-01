@@ -280,7 +280,7 @@ const TEAM_CALENDARS = {
 const STAGES = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / In Contact",
   "Stale / No Reschedule",
-  "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
+  "No Close / No Offer","No Close / Offer Given","Failed Credit / Disqualified","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
@@ -293,7 +293,7 @@ const STAGE_DESCRIPTIONS = {
   "Stale / No Reschedule": "Customer answered and was not interested and pushed closer off the door without showing signs of future interest.",
   "No Close / No Offer": "Closer started the close and went through the process but did not show customer the contract details / payment.",
   "No Close / Offer Given": "Closer went through the entire process of the close start to finish and the customer did not proceed.",
-  "Failed Credit": "Customer's credit declined, meaning they have below a 650 credit rating.",
+  "Failed Credit / Disqualified": "Customer's credit declined, meaning they have below a 650 credit rating.",
   "VC / SRA": "Verification Call completed and the account was Sunrun Approved.",
   "CAP": "CAP package is back and ready to be closed.",
   "Permitting": "CAP Closed.",
@@ -336,7 +336,7 @@ const STAGE_COLORS = {
   "Stale / No Reschedule":{bg:"#fde8d8",border:"#7f1d1d",badge:"#7c2d12"},
   "No Close / No Offer":{bg:"#fde8d8",border:"#f97316",badge:"#7c2d12"},
   "No Close / Offer Given":{bg:"#fde8d8",border:"#7f1d1d",badge:"#7c2d12"},
-  "Failed Credit":{bg:"#fee2e2",border:"#2b0000",badge:"#7f1d1d"},
+  "Failed Credit / Disqualified":{bg:"#fee2e2",border:"#2b0000",badge:"#7f1d1d"},
   "VC / SRA":{bg:"#e0e7ff",border:"#00bfff",badge:"#312e81"},
   "CAP":{bg:"#e0e7ff",border:"#33ccff",badge:"#312e81"},
   "Permitting":{bg:"#e0e7ff",border:"#00ffff",badge:"#312e81"},
@@ -352,7 +352,7 @@ function getStageColor(stage) {
 const STAGE_PROGRESSION = [
   "Lead: Need Bill/Appointment","AC / Scheduled","No Show / No Contact","No Show / In Contact",
   "Stale / No Reschedule",
-  "No Close / No Offer","No Close / Offer Given","Failed Credit","VC / SRA",
+  "No Close / No Offer","No Close / Offer Given","Failed Credit / Disqualified","VC / SRA",
   "CAP","Permitting","Install Scheduled","Install","PTO / REP"
 ];
 
@@ -5447,7 +5447,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
 // ── Pipeline hygiene analysis ─────────────────────────────────────────
 // Stages we consider "done/closed" — these should never be flagged as stale
 // or missing an appointment, since they're terminal outcomes.
-const HYGIENE_DONE_STAGES = ["Install Scheduled","Install","PTO / REP","Failed Credit","No Show / No Contact","Stale / No Reschedule"];
+const HYGIENE_DONE_STAGES = ["Install Scheduled","Install","PTO / REP","Failed Credit / Disqualified","No Show / No Contact","Stale / No Reschedule"];
 // Early stages where an appointment is genuinely expected.
 const HYGIENE_NEEDS_APPT_STAGES = ["Lead: Need Bill/Appointment","AC / Scheduled","No Show / In Contact"];
 
@@ -7703,7 +7703,7 @@ const STAGE_EMOJIS = {
   "Stale / No Reschedule":       "🧊",
   "No Close / No Offer":         "🚪",
   "No Close / Offer Given":      "💬",
-  "Failed Credit":               "❌",
+  "Failed Credit / Disqualified":               "❌",
   "VC / SRA":                    "🤝",
   "CAP":                         "📝",
   "Permitting":                  "🏛️",
