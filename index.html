@@ -4471,24 +4471,20 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               </div>
             );
             const subLabel=(t)=>(<div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{t}</div>);
-            if(sName){
-              return (
-                <div style={{marginBottom:12,padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc"}}>
-                  <div style={{fontSize:11,fontWeight:700,color:dark?"#cbd5e1":"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Secondary Contact</div>
-                  <div style={{marginBottom:sPhone||sEmail?10:0}}>
+            // Always render a single Secondary Contact card with whatever fields exist —
+            // name, phone, or email alone all show correctly.
+            return (
+              <div style={{marginBottom:12,padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#f8fafc"}}>
+                <div style={{fontSize:11,fontWeight:700,color:dark?"#cbd5e1":"#475569",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Secondary Contact</div>
+                {sName && (
+                  <div style={{marginBottom:(sPhone||sEmail)?10:0}}>
                     {subLabel("Name")}
                     <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",fontWeight:600}}>{sName}</div>
                   </div>
-                  {sPhone && <div style={{marginBottom:sEmail?10:0}}>{subLabel("Phone")}{phoneRow(sPhone)}</div>}
-                  {sEmail && <div>{subLabel("Email")}{emailRow(sEmail)}</div>}
-                </div>
-              );
-            }
-            return (
-              <>
-                {sPhone && <div style={{marginBottom:12}}>{subLabel("Secondary Phone")}{phoneRow(sPhone)}</div>}
-                {sEmail && <div style={{marginBottom:12}}>{subLabel("Secondary Email")}{emailRow(sEmail)}</div>}
-              </>
+                )}
+                {sPhone && <div style={{marginBottom:sEmail?10:0}}>{subLabel("Phone")}{phoneRow(sPhone)}</div>}
+                {sEmail && <div>{subLabel("Email")}{emailRow(sEmail)}</div>}
+              </div>
             );
           })()}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
