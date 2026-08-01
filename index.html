@@ -9139,12 +9139,23 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
   // made directly in Google Calendar). Reps/self-gen can only tag events they
   // created (their name in the "Created by" line); privileged roles tag any.
   const APPT_MARKERS = ["🟢","🟠","🔵","🟡","🔴","🟣"];
+  // What each marker means (shown as a key at the top of the tag tool).
+  const MARKER_MEANINGS = {
+    "🟢":"AC / Closer Appt",
+    "🟠":"CAP",
+    "🔵":"Extra Appt",
+    "🟡":"Meeting",
+    "🔴":"Needs Reschedule",
+    "🟣":"Follow-Up",
+  };
   const stripMarker = (t)=> (t||"").replace(/^(?:🟢|🟠|🔵|🟡|🔴|🟣|⚪|🟤|🟩|🟧|🟦|🟨)\s*/u, "");
   const [tagOpen, setTagOpen] = React.useState(false);
   const [tagLoading, setTagLoading] = React.useState(false);
   const [tagEvents, setTagEvents] = React.useState([]);
   const [tagBusyId, setTagBusyId] = React.useState(null);
   const [tagMsg, setTagMsg] = React.useState("");
+  const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
+  const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
   const canTagEvent = (ev)=>{
     if(canAddMeeting) return true; // closers/managers/owners can tag anything
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
@@ -9305,50 +9316,62 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
     setPublishMsg(msg);
   };
 
-  // Load upcoming events for the tag tool (next ~60 days), newest visible first.
+  // Load events for the tag tool — a window of past AND upcoming appointments, so
+  // past events can be tagged too. Sorted so the ones nearest today are on top.
   const loadTagEvents = async (calendarId) => {
     if(!calendarId){ setTagMsg("No team calendar is selected."); return; }
     setTagLoading(true); setTagMsg(""); setTagEvents([]);
     try {
       const now = new Date();
-      const end = new Date(now.getTime() + 60*24*60*60*1000);
+      const start = new Date(now.getTime() - 120*24*60*60*1000); // ~4 months back
+      const end = new Date(now.getTime() + 120*24*60*60*1000);   // ~4 months ahead
       let items = null;
-      const viaBackend = await CalendarBackend.tryCall("listSlots", {calendarId, timeMin:now.toISOString(), timeMax:end.toISOString()});
+      const viaBackend = await CalendarBackend.tryCall("listSlots", {calendarId, timeMin:start.toISOString(), timeMax:end.toISOString()});
       if(viaBackend && Array.isArray(viaBackend.items)){
         items = viaBackend.items;
       } else {
         const token = await GCal.signIn();
-        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=2500`;
+        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=2500`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         if(!res.ok){ setTagMsg("Couldn't read this calendar."); setTagLoading(false); return; }
         const data = await res.json();
-        items = (data.items||[]).map(e=>({id:e.id, summary:e.summary||"", description:e.description||"", start:e.start, isOpen:(e.summary||"").toLowerCase().includes("open slot")}));
+        items = (data.items||[]).map(e=>({id:e.id, summary:e.summary||"", description:e.description||"", start:e.start, recurringEventId:e.recurringEventId||null, isOpen:(e.summary||"").toLowerCase().includes("open slot")}));
       }
       // Skip open slots — you tag appointments/meetings, not empty slots.
       const evts = (items||[]).filter(e=>!e.isOpen && !((e.summary||"").toLowerCase().includes("open slot")));
+      // Sort nearest-to-today first (recent past + upcoming on top, oldest at bottom).
+      const nowMs = Date.now();
+      const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
+      evts.sort((a,b)=> Math.abs(startMs(a)-nowMs) - Math.abs(startMs(b)-nowMs));
       setTagEvents(evts);
-      if(evts.length===0) setTagMsg("No upcoming appointments on this calendar.");
+      if(evts.length===0) setTagMsg("No appointments on this calendar.");
     } catch(e){ console.error(e); setTagMsg("Error: "+((e&&e.message)||"unknown error")); }
     setTagLoading(false);
   };
 
-  // Apply (or clear) a marker on a single event by retitling it.
+  // Apply (or clear) a marker on an event by retitling it. If the event is part of a
+  // recurring series, retitle the master so ALL its repeating instances get the tag.
   const applyMarker = async (calendarId, ev, marker) => {
     if(!canTagEvent(ev)) return;
     setTagBusyId(ev.id);
     const newTitle = (marker ? (marker+" ") : "") + stripMarker(ev.summary);
+    const targetId = ev.recurringEventId || ev.id; // master event for a series
     try {
       let ok = false;
-      const r = await CalendarBackend.tryCall("retitle", {calendarId, eventId:ev.id, summary:newTitle});
+      const r = await CalendarBackend.tryCall("retitle", {calendarId, eventId:targetId, summary:newTitle});
       if(r && r.ok) ok = true;
       if(r===null){
         const token = await GCal.signIn();
-        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${targetId}`,
           {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:newTitle})});
         ok = res.ok;
       }
       if(ok){
-        setTagEvents(list=>list.map(x=>x.id===ev.id?{...x,summary:newTitle}:x));
+        setTagEvents(list=>list.map(x=>{
+          // Update the clicked event, and every other instance of the same series.
+          const sameSeries = ev.recurringEventId && x.recurringEventId===ev.recurringEventId;
+          return (x.id===ev.id || sameSeries) ? {...x, summary:(marker?(marker+" "):"")+stripMarker(x.summary)} : x;
+        }));
         setCalKey(k=>k+1);
       } else {
         setTagMsg("Couldn't update that event.");
@@ -9356,6 +9379,27 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
     } catch(e){ console.error(e); setTagMsg("Error updating: "+((e&&e.message)||"unknown")); }
     setTagBusyId(null);
   };
+
+  // Apply the date/day filter to the loaded events.
+  const filteredTagEvents = React.useMemo(()=>{
+    const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
+    if(tagDate){
+      const d0 = new Date(tagDate+"T00:00:00").getTime();
+      const d1 = d0 + 24*60*60*1000;
+      return tagEvents.filter(e=>{ const t=startMs(e); return t>=d0 && t<d1; });
+    }
+    if(tagFilter==="all") return tagEvents;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+    const todayEnd = todayStart + 24*60*60*1000;
+    return tagEvents.filter(e=>{
+      const t = startMs(e);
+      if(tagFilter==="today") return t>=todayStart && t<todayEnd;
+      if(tagFilter==="upcoming") return t>=todayStart;
+      if(tagFilter==="past") return t<todayStart;
+      return true;
+    });
+  },[tagEvents,tagFilter,tagDate]);
 
   // When a new event URL comes in, show it in the iframe
   React.useEffect(()=>{
@@ -9502,29 +9546,60 @@ function CalendarView({newEventUrl, onEventUrlUsed, canAddMeeting, canAddOpenSlo
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>🏷️ Tag Appointments</div>
               <button onClick={()=>setTagOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:14,lineHeight:1.4}}>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:12,lineHeight:1.4}}>
               Tap a marker to color-tag an appointment. One marker at a time — picking a new one replaces it; tap the same one again to clear.
               {!canAddMeeting && <span> You can only tag appointments you created.</span>}
+            </div>
+            {/* Emoji key */}
+            <div style={{background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Marker key</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"5px 12px"}}>
+                {APPT_MARKERS.map(m=>(
+                  <div key={m} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:dark?"#cbd5e1":"#475569"}}>
+                    <span style={{fontSize:15}}>{m}</span><span style={{fontWeight:600}}>{MARKER_MEANINGS[m]||""}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Day filter */}
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+              {[["all","All"],["today","Today"],["upcoming","Upcoming"],["past","Past"]].map(([v,label])=>(
+                <button key={v} onClick={()=>{ setTagFilter(v); setTagDate(""); }}
+                  style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",
+                    border:`1.5px solid ${(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,
+                    background:(!tagDate&&tagFilter===v)?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),
+                    color:(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#94a3b8":"#475569")}}>{label}</button>
+              ))}
+              <input type="date" value={tagDate} onChange={e=>setTagDate(e.target.value)}
+                title="Show a specific day"
+                style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#1a2456",background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
+              {tagDate && <button onClick={()=>setTagDate("")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
             {tagLoading ? (
               <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>Loading appointments…</div>
             ) : tagMsg && tagEvents.length===0 ? (
               <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>{tagMsg}</div>
+            ) : filteredTagEvents.length===0 ? (
+              <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>No appointments for this filter.</div>
             ) : (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {tagMsg && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600}}>{tagMsg}</div>}
-                {tagEvents.map(ev=>{
+                {filteredTagEvents.map(ev=>{
                   const allowed = canTagEvent(ev);
                   const current = (ev.summary||"").match(/^(🟢|🟠|🔵|🟡|🔴|🟣|⚪|🟤|🟩|🟧|🟦|🟨)/u);
                   const curMark = current ? current[0] : null;
                   const when = ev.start && (ev.start.dateTime||ev.start.date) ? new Date(ev.start.dateTime||ev.start.date) : null;
                   const busy = tagBusyId===ev.id;
+                  const recurring = !!ev.recurringEventId;
                   return (
                     <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:allowed?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:allowed?1:0.55}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:allowed?10:0}}>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{stripMarker(ev.summary)||"(untitled)"}</div>
-                          {when && <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{when.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} · {when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>}
+                          <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
+                            {when && <span>{when.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} · {when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>}
+                            {recurring && <span title="Repeating event — tagging updates the whole series"> · 🔁 repeats</span>}
+                          </div>
                         </div>
                         {!allowed && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
