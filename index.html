@@ -4245,6 +4245,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const creatorName = _creatorProfile ? (_creatorProfile.name||_creatorProfile.email||"") : "";
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [showCommission,setShowCommission]=useState(false);
   const [showUtilInfoV,setShowUtilInfoV]=useState(false);
   const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
@@ -4560,70 +4561,70 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               )}
             </div>
           )}
-          {/* Appointment booking — always visible; booking a new one replaces the old. */}
+          {/* Appointment booking — one button reveals the four booking options. */}
           {repProfiles!==undefined&&(
             <div style={{marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{lead.appointment?"Rebook / Change Appointment":"Appointment"}</div>
-              <div style={{display:"flex",gap:8}}>
-                <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
-                <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change CB":"↩️ Personal CB"} onSelect={async(val,cbEventId)=>{
-                  // Replacing an old comeback? Remove the previous calendar event.
-                  if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
-                    try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
-                  }
-                  await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                  handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null});
-                }}/>
-              </div>
-              {/* Cancel a scheduled personal comeback (closer slots are cancelled via the calendar button). */}
-              {lead.cb_event_id && (
-                <button onClick={async()=>{
-                  if(!window.confirm("Cancel this personal comeback? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); }
-                  try{ await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear comeback on lead:",e); }
-                  handleUpdate({...lead,appointment:"",cb_event_id:null});
-                }}
-                  style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel Personal Comeback
-                </button>
-              )}
-              {canBookCap && (
-                <div style={{marginTop:8}}>
-                  {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Appointment</div>
+              {/* Booked badges — always visible so booked appointments can be seen/edited. */}
+              {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
+              {lead.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {lead.install_appointment}</div>}
+              {/* Single entry point */}
+              <button onClick={()=>setShowBookOpts(v=>!v)}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                📅 Book / Remove Appointment <span style={{fontSize:12}}>{showBookOpts?"▲":"▼"}</span>
+              </button>
+              {showBookOpts && (
+                <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
-                    <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
-                    <div style={{flex:1}}/>
+                    <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
+                    <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change CB":"↩️ Personal CB"} onSelect={async(val,cbEventId)=>{
+                      if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
+                        try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
+                      }
+                      await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                      handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null});
+                    }}/>
                   </div>
+                  <div style={{display:"flex",gap:8}}>
+                    {canBookCap ? (
+                      <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
+                    ) : <div style={{flex:1}}/>}
+                    <PersonalApptButton lead={lead}
+                      label={lead.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                      title="🟩 Book Install" confirmLabel="Book Install"
+                      summary={`🟩 Install - ${lead.name||"Lead"}`}
+                      fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
+                      onSelect={async(val,evId)=>{
+                        if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
+                        await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                        handleUpdate({...lead,install_appointment:val,install_event_id:evId||null});
+                      }}/>
+                  </div>
+                  {/* Cancel buttons for the personal-calendar bookings */}
+                  {lead.cb_event_id && (
+                    <button onClick={async()=>{
+                      if(!window.confirm("Cancel this personal comeback? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                      try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); }
+                      try{ await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear comeback on lead:",e); }
+                      handleUpdate({...lead,appointment:"",cb_event_id:null});
+                    }}
+                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      ✕ Cancel Personal Comeback
+                    </button>
+                  )}
+                  {lead.install_event_id && (
+                    <button onClick={async()=>{
+                      if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                      try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
+                      try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); }
+                      handleUpdate({...lead,install_appointment:"",install_event_id:null});
+                    }}
+                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      ✕ Cancel Install
+                    </button>
+                  )}
                 </div>
               )}
-              {/* Book Install — fixed 7–9 AM, books onto the rep's own Google Calendar. */}
-              <div style={{marginTop:8}}>
-                {lead.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {lead.install_appointment}</div>}
-                <div style={{display:"flex",gap:8}}>
-                  <PersonalApptButton lead={lead}
-                    label={lead.install_event_id?"🟩 Change Install":"🟩 Book Install"}
-                    title="🟩 Book Install" confirmLabel="Book Install"
-                    summary={`🟩 Install - ${lead.name||"Lead"}`}
-                    fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
-                    onSelect={async(val,evId)=>{
-                      if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
-                      await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                      handleUpdate({...lead,install_appointment:val,install_event_id:evId||null});
-                    }}/>
-                  <div style={{flex:1}}/>
-                </div>
-                {lead.install_event_id && (
-                  <button onClick={async()=>{
-                    if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                    try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
-                    try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); }
-                    handleUpdate({...lead,install_appointment:"",install_event_id:null});
-                  }}
-                    style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                    ✕ Cancel Install
-                  </button>
-                )}
-              </div>
               {/* Additional appointments — book any number of extra sits/appointments
                   without disturbing the closer slot or CAP above; each is cancellable. */}
               {Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0 && (
@@ -4868,6 +4869,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [uploadingFile,setUploadingFile]=useState(false);
   const [fileErr,setFileErr]=useState("");
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
+  const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   useEffect(()=>{
     setConfirmDelete(false); // never open the form already showing a delete prompt
     setFileErr(""); setUploadingFile(false); setEditImgOpen(null);
@@ -5087,53 +5089,51 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               {form.appointment}
             </div>
           )}
-          {/* Booking buttons are ALWAYS available — booking a new one replaces the
-              existing appointment date. */}
-          <div style={{display:"flex",gap:8}}>
-            {/* Book Closer */}
-            <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-              if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
-              else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-            }} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
-            {/* Personal Callback */}
-            <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
-          </div>
-          {canBookCap && (
-            <div style={{marginTop:8}}>
+          {/* CAP & Install badges — always visible so booked ones can be seen. */}
+          {form.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {form.cap_appointment}</div>}
+          {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {form.install_appointment}</div>}
+          {/* Single entry point — reveals the four booking options. */}
+          <button type="button" onClick={()=>setShowBookOpts(v=>!v)}
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+            📅 Book / Remove Appointment <span style={{fontSize:12}}>{showBookOpts?"▲":"▼"}</span>
+          </button>
+          {showBookOpts && (
+            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
               <div style={{display:"flex",gap:8}}>
                 <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                  setForm(f=>({...f,...updated})); // merges cap_event_id / cap_appointment / stage from the CAP booking
-                }} label={form.cap_event_id?"📋 Change CAP":"📋 Book CAP"} creatorName={creatorName} capMode={true}/>
+                  if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
+                  else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
+                }} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
+                <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
               </div>
-              {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginTop:6,fontWeight:600}}>{form.cap_appointment}</div>}
+              <div style={{display:"flex",gap:8}}>
+                {canBookCap ? (
+                  <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+                    setForm(f=>({...f,...updated}));
+                  }} label={form.cap_event_id?"📋 Change CAP":"📋 Book CAP"} creatorName={creatorName} capMode={true}/>
+                ) : <div style={{flex:1}}/>}
+                <PersonalApptButton lead={{...form}}
+                  label={form.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                  title="🟩 Book Install" confirmLabel="Book Install"
+                  summary={`🟩 Install - ${form.name||"Lead"}`}
+                  fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
+                  onSelect={async(val,evId)=>{
+                    if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
+                    setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
+                  }}/>
+              </div>
+              {form.install_event_id && (
+                <button type="button" onClick={async()=>{
+                  if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                  try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
+                  setForm(f=>({...f,install_appointment:"",install_event_id:null}));
+                }}
+                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✕ Cancel Install
+                </button>
+              )}
             </div>
           )}
-          {/* Book Install — fixed 7–9 AM, books onto the rep's own Google Calendar (bright green). */}
-          <div style={{marginTop:8}}>
-            {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {form.install_appointment}</div>}
-            <div style={{display:"flex",gap:8}}>
-              <PersonalApptButton lead={{...form}}
-                label={form.install_event_id?"🟩 Change Install":"🟩 Book Install"}
-                title="🟩 Book Install" confirmLabel="Book Install"
-                summary={`🟩 Install - ${form.name||"Lead"}`}
-                fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
-                onSelect={async(val,evId)=>{
-                  if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
-                  setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
-                }}/>
-              <div style={{flex:1}}/>
-            </div>
-            {form.install_event_id && (
-              <button type="button" onClick={async()=>{
-                if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
-                setForm(f=>({...f,install_appointment:"",install_event_id:null}));
-              }}
-                style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                ✕ Cancel Install
-              </button>
-            )}
-          </div>
           {/* Additional appointments — any number of extra sits/appointments,
               independent of the closer slot and CAP; each can be cancelled. */}
           {form.id && (
