@@ -11397,7 +11397,14 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
             </button>
           )}
           {m.url && (()=>{ const emb = toEmbedUrl(m.url); return emb ? (
-            <button onClick={()=>setViewer({type:"video",url:emb,name:m.title||"Video"})}
+            <button onClick={()=>{
+              // Loom/Vimeo/etc. embeds frequently won't PLAY inside a mobile webview
+              // (they load then spin forever). On phones, open the original link in the
+              // real browser where it plays reliably; keep the in-app player on laptop.
+              const isMobile = (typeof window!=="undefined") && ((window.innerWidth<=820) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||""));
+              if(isMobile){ window.open(m.url, "_blank", "noopener,noreferrer"); }
+              else { setViewer({type:"video",url:emb,origUrl:m.url,name:m.title||"Video"}); }
+            }}
               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fee2e2",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               ▶ Watch
             </button>
@@ -11670,7 +11677,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
                     style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}/>
                 </div>
                 <div style={{textAlign:"center",marginTop:10}}>
-                  <a href={viewer.url} target="_blank" rel="noreferrer"
+                  <a href={viewer.origUrl||viewer.url} target="_blank" rel="noreferrer"
                     style={{fontSize:12,color:"rgba(255,255,255,0.75)",textDecoration:"underline"}}>
                     Trouble playing? Open in your browser ↗
                   </a>
