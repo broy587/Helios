@@ -11659,8 +11659,22 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
             {viewer.type==="image" ? (
               <img src={viewer.url} alt={viewer.name} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",borderRadius:8}}/>
             ) : viewer.type==="video" ? (
-              <div style={{width:"100%",maxWidth:960,aspectRatio:"16 / 9",maxHeight:"100%"}}>
-                <iframe src={viewer.url} title={viewer.name} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"#000"}}/>
+              <div style={{width:"100%",maxWidth:960}}>
+                {/* padding-ratio wrapper: guarantees the iframe has real dimensions on
+                    mobile webviews, where aspect-ratio inside a centered flexbox can
+                    collapse to zero height and make the player load forever. */}
+                <div style={{position:"relative",width:"100%",paddingBottom:"56.25%",height:0,borderRadius:8,overflow:"hidden",background:"#000"}}>
+                  <iframe src={viewer.url} title={viewer.name}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}/>
+                </div>
+                <div style={{textAlign:"center",marginTop:10}}>
+                  <a href={viewer.url} target="_blank" rel="noreferrer"
+                    style={{fontSize:12,color:"rgba(255,255,255,0.75)",textDecoration:"underline"}}>
+                    Trouble playing? Open in your browser ↗
+                  </a>
+                </div>
               </div>
             ) : (
               <iframe src={viewer.url} title={viewer.name} style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"#fff"}}/>
