@@ -9289,6 +9289,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
   // ── Add Open Slot: creates a fixed 90-minute event titled "open slot" ──
   const [slotOpen, setSlotOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false); // left slide-out actions menu
   const [slotDate, setSlotDate] = React.useState("");
   const [slotStart, setSlotStart] = React.useState("");
   const [slotSaving, setSlotSaving] = React.useState(false);
@@ -9581,59 +9582,69 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100dvh - 110px)",background:dark?"#0f172a":"#f5ede0"}}>
-      <div style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,rowGap:10,flexWrap:"wrap",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:"1 1 100%"}}>
-          {browsable.length>1 ? (
-            <select value={selectedTid||""} onChange={e=>{chooseCalendar(e.target.value);setCalKey(k=>k+1);}}
-              style={{fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",minWidth:0,flex:1}}>
-              {browsable.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          ) : (
-            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{CALENDAR_NAME}</div>
-          )}
-          <select value={calView} onChange={e=>{ setCalView(e.target.value); try{localStorage.setItem("pp_cal_view",e.target.value);}catch(err){} setCalKey(k=>k+1); }}
-            title="Calendar view"
-            style={{fontSize:12,fontWeight:700,color:dark?"#cbd5e1":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 8px",cursor:"pointer",flexShrink:0}}>
-            <option value="AGENDA">Schedule</option>
-            <option value="WEEK">Week</option>
-            <option value="MONTH">Month</option>
+      <div style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:8,borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+        <button onClick={()=>setMenuOpen(true)} title="Calendar menu"
+          style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:38,height:38,borderRadius:9,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:18,cursor:"pointer"}}>
+          ☰
+        </button>
+        {browsable.length>1 ? (
+          <select value={selectedTid||""} onChange={e=>{chooseCalendar(e.target.value);setCalKey(k=>k+1);}}
+            style={{fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",minWidth:0,flex:1}}>
+            {browsable.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flex:"1 1 auto"}}>
-          {canManageMeetings && (
-            <button onClick={()=>{resetMeet();setMeetOpen(true);}}
-              style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
-              + Add Meeting
-            </button>
-          )}
-          {canAddOpenSlot && (
-            <button onClick={()=>{resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
-              style={{background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",whiteSpace:"nowrap"}}>
-              + Add Open Slot
-            </button>
-          )}
-          {canAddOpenSlot && (
-            <button onClick={()=>publishOpenSlots(teamCfg && teamCfg.calendarId)} disabled={publishingSlots}
-              title="Make existing open slots on this calendar visible and bookable to reps"
-              style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:publishingSlots?"default":"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap",opacity:publishingSlots?0.6:1}}>
-              {publishingSlots?"Publishing…":"📢 Publish slots"}
-            </button>
-          )}
-          <button onClick={()=>{ setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
-            title="Tag, or remove appointments, meetings and open slots"
-            style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#6b2d4e",whiteSpace:"nowrap"}}>
-            🏷️ Manage
-          </button>
-          <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
-            style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:14,color:dark?"#94a3b8":"#6b2d4e"}}>
-            🔄
-          </button>
-          <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer"
-            style={{fontSize:12,fontWeight:600,color:"#6b2d4e",textDecoration:"none",padding:"6px 12px",borderRadius:8,border:"1.5px solid #6b2d4e"}}>
-            Open in Google ↗
-          </a>
-        </div>
+        ) : (
+          <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{CALENDAR_NAME}</div>
+        )}
+        <select value={calView} onChange={e=>{ setCalView(e.target.value); try{localStorage.setItem("pp_cal_view",e.target.value);}catch(err){} setCalKey(k=>k+1); }}
+          title="Calendar view"
+          style={{fontSize:12,fontWeight:700,color:dark?"#cbd5e1":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 8px",cursor:"pointer",flexShrink:0}}>
+          <option value="AGENDA">Schedule</option>
+          <option value="WEEK">Week</option>
+          <option value="MONTH">Month</option>
+        </select>
       </div>
+      {/* Left slide-out actions menu */}
+      {menuOpen && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:3500}} onClick={()=>setMenuOpen(false)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{position:"absolute",left:0,top:0,bottom:0,width:"min(82vw,290px)",background:dark?"#1e293b":"#faf6f0",boxShadow:"4px 0 24px rgba(0,0,0,0.25)",padding:"18px 16px",overflowY:"auto",display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>Calendar</div>
+              <button onClick={()=>setMenuOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            {canManageMeetings && (
+              <button onClick={()=>{setMenuOpen(false);resetMeet();setMeetOpen(true);}}
+                style={{width:"100%",textAlign:"left",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff"}}>
+                ➕ Add Meeting
+              </button>
+            )}
+            {canAddOpenSlot && (
+              <button onClick={()=>{setMenuOpen(false);resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
+                style={{width:"100%",textAlign:"left",background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff"}}>
+                ➕ Add Open Slot
+              </button>
+            )}
+            {canAddOpenSlot && (
+              <button onClick={()=>{ publishOpenSlots(teamCfg && teamCfg.calendarId); setMenuOpen(false); }} disabled={publishingSlots}
+                style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:publishingSlots?"default":"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",opacity:publishingSlots?0.6:1}}>
+                {publishingSlots?"Publishing…":"📢 Publish Slots"}
+              </button>
+            )}
+            <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
+              style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
+              🏷️ Tag & Manage
+            </button>
+            <button onClick={()=>{ setCalKey(k=>k+1); setMenuOpen(false); }}
+              style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
+              🔄 Refresh
+            </button>
+            <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
+              style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
+              ↗ Open in Google
+            </a>
+          </div>
+        </div>
+      )}
       {publishMsg && (
         <div style={{margin:"8px 16px 0",padding:"9px 12px",borderRadius:8,fontSize:12,fontWeight:600,
           background:publishMsg.startsWith("✓")?(dark?"rgba(16,185,129,0.15)":"#ecfdf5"):(dark?"#1e293b":"#fef3c7"),
