@@ -1521,29 +1521,34 @@ function GoalBar({label, current, goal, color}) {
 function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
   const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
-  const [form, setForm] = useState({vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
+  const [form, setForm] = useState({ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
   const [period, setPeriod] = useState("weekly");
 
   const weeklyGoal = teamGoals[teamId]?.weekly || {};
   const quarterlyGoal = teamGoals[teamId]?.quarterly || {};
 
-  const weeklyLeads = getWeeklyProgress(leads, teamMemberIds);
-  const quarterlyLeads = getQuarterlyProgress(leads, teamMemberIds);
+  // Same milestone logic as the leaderboard (first-reached within the period AND
+  // currently still at/past the stage), scoped to this team's members.
+  const memberLeads = (leads||[]).filter(l=>teamMemberIds.includes(l.owner_id));
+  const weekRange = getThisWeekRange();
+  const quarterRange = getThisQuarterRange();
 
-  const weeklyVC = milestoneCount(weeklyLeads,"VC");
-  const weeklyCAP = milestoneCount(weeklyLeads,"CAP");
-  const weeklyInstall = milestoneCount(weeklyLeads,"Install");
-  const weeklyPTO = milestoneCount(weeklyLeads,"PTO");
+  const weeklyAC = milestoneCountInRange(memberLeads,"AC",weekRange);
+  const weeklyVC = milestoneCountInRange(memberLeads,"VC",weekRange);
+  const weeklyCAP = milestoneCountInRange(memberLeads,"CAP",weekRange);
+  const weeklyInstall = milestoneCountInRange(memberLeads,"Install",weekRange);
+  const weeklyPTO = milestoneCountInRange(memberLeads,"PTO",weekRange);
 
-  const quarterlyVC = milestoneCount(quarterlyLeads,"VC");
-  const quarterlyCAP = milestoneCount(quarterlyLeads,"CAP");
-  const quarterlyInstall = milestoneCount(quarterlyLeads,"Install");
-  const quarterlyPTO = milestoneCount(quarterlyLeads,"PTO");
+  const quarterlyAC = milestoneCountInRange(memberLeads,"AC",quarterRange);
+  const quarterlyVC = milestoneCountInRange(memberLeads,"VC",quarterRange);
+  const quarterlyCAP = milestoneCountInRange(memberLeads,"CAP",quarterRange);
+  const quarterlyInstall = milestoneCountInRange(memberLeads,"Install",quarterRange);
+  const quarterlyPTO = milestoneCountInRange(memberLeads,"PTO",quarterRange);
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
-    setForm({vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
+    setForm({ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
     setEditing(p);
   };
 
@@ -1575,6 +1580,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
 
   const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
+  const ac = isWeekly?weeklyAC:quarterlyAC;
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
   const inst = isWeekly?weeklyInstall:quarterlyInstall;
@@ -1604,8 +1610,9 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
         </div>
       </div>
 
-      {goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
+      {goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
         <div>
+          <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
           <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
           <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
@@ -1627,7 +1634,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -1662,28 +1669,36 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
 function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, leads, canEdit, currentUserId}) {
   const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
-  const [form, setForm] = useState({vc_goal:0,cap_goal:0,install_goal:0});
+  const [form, setForm] = useState({ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
   const [period, setPeriod] = useState("weekly");
 
   const weeklyGoal = personalGoals[targetUserId]?.weekly || {};
   const quarterlyGoal = personalGoals[targetUserId]?.quarterly || {};
 
-  // Progress is measured against this user's own leads only.
+  // Progress uses the SAME milestone logic as the leaderboard: a lead counts toward
+  // a stat if it FIRST reached that stage within the period AND is currently still
+  // at/past it (moving it back removes the point; moving forward keeps it, dated to
+  // the first time it hit the stage). Measured against this user's own leads only.
   const memberIds = [targetUserId];
-  const weeklyLeads = getWeeklyProgress(leads, memberIds);
-  const quarterlyLeads = getQuarterlyProgress(leads, memberIds);
+  const myLeads = (leads||[]).filter(l=>memberIds.includes(l.owner_id));
+  const weekRange = getThisWeekRange();
+  const quarterRange = getThisQuarterRange();
 
-  const weeklyVC = milestoneCount(weeklyLeads,"VC");
-  const weeklyCAP = milestoneCount(weeklyLeads,"CAP");
-  const weeklyInstall = milestoneCount(weeklyLeads,"Install");
-  const quarterlyVC = milestoneCount(quarterlyLeads,"VC");
-  const quarterlyCAP = milestoneCount(quarterlyLeads,"CAP");
-  const quarterlyInstall = milestoneCount(quarterlyLeads,"Install");
+  const weeklyAC = milestoneCountInRange(myLeads,"AC",weekRange);
+  const weeklyVC = milestoneCountInRange(myLeads,"VC",weekRange);
+  const weeklyCAP = milestoneCountInRange(myLeads,"CAP",weekRange);
+  const weeklyInstall = milestoneCountInRange(myLeads,"Install",weekRange);
+  const weeklyPTO = milestoneCountInRange(myLeads,"PTO",weekRange);
+  const quarterlyAC = milestoneCountInRange(myLeads,"AC",quarterRange);
+  const quarterlyVC = milestoneCountInRange(myLeads,"VC",quarterRange);
+  const quarterlyCAP = milestoneCountInRange(myLeads,"CAP",quarterRange);
+  const quarterlyInstall = milestoneCountInRange(myLeads,"Install",quarterRange);
+  const quarterlyPTO = milestoneCountInRange(myLeads,"PTO",quarterRange);
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
-    setForm({vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0});
+    setForm({ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
     setEditing(p);
   };
 
@@ -1719,9 +1734,11 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
 
   const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
+  const ac = isWeekly?weeklyAC:quarterlyAC;
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
   const inst = isWeekly?weeklyInstall:quarterlyInstall;
+  const pto = isWeekly?weeklyPTO:quarterlyPTO;
   const goal = isWeekly?weeklyGoal:quarterlyGoal;
 
   return (
@@ -1746,11 +1763,13 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
         </div>
       </div>
 
-      {goal.vc_goal||goal.cap_goal||goal.install_goal ? (
+      {goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
         <div>
+          <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
           <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
           <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
+          <GoalBar label="PTO" current={pto} goal={goal.pto_goal||0} color="#f59e0b"/>
         </div>
       ) : (
         <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"12px 0"}}>
@@ -1767,7 +1786,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"]].map(([k,l,c])=>(
+            {[["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -1802,21 +1821,23 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
 function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
   const dark=useDark();
   const memberIds = (teamMembers[team.id]||[]).map(m=>m.user_id);
-  const weeklyLeads = getWeeklyProgress(leads, memberIds);
-  const quarterlyLeads = getQuarterlyProgress(leads, memberIds);
+  const memberLeads = (leads||[]).filter(l=>memberIds.includes(l.owner_id));
+  const wRange = getThisWeekRange();
+  const qRange = getThisQuarterRange();
   const wGoal = teamGoals[team.id]?.weekly || {};
   const qGoal = teamGoals[team.id]?.quarterly || {};
   const [period, setPeriod] = useState("weekly");
   const isWeekly = period==="weekly";
-  const pLeads = isWeekly ? weeklyLeads : quarterlyLeads;
+  const rng = isWeekly ? wRange : qRange;
   const goal = isWeekly ? wGoal : qGoal;
   const metrics = [
-    {label:"VC", current:milestoneCount(pLeads,"VC"), goal:goal.vc_goal||0, color:"#6366f1"},
-    {label:"CAP", current:milestoneCount(pLeads,"CAP"), goal:goal.cap_goal||0, color:"#8b5cf6"},
-    {label:"Install", current:milestoneCount(pLeads,"Install"), goal:goal.install_goal||0, color:"#10b981"},
-    {label:"PTO", current:milestoneCount(pLeads,"PTO"), goal:goal.pto_goal||0, color:"#f59e0b"},
+    {label:"AC", current:milestoneCountInRange(memberLeads,"AC",rng), goal:goal.ac_goal||0, color:"#3b82f6"},
+    {label:"VC", current:milestoneCountInRange(memberLeads,"VC",rng), goal:goal.vc_goal||0, color:"#6366f1"},
+    {label:"CAP", current:milestoneCountInRange(memberLeads,"CAP",rng), goal:goal.cap_goal||0, color:"#8b5cf6"},
+    {label:"Install", current:milestoneCountInRange(memberLeads,"Install",rng), goal:goal.install_goal||0, color:"#10b981"},
+    {label:"PTO", current:milestoneCountInRange(memberLeads,"PTO",rng), goal:goal.pto_goal||0, color:"#f59e0b"},
   ];
-  const hasGoals = goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal;
+  const hasGoals = goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal;
 
   return (
     <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:14,padding:"14px 16px",marginBottom:12,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
