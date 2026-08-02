@@ -9226,6 +9226,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   // Add Meeting modal state
   const [meetOpen, setMeetOpen] = React.useState(false);
   const [meetType, setMeetType] = React.useState("");
+  const [meetCustomName, setMeetCustomName] = React.useState(""); // used when meetType === "Custom"
   const [meetDate, setMeetDate] = React.useState("");
   const [meetStart, setMeetStart] = React.useState("");
   const [meetEnd, setMeetEnd] = React.useState("");
@@ -9253,9 +9254,11 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
       setMeetEnd(`${String(end.getHours()).padStart(2,"0")}:${String(end.getMinutes()).padStart(2,"0")}`);
     }
   };
-  const resetMeet = () => { setMeetType("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg("");setMeetRepeat("none");setMeetRepeatDays([]); };
+  const resetMeet = () => { setMeetType("");setMeetCustomName("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg("");setMeetRepeat("none");setMeetRepeatDays([]); };
   const submitMeeting = async (calendarId) => {
     if(!meetType || !meetDate || !meetStart || !meetEnd) return;
+    const meetTitle = meetType==="Custom" ? (meetCustomName||"").trim() : meetType;
+    if(meetType==="Custom" && !meetTitle){ setMeetMsg("Give the custom event a name."); return; }
     setMeetSaving(true); setMeetMsg("");
     try {
       const [yy,mm,dd] = meetDate.split("-").map(Number);
@@ -9275,7 +9278,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         const days = meetRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
         recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
       }
-      await GCal.createMeeting(`🟡 ${meetType}`, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
+      await GCal.createMeeting(`🟡 ${meetTitle}`, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setMeetSaving(false);
       setMeetOpen(false);
       resetMeet();
@@ -9787,14 +9790,19 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
             {/* Meeting type */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Meeting Type</label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
-              {MEETING_TYPES.map(t=>(
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:meetType==="Custom"?10:18}}>
+              {[...MEETING_TYPES,"Custom"].map(t=>(
                 <button key={t} type="button" onClick={()=>setMeetType(t)}
                   style={{flex:"1 1 calc(50% - 4px)",padding:"10px 8px",borderRadius:10,border:`2px solid ${meetType===t?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:meetType===t?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),color:meetType===t?"#6b2d4e":(dark?"#94a3b8":"#475569"),fontWeight:meetType===t?700:500,cursor:"pointer",fontSize:13}}>
-                  {t}
+                  {t==="Custom"?"✏️ Custom":t}
                 </button>
               ))}
             </div>
+            {meetType==="Custom" && (
+              <input type="text" value={meetCustomName} onChange={e=>setMeetCustomName(e.target.value)}
+                placeholder="Name this event…" autoFocus
+                style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid #6b2d4e`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:18}}/>
+            )}
 
             {/* Date */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
@@ -9851,11 +9859,13 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
             {meetMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{meetMsg}</div>}
 
+            {(()=>{ const ready = meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving&&(meetType!=="Custom"||meetCustomName.trim()); return (
             <button onClick={()=>submitMeeting(teamCfg&&teamCfg.calendarId)}
-              disabled={!meetType||!meetDate||!meetStart||!meetEnd||meetSaving}
-              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving)?"pointer":"default"}}>
+              disabled={!ready}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:ready?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:ready?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:ready?"pointer":"default"}}>
               {meetSaving?"Adding…":"Add to Calendar"}
             </button>
+            ); })()}
           </div>
         </div>
       )}
