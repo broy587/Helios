@@ -1297,6 +1297,13 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
                 </select>
               </div>
             )}
+            <PersonalCommitmentSection
+              targetUserId={viewingId}
+              personalGoals={personalGoals||{}}
+              setPersonalGoals={setPersonalGoals}
+              leads={teamStatSource}
+              pitches={pitches}
+              canEdit={canEditThis}/>
             <PersonalGoalsSection
               targetUserId={viewingId}
               personalGoals={personalGoals||{}}
@@ -1327,6 +1334,17 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
             </div>
           )}
           {goalsTeamId!=="all" ? (
+            <React.Fragment>
+            <TeamCommitmentSection
+              teamId={goalsTeamId}
+              teamGoals={teamGoals||{}}
+              setTeamGoals={setTeamGoals}
+              leads={teamStatSource}
+              pitches={pitches}
+              teamMemberIds={(teamMembers[goalsTeamId]||[]).map(m=>m.user_id)}
+              canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
+              currentUserId={currentUserId||currentUser.id}
+            />
             <GoalsSection
               teamId={goalsTeamId}
               teamGoals={teamGoals||{}}
@@ -1337,6 +1355,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
               currentUserId={currentUserId||currentUser.id}
               onRefresh={()=>{}}
             />
+            </React.Fragment>
           ) : (
             <div style={{fontSize:13,color:"#94a3b8"}}>Select a team to view its goals.</div>
           )}
@@ -1682,6 +1701,151 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
       )}
     </div>
   );
+}
+
+// ── Commitment trackers (Pitches / AC / VC / CAP / Install) ──────────────
+// Work exactly like the goal trackers but track a separate "commitment" target
+// stored in the *_commit columns of the same goal tables.
+const COMMIT_INPUT_STYLE = {width:"100%",padding:"11px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+const COMMIT_ROWS = [["pitches_commit","Pitches","#ef4444"],["ac_commit","AC","#3b82f6"],["vc_commit","VC","#6366f1"],["cap_commit","CAP","#8b5cf6"],["install_commit","Install","#10b981"]];
+
+function pitchesInRangeFor(pitches, ownerIds, rng){
+  const set = Array.isArray(ownerIds) ? new Set(ownerIds) : new Set([ownerIds]);
+  return (pitches||[]).filter(p=>{
+    if(!p||!set.has(p.owner_id)) return false;
+    if(!rng) return true;
+    const t=new Date(p.created_at); return t>=rng.start && t<=rng.end;
+  }).length;
+}
+
+function CommitmentCard({title, dark, canEdit, period, setPeriod, editing, setEditing, form, setForm, saving, onOpenEdit, onSave, rows}) {
+  const tabs = [{key:"weekly",label:"Weekly"},{key:"quarterly",label:getQuarterLabel(new Date())}];
+  const hasAny = rows.some(r=>r.goal>0);
+  return (
+    <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:14,padding:"16px",marginBottom:16,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{title}</div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <div style={{display:"flex",gap:4,background:dark?"#0f172a":"#f1f5f9",borderRadius:8,padding:3}}>
+            {tabs.map(t=>(
+              <button key={t.key} onClick={()=>setPeriod(t.key)}
+                style={{padding:"4px 10px",borderRadius:6,border:"none",background:period===t.key?(dark?"#3b82f6":"#fff"):"transparent",color:period===t.key?(dark?"#fff":"#0f172a"):"#94a3b8",fontWeight:period===t.key?700:500,cursor:"pointer",fontSize:11,boxShadow:period===t.key?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {canEdit && (
+            <button onClick={()=>onOpenEdit(period)} style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:14,color:"#64748b"}}>✏️</button>
+          )}
+        </div>
+      </div>
+      {hasAny ? (
+        <div>{rows.map(r=><GoalBar key={r.label} label={r.label} current={r.current} goal={r.goal} color={r.color}/>)}</div>
+      ) : (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"12px 0"}}>
+          {canEdit ? "Tap ✏️ to set commitments for this period." : "No commitment set yet."}
+        </div>
+      )}
+      {editing && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:2000}} onClick={()=>setEditing(null)}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>{editing==="weekly"?"Weekly":"Quarterly"} {title}</div>
+              <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            {COMMIT_ROWS.map(([k,l,c])=>(
+              <div key={k} style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={form[k]===0?"":form[k]} placeholder="0" onFocus={e=>e.target.select()}
+                  onChange={e=>{ const val=e.target.value.replace(/[^0-9]/g,""); setForm(f=>({...f,[k]:val===""?0:parseInt(val)})); }}
+                  style={{...COMMIT_INPUT_STYLE,borderColor:c}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button onClick={()=>setEditing(null)} style={{flex:1,padding:"11px 0",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
+              <button onClick={onSave} disabled={saving} style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>{saving?"Saving...":"Save Commitment"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PersonalCommitmentSection({targetUserId, personalGoals, setPersonalGoals, leads, pitches, canEdit}) {
+  const dark=useDark();
+  const [period,setPeriod]=useState("weekly");
+  const [editing,setEditing]=useState(null);
+  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0});
+  const [saving,setSaving]=useState(false);
+  const isWeekly=period==="weekly";
+  const row = (isWeekly?personalGoals[targetUserId]?.weekly:personalGoals[targetUserId]?.quarterly) || {};
+  const rng = isWeekly?getThisWeekRange():getThisQuarterRange();
+  const myLeads=(leads||[]).filter(l=>l.owner_id===targetUserId);
+  const rows=[
+    {label:"Pitches",current:pitchesInRangeFor(pitches,targetUserId,rng),goal:row.pitches_commit||0,color:"#ef4444"},
+    {label:"AC",current:statCountInRange(myLeads,"AC",rng),goal:row.ac_commit||0,color:"#3b82f6"},
+    {label:"VC",current:statCountInRange(myLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
+    {label:"CAP",current:statCountInRange(myLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
+    {label:"Install",current:statCountInRange(myLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
+  ];
+  const onOpenEdit=(p)=>{ const g=(p==="weekly"?personalGoals[targetUserId]?.weekly:personalGoals[targetUserId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0}); setEditing(p); };
+  const onSave=async()=>{
+    setSaving(true);
+    try{
+      const existing=personalGoals[targetUserId]?.[editing];
+      if(existing&&existing.id){
+        const {error}=await sb.from("personal_goals").update({...form,updated_at:new Date().toISOString()}).eq("id",existing.id);
+        if(error) throw error;
+        setPersonalGoals(prev=>({...prev,[targetUserId]:{...(prev[targetUserId]||{}),[editing]:{...existing,...form}}}));
+      } else {
+        const {data:inserted,error}=await sb.from("personal_goals").insert({user_id:targetUserId,period:editing,...form,updated_at:new Date().toISOString()}).select().single();
+        if(error) throw error;
+        setPersonalGoals(prev=>({...prev,[targetUserId]:{...(prev[targetUserId]||{}),[editing]:inserted}}));
+      }
+      setEditing(null);
+    }catch(e){ window.alert("Couldn't save commitment: "+((e&&(e.message||e.details||e.hint))||"unknown error")+"\n\nMake sure the commitment columns exist on personal_goals."); }
+    setSaving(false);
+  };
+  return <CommitmentCard title="Personal Commitment" dark={dark} canEdit={canEdit} period={period} setPeriod={setPeriod} editing={editing} setEditing={setEditing} form={form} setForm={setForm} saving={saving} onOpenEdit={onOpenEdit} onSave={onSave} rows={rows}/>;
+}
+
+function TeamCommitmentSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemberIds, canEdit, currentUserId}) {
+  const dark=useDark();
+  const [period,setPeriod]=useState("weekly");
+  const [editing,setEditing]=useState(null);
+  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0});
+  const [saving,setSaving]=useState(false);
+  const isWeekly=period==="weekly";
+  const row = (isWeekly?teamGoals[teamId]?.weekly:teamGoals[teamId]?.quarterly) || {};
+  const rng = isWeekly?getThisWeekRange():getThisQuarterRange();
+  const memberLeads=(leads||[]).filter(l=>teamMemberIds.includes(l.owner_id));
+  const rows=[
+    {label:"Pitches",current:pitchesInRangeFor(pitches,teamMemberIds,rng),goal:row.pitches_commit||0,color:"#ef4444"},
+    {label:"AC",current:statCountInRange(memberLeads,"AC",rng),goal:row.ac_commit||0,color:"#3b82f6"},
+    {label:"VC",current:statCountInRange(memberLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
+    {label:"CAP",current:statCountInRange(memberLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
+    {label:"Install",current:statCountInRange(memberLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
+  ];
+  const onOpenEdit=(p)=>{ const g=(p==="weekly"?teamGoals[teamId]?.weekly:teamGoals[teamId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0}); setEditing(p); };
+  const onSave=async()=>{
+    setSaving(true);
+    try{
+      const existing=teamGoals[teamId]?.[editing];
+      if(existing&&existing.id){
+        const {error}=await sb.from("team_goals").update({...form,updated_at:new Date().toISOString()}).eq("id",existing.id);
+        if(error) throw error;
+        setTeamGoals(prev=>({...prev,[teamId]:{...(prev[teamId]||{}),[editing]:{...existing,...form}}}));
+      } else {
+        const {data:inserted,error}=await sb.from("team_goals").insert({team_id:teamId,period:editing,...form,created_by:currentUserId,updated_at:new Date().toISOString()}).select().single();
+        if(error) throw error;
+        setTeamGoals(prev=>({...prev,[teamId]:{...(prev[teamId]||{}),[editing]:inserted}}));
+      }
+      setEditing(null);
+    }catch(e){ window.alert("Couldn't save commitment: "+((e&&(e.message||e.details||e.hint))||"unknown error")+"\n\nMake sure the commitment columns exist on team_goals."); }
+    setSaving(false);
+  };
+  return <CommitmentCard title="Team Commitment" dark={dark} canEdit={canEdit} period={period} setPeriod={setPeriod} editing={editing} setEditing={setEditing} form={form} setForm={setForm} saving={saving} onOpenEdit={onOpenEdit} onSave={onSave} rows={rows}/>;
 }
 
 // ── Personal Goals tracker (VC / CAP / Install — no PTO) ──────────────
