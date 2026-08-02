@@ -9645,6 +9645,16 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
               ↗ Open in Google
             </a>
+            {teamCfg && teamCfg.calendarId && (
+              <a href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(teamCfg.calendarId)}`} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
+                title="Add this team calendar to your own Google Calendar so its appointments show on your phone and laptop"
+                style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
+                ➕ Add to My Google Calendar
+              </a>
+            )}
+            <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",lineHeight:1.4,padding:"2px 2px 0"}}>
+              "Add to My Google Calendar" subscribes your own Google account to this team's calendar so its appointments appear in your Google Calendar app. Booking works either way — this is just for viewing.
+            </div>
           </div>
         </div>
       )}
