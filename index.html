@@ -9605,6 +9605,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
           <option value="WEEK">Week</option>
           <option value="MONTH">Month</option>
         </select>
+        <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
+          style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:36,height:36,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#6b2d4e",fontSize:15,cursor:"pointer"}}>
+          🔄
+        </button>
       </div>
       {/* Left slide-out actions menu */}
       {menuOpen && (
@@ -9636,10 +9640,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
             <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
               🏷️ Tag & Manage
-            </button>
-            <button onClick={()=>{ setCalKey(k=>k+1); setMenuOpen(false); }}
-              style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
-              🔄 Refresh
             </button>
             <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
