@@ -9292,6 +9292,9 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [slotDate, setSlotDate] = React.useState("");
   const [slotStart, setSlotStart] = React.useState("");
   const [slotSaving, setSlotSaving] = React.useState(false);
+  // Recurrence for open slots: "none" | "daily" | "weekly" | "custom".
+  const [slotRepeat, setSlotRepeat] = React.useState("none");
+  const [slotRepeatDays, setSlotRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
   const [slotMsg, setSlotMsg] = React.useState("");
   const SLOT_MINUTES = 90; // 1.5-hour block
   const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
@@ -9304,7 +9307,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     const ap = d.getHours()>=12?"PM":"AM"; const h12 = d.getHours()%12||12;
     return `${h12}:${String(d.getMinutes()).padStart(2,"0")} ${ap}`;
   };
-  const resetSlot = () => { setSlotDate("");setSlotStart("");setSlotMsg(""); };
+  const resetSlot = () => { setSlotDate("");setSlotStart("");setSlotMsg("");setSlotRepeat("none");setSlotRepeatDays([]); };
   const submitSlot = async (calendarId) => {
     if(!slotDate || !slotStart) return;
     setSlotSaving(true); setSlotMsg("");
@@ -9313,7 +9316,18 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
       const [sh,sm] = slotStart.split(":").map(Number);
       const startD = new Date(yy,mm-1,dd,sh,sm,0);
       const endD = new Date(startD.getTime() + SLOT_MINUTES*60000); // start + 1.5 hr
-      await GCal.createMeeting("🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, null);
+      // Build an RRULE for recurring open slots (same options as Add Meeting).
+      let recurrence = null;
+      if(slotRepeat==="daily"){
+        recurrence = ["RRULE:FREQ=DAILY"];
+      } else if(slotRepeat==="weekly"){
+        recurrence = ["RRULE:FREQ=WEEKLY"]; // repeats on the start date's weekday
+      } else if(slotRepeat==="custom"){
+        if(slotRepeatDays.length===0){ setSlotMsg("Pick at least one day to repeat on."); setSlotSaving(false); return; }
+        const days = slotRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
+        recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
+      }
+      await GCal.createMeeting("🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setSlotSaving(false);
       setSlotOpen(false);
       resetSlot();
@@ -9862,6 +9876,34 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 ? <>⏱️ 1.5-hour slot — ends at <b>{slotEndLabel(slotStart)}</b></>
                 : <>Pick a start time; the slot automatically runs 1.5 hours.</>}
             </div>
+
+            {/* Repeat */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>🔁 Repeat</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:slotRepeat==="custom"?10:18}}>
+              {[["none","Does not repeat"],["daily","Daily"],["weekly","Weekly"],["custom","Custom"]].map(([val,lab])=>(
+                <button key={val} type="button" onClick={()=>setSlotRepeat(val)}
+                  style={{flex:"1 1 calc(50% - 3px)",padding:"9px 8px",borderRadius:10,border:`2px solid ${slotRepeat===val?"#0f766e":(dark?"#334155":"#e2e8f0")}`,background:slotRepeat===val?(dark?"#0c2a26":"#e7f6f2"):(dark?"#0f172a":"#fff"),color:slotRepeat===val?"#0f766e":(dark?"#94a3b8":"#475569"),fontWeight:slotRepeat===val?700:500,cursor:"pointer",fontSize:13}}>
+                  {lab}
+                </button>
+              ))}
+            </div>
+            {slotRepeat==="custom" && (
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Repeat on these days:</div>
+                <div style={{display:"flex",gap:5,justifyContent:"space-between"}}>
+                  {[["S",0],["M",1],["T",2],["W",3],["T",4],["F",5],["S",6]].map(([lab,idx])=>{
+                    const on = slotRepeatDays.includes(idx);
+                    return (
+                      <button key={idx} type="button"
+                        onClick={()=>setSlotRepeatDays(d=>on?d.filter(x=>x!==idx):[...d,idx])}
+                        style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${on?"#0f766e":(dark?"#334155":"#e2e8f0")}`,background:on?"#0f766e":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontWeight:700,cursor:"pointer",fontSize:13,flexShrink:0}}>
+                        {lab}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {slotMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{slotMsg}</div>}
 
