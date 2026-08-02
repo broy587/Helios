@@ -4596,6 +4596,34 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </div>
                 </div>
               )}
+              {/* Book Install — fixed 7–9 AM, books onto the rep's own Google Calendar. */}
+              <div style={{marginTop:8}}>
+                {lead.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {lead.install_appointment}</div>}
+                <div style={{display:"flex",gap:8}}>
+                  <PersonalApptButton lead={lead}
+                    label={lead.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                    title="🟩 Book Install" confirmLabel="Book Install"
+                    summary={`🟩 Install - ${lead.name||"Lead"}`}
+                    fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
+                    onSelect={async(val,evId)=>{
+                      if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
+                      await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                      handleUpdate({...lead,install_appointment:val,install_event_id:evId||null});
+                    }}/>
+                  <div style={{flex:1}}/>
+                </div>
+                {lead.install_event_id && (
+                  <button onClick={async()=>{
+                    if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                    try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
+                    try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); }
+                    handleUpdate({...lead,install_appointment:"",install_event_id:null});
+                  }}
+                    style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    ✕ Cancel Install
+                  </button>
+                )}
+              </div>
               {/* Additional appointments — book any number of extra sits/appointments
                   without disturbing the closer slot or CAP above; each is cancellable. */}
               {Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0 && (
@@ -5080,6 +5108,32 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               {form.cap_appointment && <div style={{fontSize:12,color:"#9a3412",marginTop:6,fontWeight:600}}>{form.cap_appointment}</div>}
             </div>
           )}
+          {/* Book Install — fixed 7–9 AM, books onto the rep's own Google Calendar (bright green). */}
+          <div style={{marginTop:8}}>
+            {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {form.install_appointment}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <PersonalApptButton lead={{...form}}
+                label={form.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                title="🟩 Book Install" confirmLabel="Book Install"
+                summary={`🟩 Install - ${form.name||"Lead"}`}
+                fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
+                onSelect={async(val,evId)=>{
+                  if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
+                  setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
+                }}/>
+              <div style={{flex:1}}/>
+            </div>
+            {form.install_event_id && (
+              <button type="button" onClick={async()=>{
+                if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
+                setForm(f=>({...f,install_appointment:"",install_event_id:null}));
+              }}
+                style={{marginTop:8,width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                ✕ Cancel Install
+              </button>
+            )}
+          </div>
           {/* Additional appointments — any number of extra sits/appointments,
               independent of the closer slot and CAP; each can be cancelled. */}
           {form.id && (
@@ -10138,7 +10192,7 @@ const GCal = {
       ].filter(Boolean).join("\n"),
       start,
       end,
-      colorId: "4", // flamingo
+      colorId: (opts && opts.colorId) || "4", // default flamingo; install passes green
       reminders: { useDefault: true },
     };
     const res = await fetch(
@@ -10300,7 +10354,7 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, append
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel}) {
+function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, accent, colorId}) {
   const [show, setShow] = React.useState(false);
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
@@ -10322,21 +10376,21 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
   },[]);
 
   const handleConfirm = async () => {
-    if(!date || !time) return;
+    const effTime = fixedTime || time; // Install & similar use a fixed time; only the day is picked.
+    if(!date || !effTime) return;
     const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     // Build the date label straight from the YYYY-MM-DD parts. Using new Date(date)
     // parses as UTC midnight and renders one day behind in negative-UTC timezones.
     const [dyy,dmm,ddd] = date.split("-").map(Number);
     const dateStr = `${MONTHS[dmm-1]} ${ddd}, ${dyy}`;
     let apptStr = dateStr;
-    // Build ISO start/end for the Google Calendar event (1-hour block if a time
-    // was given; otherwise an all-day event on the selected date).
+    // Build ISO start/end for the Google Calendar event.
     let times = null;
-    if(time){
-      const [h,m] = time.split(":").map(Number);
+    if(effTime){
+      const [h,m] = effTime.split(":").map(Number);
       const [yy,mm,dd] = date.split("-").map(Number);
       const startD = new Date(yy, mm-1, dd, h, m, 0);
-      const endD = new Date(startD.getTime() + (durationMin||60)*60*1000);
+      const endD = new Date(startD.getTime() + (fixedDuration||durationMin||60)*60*1000);
       times = { start:startD.toISOString(), end:endD.toISOString() };
       // Format both ends from the real Date objects so the label always matches
       // the 1-hour block (handles 11AM→12PM, 12:30PM→1:30PM, etc.).
@@ -10354,7 +10408,7 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
     setAdding(true);
     let calOk = false, calErr = "", cbEventId = null;
     try {
-      if(lead) { const ev = await GCal.createPersonalCB(lead, times, summary?{summary}:undefined); cbEventId = ev && ev.id; calOk = true; }
+      if(lead) { const ev = await GCal.createPersonalCB(lead, times, (summary||colorId)?{summary,colorId}:undefined); cbEventId = ev && ev.id; calOk = true; }
     } catch(e){
       calErr = (e && e.message) || "unknown error";
       console.error("Personal calendar add failed:", e);
@@ -10370,7 +10424,7 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
   return (
     <>
       <button onClick={()=>setShow(true)}
-        style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+        style={{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
         {label||"↩️ Personal CB"}
       </button>
       {show&&(
@@ -10384,17 +10438,25 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
               <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={iStyle}/>
             </div>
-            <div style={{marginBottom:22}}>
-              <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time</label>
-              <select value={time} onChange={e=>setTime(e.target.value)} style={{...iStyle, appearance:"auto", cursor:"pointer"}}>
-                <option value="">Select a time…</option>
-                {TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <button onClick={handleConfirm} disabled={!date||!time||adding}
-              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(date&&time&&!adding)?"linear-gradient(135deg,#f59e0b,#d97706)":"#e2e8f0",color:(date&&time&&!adding)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(date&&time&&!adding)?"pointer":"default"}}>
+            {fixedTime ? (
+              <div style={{marginBottom:22,padding:"11px 13px",borderRadius:8,background:dark?"#0f172a":"#f3ede3",border:`1px solid ${dark?"#334155":"#e2d8c8"}`,fontSize:13,color:dark?"#cbd5e1":"#475569",fontWeight:600}}>
+                ⏱️ Time: <b>{fixedTimeLabel||"7:00–9:00 AM"}</b> (fixed)
+              </div>
+            ) : (
+              <div style={{marginBottom:22}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Time</label>
+                <select value={time} onChange={e=>setTime(e.target.value)} style={{...iStyle, appearance:"auto", cursor:"pointer"}}>
+                  <option value="">Select a time…</option>
+                  {TIME_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            )}
+            {(()=>{ const ready = !!date && (fixedTime||time) && !adding; const ac = accent||"#f59e0b"; return (
+            <button onClick={handleConfirm} disabled={!ready}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:ready?`linear-gradient(135deg,${ac},${ac})`:"#e2e8f0",color:ready?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:ready?"pointer":"default"}}>
               {adding?"Adding to your calendar…":(confirmLabel||"Set Comeback")}
             </button>
+            ); })()}
             <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",textAlign:"center",marginTop:10,lineHeight:1.4}}>
               Adds a private event to your own Google Calendar. Only you can see it — it won't appear on the team calendar.
             </div>
@@ -12103,11 +12165,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id",""));
         return res;
       };
       if (isPrivileged) {
@@ -12427,6 +12489,7 @@ function App() {
           if(/annual_kwh/i.test(emsg)){ delete payload.annual_kwh; continue; }
           if(/system_size|battery_count|sold_sun_hours|kwh_rate|offset_pct|flex|monthly|span_panel/i.test(emsg)){ delete payload.system_size; delete payload.battery_count; delete payload.sold_sun_hours; delete payload.kwh_rate; delete payload.monthly; delete payload.offset_pct; delete payload.span_panel; delete payload.flex; continue; }
           if(/lead_files/i.test(emsg)){ delete payload.lead_files; continue; }
+          if(/install_appointment|install_event_id/i.test(emsg)){ delete payload.install_appointment; delete payload.install_event_id; continue; }
           if(!isNetworkErr(err)) break;          // a real error (e.g. bad column) — don't retry
           await new Promise(r=>setTimeout(r, 800*(i+1))); // back off, then retry
         }
