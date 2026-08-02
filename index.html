@@ -4612,11 +4612,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       ✕ Cancel Personal Comeback
                     </button>
                   )}
-                  {lead.install_event_id && (
+                  {(lead.install_event_id || lead.install_appointment) && (
                     <button onClick={async()=>{
                       if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
-                      try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); }
+                      // Try to remove the calendar event, but NEVER let that block clearing the
+                      // lead — otherwise a failed/absent event traps a phantom install.
+                      if(lead.install_event_id){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar (clearing lead anyway):",e); } }
+                      try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
                       handleUpdate({...lead,install_appointment:"",install_event_id:null});
                     }}
                       style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
@@ -5122,10 +5124,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                     setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
                   }}/>
               </div>
-              {form.install_event_id && (
+              {(form.install_event_id || form.install_appointment) && (
                 <button type="button" onClick={async()=>{
                   if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar:",e); }
+                  if(form.install_event_id){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar (clearing anyway):",e); } }
                   setForm(f=>({...f,install_appointment:"",install_event_id:null}));
                 }}
                   style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
@@ -10414,11 +10416,15 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
       console.error("Personal calendar add failed:", e);
     }
     setAdding(false);
+    if(lead && !calOk){
+      // The calendar event didn't get created (e.g. Google sign-in was cancelled).
+      // Do NOT record the appointment on the lead — otherwise you get a "phantom"
+      // booking with no calendar event that's confusing to clear.
+      alert("This didn't book — it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted, then try again. Nothing was saved to the lead.");
+      return;
+    }
     onSelect(apptStr, cbEventId);
     setShow(false);
-    if(lead && !calOk){
-      alert("Saved, but it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted.");
-    }
   };
 
   return (
