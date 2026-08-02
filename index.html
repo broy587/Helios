@@ -501,6 +501,25 @@ function milestoneCountInRange(leads, milestone, range) {
   return count;
 }
 
+// Leaderboard-accurate stat count. The ONLY difference from milestoneCountInRange
+// is the "Install" stat: the leaderboard counts reaching the LITERAL "Install"
+// stage (an actual install), not "Install Scheduled". Trackers use this so their
+// numbers always match the leaderboard exactly.
+function statCountInRange(leads, stat, range) {
+  if (stat === "Install") {
+    const idx = STAGE_PROGRESSION.indexOf("Install");
+    let count = 0;
+    for (const lead of (leads||[])) {
+      if (getEffectiveStageIndex(lead) < idx) continue;
+      if (!range) { count++; continue; }
+      const at = getStageReachedAt(lead, idx);
+      if (at && at >= range.start && at <= range.end) count++;
+    }
+    return count;
+  }
+  return milestoneCountInRange(leads, stat, range);
+}
+
 // Leads created within a date range
 function leadsInRange(leads, range) {
   if (!range) return leads;
@@ -1282,7 +1301,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
               targetUserId={viewingId}
               personalGoals={personalGoals||{}}
               setPersonalGoals={setPersonalGoals}
-              leads={uniqueLeads}
+              leads={teamStatSource}
               canEdit={canEditThis}
               currentUserId={me}/>
           </div>
@@ -1534,17 +1553,17 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
   const weekRange = getThisWeekRange();
   const quarterRange = getThisQuarterRange();
 
-  const weeklyAC = milestoneCountInRange(memberLeads,"AC",weekRange);
-  const weeklyVC = milestoneCountInRange(memberLeads,"VC",weekRange);
-  const weeklyCAP = milestoneCountInRange(memberLeads,"CAP",weekRange);
-  const weeklyInstall = milestoneCountInRange(memberLeads,"Install",weekRange);
-  const weeklyPTO = milestoneCountInRange(memberLeads,"PTO",weekRange);
+  const weeklyAC = statCountInRange(memberLeads,"AC",weekRange);
+  const weeklyVC = statCountInRange(memberLeads,"VC",weekRange);
+  const weeklyCAP = statCountInRange(memberLeads,"CAP",weekRange);
+  const weeklyInstall = statCountInRange(memberLeads,"Install",weekRange);
+  const weeklyPTO = statCountInRange(memberLeads,"PTO",weekRange);
 
-  const quarterlyAC = milestoneCountInRange(memberLeads,"AC",quarterRange);
-  const quarterlyVC = milestoneCountInRange(memberLeads,"VC",quarterRange);
-  const quarterlyCAP = milestoneCountInRange(memberLeads,"CAP",quarterRange);
-  const quarterlyInstall = milestoneCountInRange(memberLeads,"Install",quarterRange);
-  const quarterlyPTO = milestoneCountInRange(memberLeads,"PTO",quarterRange);
+  const quarterlyAC = statCountInRange(memberLeads,"AC",quarterRange);
+  const quarterlyVC = statCountInRange(memberLeads,"VC",quarterRange);
+  const quarterlyCAP = statCountInRange(memberLeads,"CAP",quarterRange);
+  const quarterlyInstall = statCountInRange(memberLeads,"Install",quarterRange);
+  const quarterlyPTO = statCountInRange(memberLeads,"PTO",quarterRange);
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
@@ -1685,16 +1704,16 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
   const weekRange = getThisWeekRange();
   const quarterRange = getThisQuarterRange();
 
-  const weeklyAC = milestoneCountInRange(myLeads,"AC",weekRange);
-  const weeklyVC = milestoneCountInRange(myLeads,"VC",weekRange);
-  const weeklyCAP = milestoneCountInRange(myLeads,"CAP",weekRange);
-  const weeklyInstall = milestoneCountInRange(myLeads,"Install",weekRange);
-  const weeklyPTO = milestoneCountInRange(myLeads,"PTO",weekRange);
-  const quarterlyAC = milestoneCountInRange(myLeads,"AC",quarterRange);
-  const quarterlyVC = milestoneCountInRange(myLeads,"VC",quarterRange);
-  const quarterlyCAP = milestoneCountInRange(myLeads,"CAP",quarterRange);
-  const quarterlyInstall = milestoneCountInRange(myLeads,"Install",quarterRange);
-  const quarterlyPTO = milestoneCountInRange(myLeads,"PTO",quarterRange);
+  const weeklyAC = statCountInRange(myLeads,"AC",weekRange);
+  const weeklyVC = statCountInRange(myLeads,"VC",weekRange);
+  const weeklyCAP = statCountInRange(myLeads,"CAP",weekRange);
+  const weeklyInstall = statCountInRange(myLeads,"Install",weekRange);
+  const weeklyPTO = statCountInRange(myLeads,"PTO",weekRange);
+  const quarterlyAC = statCountInRange(myLeads,"AC",quarterRange);
+  const quarterlyVC = statCountInRange(myLeads,"VC",quarterRange);
+  const quarterlyCAP = statCountInRange(myLeads,"CAP",quarterRange);
+  const quarterlyInstall = statCountInRange(myLeads,"Install",quarterRange);
+  const quarterlyPTO = statCountInRange(myLeads,"PTO",quarterRange);
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
@@ -1831,11 +1850,11 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
   const rng = isWeekly ? wRange : qRange;
   const goal = isWeekly ? wGoal : qGoal;
   const metrics = [
-    {label:"AC", current:milestoneCountInRange(memberLeads,"AC",rng), goal:goal.ac_goal||0, color:"#3b82f6"},
-    {label:"VC", current:milestoneCountInRange(memberLeads,"VC",rng), goal:goal.vc_goal||0, color:"#6366f1"},
-    {label:"CAP", current:milestoneCountInRange(memberLeads,"CAP",rng), goal:goal.cap_goal||0, color:"#8b5cf6"},
-    {label:"Install", current:milestoneCountInRange(memberLeads,"Install",rng), goal:goal.install_goal||0, color:"#10b981"},
-    {label:"PTO", current:milestoneCountInRange(memberLeads,"PTO",rng), goal:goal.pto_goal||0, color:"#f59e0b"},
+    {label:"AC", current:statCountInRange(memberLeads,"AC",rng), goal:goal.ac_goal||0, color:"#3b82f6"},
+    {label:"VC", current:statCountInRange(memberLeads,"VC",rng), goal:goal.vc_goal||0, color:"#6366f1"},
+    {label:"CAP", current:statCountInRange(memberLeads,"CAP",rng), goal:goal.cap_goal||0, color:"#8b5cf6"},
+    {label:"Install", current:statCountInRange(memberLeads,"Install",rng), goal:goal.install_goal||0, color:"#10b981"},
+    {label:"PTO", current:statCountInRange(memberLeads,"PTO",rng), goal:goal.pto_goal||0, color:"#f59e0b"},
   ];
   const hasGoals = goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal;
 
