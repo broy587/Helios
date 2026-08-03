@@ -728,11 +728,13 @@ function AuthScreen({ onAuth }) {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────
-function StatCard({label,value,color,sub}) {
-  // Use CSS var for dark mode instead of hook to avoid hook-in-map issues
+function StatCard({label,value,color,sub,hit}) {
+  // Use CSS var for dark mode instead of hook to avoid hook-in-map issues.
+  // When `hit` is provided, the number is red until the commitment is met, then green.
+  const numColor = (hit===true) ? "#10b981" : (hit===false) ? "#ef4444" : color;
   return (
     <div style={{background:"var(--sc-bg,#fff)",borderRadius:12,padding:"14px 10px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
-      <div style={{fontSize:22,fontWeight:800,color}}>{value ?? 0}</div>
+      <div style={{fontSize:22,fontWeight:800,color:numColor}}>{value ?? 0}</div>
       <div style={{fontSize:11,color:"var(--sc-text,#0f172a)",fontWeight:600,marginTop:2}}>{label}</div>
       {sub && <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{sub}</div>}
     </div>
@@ -1074,9 +1076,6 @@ function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter,
 
           {rest.length>0 && (
             <div>
-              <div style={{padding:"10px 16px 8px",fontWeight:700,fontSize:14,color:dark?"#e2e8f0":"#1e293b"}}>
-                Rest of the team
-              </div>
               {rest.map((entry,i)=>{
                 const r=entry.rep, rank=i+4;
                 return (
@@ -1185,6 +1184,15 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
   const teamPitches = getTeamPitches();
   const teamPitchesInRange = range ? teamPitches.filter(p=>{const t=new Date(p.created_at);return t>=range.start&&t<=range.end;}) : teamPitches;
   const tmc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
+
+  // Stat-card colors: red until the commitment target (from the Commitment tracker)
+  // is met, then green. Quarter ranges compare to the quarterly commitment; all
+  // other ranges compare to the weekly commitment.
+  const commitPeriod = (timeFilter==="quarter"||timeFilter==="lastquarter") ? "quarterly" : "weekly";
+  const myCommit = ((personalGoals[currentUser.id]||{})[commitPeriod]) || {};
+  const teamCommitRow = ((teamGoals[selectedTeamId]||{})[commitPeriod]) || {};
+  const hitP = (val,key)=>{ const t=myCommit[key]||0; return t>0 && (val||0)>=t; };
+  const hitT = (val,key)=>{ const t=teamCommitRow[key]||0; return t>0 && (val||0)>=t; };
 
   const rangeLabel = (() => {
     if (timeFilter==="alltime") return "All Time";
@@ -1374,17 +1382,14 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
       <div style={{marginBottom:28}}>
         <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:14}}>Personal</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-          <StatCard label="Pitches" value={myPitchesInRange.length} color="#ef4444"/>
-          <StatCard label="Leads" value={myLeadsInRange.length} color="#6b2d4e"/>
-          <StatCard label="AC" value={mc(myLeads,"AC")} color="#3b82f6"/>
+          <StatCard label="Pitches" value={myPitchesInRange.length} hit={hitP(myPitchesInRange.length,"pitches_commit")}/>
+          <StatCard label="AC" value={mc(myLeads,"AC")} hit={hitP(mc(myLeads,"AC"),"ac_commit")}/>
+          <StatCard label="VC" value={mc(myLeads,"VC")} hit={hitP(mc(myLeads,"VC"),"vc_commit")}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-          <StatCard label="VC" value={mc(myLeads,"VC")} color="#6366f1"/>
-          <StatCard label="CAP" value={mc(myLeads,"CAP")} color="#8b5cf6"/>
-          <StatCard label="Install" value={mc(myLeads,"Install")} color="#10b981"/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          <StatCard label="PTO" value={mc(myLeads,"PTO")} color="#f59e0b"/>
+          <StatCard label="CAP" value={mc(myLeads,"CAP")} hit={hitP(mc(myLeads,"CAP"),"cap_commit")}/>
+          <StatCard label="Install" value={mc(myLeads,"Install")} hit={hitP(mc(myLeads,"Install"),"install_commit")}/>
+          <StatCard label="PTO" value={mc(myLeads,"PTO")} hit={hitP(mc(myLeads,"PTO"),"pto_commit")}/>
         </div>
       </div>
 
@@ -1402,17 +1407,14 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           </div>
           {teams.length===0 && <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>No teams created yet.</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-            <StatCard label="Pitches" value={teamPitchesInRange.length} color="#ef4444"/>
-            <StatCard label="Leads" value={teamLeadsInRange.length} color="#6b2d4e"/>
-            <StatCard label="AC" value={tmc(teamLeads,"AC")} color="#3b82f6"/>
+            <StatCard label="Pitches" value={teamPitchesInRange.length} hit={hitT(teamPitchesInRange.length,"pitches_commit")}/>
+            <StatCard label="AC" value={tmc(teamLeads,"AC")} hit={hitT(tmc(teamLeads,"AC"),"ac_commit")}/>
+            <StatCard label="VC" value={tmc(teamLeads,"VC")} hit={hitT(tmc(teamLeads,"VC"),"vc_commit")}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-            <StatCard label="VC" value={tmc(teamLeads,"VC")} color="#6366f1"/>
-            <StatCard label="CAP" value={tmc(teamLeads,"CAP")} color="#8b5cf6"/>
-            <StatCard label="Install" value={tmc(teamLeads,"Install")} color="#10b981"/>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
-            <StatCard label="PTO" value={tmc(teamLeads,"PTO")} color="#f59e0b"/>
+            <StatCard label="CAP" value={tmc(teamLeads,"CAP")} hit={hitT(tmc(teamLeads,"CAP"),"cap_commit")}/>
+            <StatCard label="Install" value={tmc(teamLeads,"Install")} hit={hitT(tmc(teamLeads,"Install"),"install_commit")}/>
+            <StatCard label="PTO" value={tmc(teamLeads,"PTO")} hit={hitT(tmc(teamLeads,"PTO"),"pto_commit")}/>
           </div>
         </div>
       )}
