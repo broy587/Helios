@@ -1285,7 +1285,10 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           if(selfP) browsable = [selfP, ...browsable];
         }
         const viewingId = browsable.some(p=>p.id===goalsRepId)?goalsRepId:me;
-        const canEditThis = viewingId===me;
+        // You can edit your own; owners can edit anyone; managers can edit their
+        // team members (browsable is already scoped to a manager's own team, and
+        // viewingId is always within browsable).
+        const canEditThis = viewingId===me || isOwnerRole || currentUser.id===OWNER_ID || isManagerRole;
         const viewingName = (profiles.find(p=>p.id===viewingId)||{}).name || "This rep";
         return (
           <div style={{marginBottom:24}}>
