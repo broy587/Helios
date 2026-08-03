@@ -1551,7 +1551,7 @@ function GoalBar({label, current, goal, color}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
         <span style={{fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>{label}</span>
         <span style={{fontSize:20,fontWeight:800,color:numColor,lineHeight:1}}>
-          {current}<span style={{color:dark?"#ffffff":"#000000",fontWeight:800,fontSize:23}}>/{goal||"—"}</span>{done&&<span style={{marginLeft:4}}>✓</span>}
+          {current}<span style={{color:dark?"#ffffff":"#000000",fontWeight:800}}>/{goal||"—"}</span>{done&&<span style={{marginLeft:4}}>✓</span>}
         </span>
       </div>
       <div style={{background:dark?"#334155":"#eef1f6",borderRadius:99,height:9,overflow:"hidden"}}>
