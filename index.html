@@ -1312,6 +1312,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
               personalGoals={personalGoals||{}}
               setPersonalGoals={setPersonalGoals}
               leads={teamStatSource}
+              pitches={pitches}
               canEdit={canEditThis}
               currentUserId={me}/>
           </div>
@@ -1353,6 +1354,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
               teamGoals={teamGoals||{}}
               setTeamGoals={setTeamGoals}
               leads={teamStatSource}
+              pitches={pitches}
               teamMemberIds={(teamMembers[goalsTeamId]||[]).map(m=>m.user_id)}
               canEdit={currentUser.role==="owner" || currentUser.role==="manager"}
               currentUserId={currentUserId||currentUser.id}
@@ -1562,7 +1564,7 @@ function GoalBar({label, current, goal, color}) {
 function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
   const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
-  const [form, setForm] = useState({ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
+  const [form, setForm] = useState({pitches_goal:0,ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
   const [period, setPeriod] = useState("weekly");
 
@@ -1574,6 +1576,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
   const memberLeads = (leads||[]).filter(l=>teamMemberIds.includes(l.owner_id));
   const weekRange = getThisWeekRange();
   const quarterRange = getThisQuarterRange();
+  const teamPitchesCount = (rng)=>pitchesInRangeFor(pitches, teamMemberIds, rng);
 
   const weeklyAC = statCountInRange(memberLeads,"AC",weekRange);
   const weeklyVC = statCountInRange(memberLeads,"VC",weekRange);
@@ -1589,7 +1592,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
-    setForm({ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
+    setForm({pitches_goal:g.pitches_goal||0,ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
     setEditing(p);
   };
 
@@ -1621,6 +1624,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
 
   const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
+  const pitchesCount = teamPitchesCount(isWeekly?weekRange:quarterRange);
   const ac = isWeekly?weeklyAC:quarterlyAC;
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
@@ -1651,8 +1655,9 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
         </div>
       </div>
 
-      {goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
+      {goal.pitches_goal||goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
         <div>
+          <GoalBar label="Pitches" current={pitchesCount} goal={goal.pitches_goal||0} color="#ef4444"/>
           <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
           <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
@@ -1675,7 +1680,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -1710,7 +1715,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, ca
 // Work exactly like the goal trackers but track a separate "commitment" target
 // stored in the *_commit columns of the same goal tables.
 const COMMIT_INPUT_STYLE = {width:"100%",padding:"11px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-const COMMIT_ROWS = [["pitches_commit","Pitches","#ef4444"],["ac_commit","AC","#3b82f6"],["vc_commit","VC","#6366f1"],["cap_commit","CAP","#8b5cf6"],["install_commit","Install","#10b981"]];
+const COMMIT_ROWS = [["pitches_commit","Pitches","#ef4444"],["ac_commit","AC","#3b82f6"],["vc_commit","VC","#6366f1"],["cap_commit","CAP","#8b5cf6"],["install_commit","Install","#10b981"],["pto_commit","PTO","#f59e0b"]];
 
 function pitchesInRangeFor(pitches, ownerIds, rng){
   const set = Array.isArray(ownerIds) ? new Set(ownerIds) : new Set([ownerIds]);
@@ -1779,7 +1784,7 @@ function PersonalCommitmentSection({targetUserId, personalGoals, setPersonalGoal
   const dark=useDark();
   const [period,setPeriod]=useState("weekly");
   const [editing,setEditing]=useState(null);
-  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0});
+  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0,pto_commit:0});
   const [saving,setSaving]=useState(false);
   const isWeekly=period==="weekly";
   const row = (isWeekly?personalGoals[targetUserId]?.weekly:personalGoals[targetUserId]?.quarterly) || {};
@@ -1791,8 +1796,9 @@ function PersonalCommitmentSection({targetUserId, personalGoals, setPersonalGoal
     {label:"VC",current:statCountInRange(myLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
     {label:"CAP",current:statCountInRange(myLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
     {label:"Install",current:statCountInRange(myLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
+    {label:"PTO",current:statCountInRange(myLeads,"PTO",rng),goal:row.pto_commit||0,color:"#f59e0b"},
   ];
-  const onOpenEdit=(p)=>{ const g=(p==="weekly"?personalGoals[targetUserId]?.weekly:personalGoals[targetUserId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0}); setEditing(p); };
+  const onOpenEdit=(p)=>{ const g=(p==="weekly"?personalGoals[targetUserId]?.weekly:personalGoals[targetUserId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0,pto_commit:g.pto_commit||0}); setEditing(p); };
   const onSave=async()=>{
     setSaving(true);
     try{
@@ -1817,7 +1823,7 @@ function TeamCommitmentSection({teamId, teamGoals, setTeamGoals, leads, pitches,
   const dark=useDark();
   const [period,setPeriod]=useState("weekly");
   const [editing,setEditing]=useState(null);
-  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0});
+  const [form,setForm]=useState({pitches_commit:0,ac_commit:0,vc_commit:0,cap_commit:0,install_commit:0,pto_commit:0});
   const [saving,setSaving]=useState(false);
   const isWeekly=period==="weekly";
   const row = (isWeekly?teamGoals[teamId]?.weekly:teamGoals[teamId]?.quarterly) || {};
@@ -1829,8 +1835,9 @@ function TeamCommitmentSection({teamId, teamGoals, setTeamGoals, leads, pitches,
     {label:"VC",current:statCountInRange(memberLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
     {label:"CAP",current:statCountInRange(memberLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
     {label:"Install",current:statCountInRange(memberLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
+    {label:"PTO",current:statCountInRange(memberLeads,"PTO",rng),goal:row.pto_commit||0,color:"#f59e0b"},
   ];
-  const onOpenEdit=(p)=>{ const g=(p==="weekly"?teamGoals[teamId]?.weekly:teamGoals[teamId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0}); setEditing(p); };
+  const onOpenEdit=(p)=>{ const g=(p==="weekly"?teamGoals[teamId]?.weekly:teamGoals[teamId]?.quarterly)||{}; setForm({pitches_commit:g.pitches_commit||0,ac_commit:g.ac_commit||0,vc_commit:g.vc_commit||0,cap_commit:g.cap_commit||0,install_commit:g.install_commit||0,pto_commit:g.pto_commit||0}); setEditing(p); };
   const onSave=async()=>{
     setSaving(true);
     try{
@@ -1852,10 +1859,10 @@ function TeamCommitmentSection({teamId, teamGoals, setTeamGoals, leads, pitches,
 }
 
 // ── Personal Goals tracker (VC / CAP / Install — no PTO) ──────────────
-function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, leads, canEdit, currentUserId}) {
+function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, leads, pitches, canEdit, currentUserId}) {
   const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
-  const [form, setForm] = useState({ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
+  const [form, setForm] = useState({pitches_goal:0,ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
   const [saving, setSaving] = useState(false);
   const [period, setPeriod] = useState("weekly");
 
@@ -1870,6 +1877,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
   const myLeads = (leads||[]).filter(l=>memberIds.includes(l.owner_id));
   const weekRange = getThisWeekRange();
   const quarterRange = getThisQuarterRange();
+  const personalPitchesCount = (rng)=>pitchesInRangeFor(pitches, targetUserId, rng);
 
   const weeklyAC = statCountInRange(myLeads,"AC",weekRange);
   const weeklyVC = statCountInRange(myLeads,"VC",weekRange);
@@ -1884,7 +1892,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
 
   const openEdit = (p) => {
     const g = p==="weekly" ? weeklyGoal : quarterlyGoal;
-    setForm({ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
+    setForm({pitches_goal:g.pitches_goal||0,ac_goal:g.ac_goal||0,vc_goal:g.vc_goal||0,cap_goal:g.cap_goal||0,install_goal:g.install_goal||0,pto_goal:g.pto_goal||0});
     setEditing(p);
   };
 
@@ -1920,6 +1928,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
 
   const tabs = [{key:"weekly",label:`Weekly`},{key:"quarterly",label:getQuarterLabel(new Date())}];
   const isWeekly = period==="weekly";
+  const pitchesCount = personalPitchesCount(isWeekly?weekRange:quarterRange);
   const ac = isWeekly?weeklyAC:quarterlyAC;
   const vc = isWeekly?weeklyVC:quarterlyVC;
   const cap = isWeekly?weeklyCAP:quarterlyCAP;
@@ -1949,8 +1958,9 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
         </div>
       </div>
 
-      {goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
+      {goal.pitches_goal||goal.ac_goal||goal.vc_goal||goal.cap_goal||goal.install_goal||goal.pto_goal ? (
         <div>
+          <GoalBar label="Pitches" current={pitchesCount} goal={goal.pitches_goal||0} color="#ef4444"/>
           <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
           <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
@@ -1972,7 +1982,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
