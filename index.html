@@ -1561,7 +1561,7 @@ function GoalBar({label, current, goal, color}) {
   );
 }
 
-function GoalsSection({teamId, teamGoals, setTeamGoals, leads, teamMemberIds, canEdit, currentUserId, onRefresh}) {
+function GoalsSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemberIds, canEdit, currentUserId, onRefresh}) {
   const dark=useDark();
   const [editing, setEditing] = useState(null); // 'weekly' | 'quarterly' | null
   const [form, setForm] = useState({pitches_goal:0,ac_goal:0,vc_goal:0,cap_goal:0,install_goal:0,pto_goal:0});
