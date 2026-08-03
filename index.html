@@ -1544,16 +1544,18 @@ function GoalBar({label, current, goal, color}) {
   const dark=useDark();
   const pct = goal > 0 ? Math.min(100, Math.round((current/goal)*100)) : 0;
   const done = current >= goal && goal > 0;
+  // Number is red until the target is reached, then green (no per-stat colors).
+  const numColor = done ? "#10b981" : "#ef4444";
   return (
-    <div style={{marginBottom:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <span style={{fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#475569"}}>{label}</span>
-        <span style={{fontSize:12,fontWeight:700,color:done?"#10b981":color}}>
-          {current}/{goal||"—"} {done&&"✓"}
+    <div style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <span style={{fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>{label}</span>
+        <span style={{fontSize:20,fontWeight:800,color:numColor,lineHeight:1}}>
+          {current}<span style={{color:dark?"#64748b":"#cbd5e1",fontWeight:700,fontSize:16}}>/{goal||"—"}</span>{done&&<span style={{marginLeft:4}}>✓</span>}
         </span>
       </div>
-      <div style={{background:dark?"#334155":"#f1f5f9",borderRadius:99,height:7,overflow:"hidden"}}>
-        <div style={{width:`${pct}%`,height:"100%",background:done?"#10b981":color,borderRadius:99,transition:"width 0.4s ease"}}/>
+      <div style={{background:dark?"#334155":"#eef1f6",borderRadius:99,height:9,overflow:"hidden"}}>
+        <div style={{width:`${pct}%`,height:"100%",background:numColor,borderRadius:99,transition:"width 0.4s ease"}}/>
       </div>
     </div>
   );
