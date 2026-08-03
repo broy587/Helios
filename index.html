@@ -984,7 +984,7 @@ const LEADERBOARD_STATS = [
   {key:"Install", label:"Installs"}, // literal Install stage or beyond (NOT Install Scheduled)
 ];
 function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
-  const [stat,setStat]=React.useState("pitches");
+  const [stat,setStat]=React.useState("VC");
   const [statOpen,setStatOpen]=React.useState(false);
   const [listOpen,setListOpen]=React.useState(true);
   const LITERAL_INSTALL_IDX = STAGE_PROGRESSION.indexOf("Install");
@@ -1074,12 +1074,10 @@ function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter,
 
           {rest.length>0 && (
             <div>
-              <button onClick={()=>setListOpen(o=>!o)}
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 16px",borderRadius:12,border:"none",background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1e293b",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:8,boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
-                <span>Rest of the team ({rest.length})</span>
-                <span style={{fontSize:12,opacity:0.7}}>{listOpen?"▲":"▼"}</span>
-              </button>
-              {listOpen && rest.map((entry,i)=>{
+              <div style={{padding:"10px 16px 8px",fontWeight:700,fontSize:14,color:dark?"#e2e8f0":"#1e293b"}}>
+                Rest of the team
+              </div>
+              {rest.map((entry,i)=>{
                 const r=entry.rep, rank=i+4;
                 return (
                   <div key={r.id} onClick={()=>onViewRep&&onViewRep(r)}
@@ -1236,15 +1234,13 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
 
       {lbTab==="leaderboard" ? (
         <>
-          {/* Team selector (owner/multi-team) */}
+          {/* Team selector — clean dropdown (owner/multi-team) */}
           {teamOptions.length>1 && (
-            <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:16,paddingBottom:2}}>
-              {teamOptions.map(t=>(
-                <button key={t.id} onClick={()=>setSelectedTeamId(t.id)}
-                  style={{flexShrink:0,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${selectedTeamId===t.id?"#3b82f6":(dark?"#334155":"#ede3d6")}`,background:selectedTeamId===t.id?"#3b82f6":(dark?"#1e293b":"#faf6f0"),color:selectedTeamId===t.id?"#fff":(dark?"#94a3b8":"#1a2456"),fontWeight:selectedTeamId===t.id?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
-                  {t.name}
-                </button>
-              ))}
+            <div style={{marginBottom:16}}>
+              <select value={selectedTeamId} onChange={e=>setSelectedTeamId(e.target.value)}
+                style={{width:"100%",fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"10px 12px",cursor:"pointer"}}>
+                {teamOptions.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
             </div>
           )}
           <LeaderboardView
@@ -12306,7 +12302,7 @@ function App() {
         const s = prof.ui_state;
         if (s.tab) setTab(s.tab);
         if (s.pipelineFilter) setPipelineFilter(s.pipelineFilter);
-        if (s.statsTimeFilter) setStatsTimeFilter(s.statsTimeFilter);
+        // Stats date filter intentionally NOT restored — it always defaults to Today.
         if (s.statsCustomRange) setStatsCustomRange({
           start: new Date(s.statsCustomRange.start),
           end: new Date(s.statsCustomRange.end)
