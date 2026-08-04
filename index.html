@@ -12694,6 +12694,15 @@ function App() {
           if(/system_size|battery_count|sold_sun_hours|kwh_rate|offset_pct|flex|monthly|span_panel/i.test(emsg)){ delete payload.system_size; delete payload.battery_count; delete payload.sold_sun_hours; delete payload.kwh_rate; delete payload.monthly; delete payload.offset_pct; delete payload.span_panel; delete payload.flex; continue; }
           if(/lead_files/i.test(emsg)){ delete payload.lead_files; continue; }
           if(/install_appointment|install_event_id/i.test(emsg)){ delete payload.install_appointment; delete payload.install_event_id; continue; }
+          if(/secondary_name|secondary_phone|secondary_email/i.test(emsg)){ delete payload.secondary_name; delete payload.secondary_phone; delete payload.secondary_email; continue; }
+          // Generic safety net: if the DB reports ANY specific missing column, drop just
+          // that column and retry — so one un-migrated field can never block the whole
+          // save (which was silently losing notes and everything else).
+          {
+            const cm = emsg.match(/column\s+(?:[\w".]+\.)?["']?([a-z0-9_]+)["']?\s+does not exist/i)
+                    || emsg.match(/find the ['"]([a-z0-9_]+)['"] column/i);
+            if(cm && cm[1] && Object.prototype.hasOwnProperty.call(payload, cm[1])){ delete payload[cm[1]]; continue; }
+          }
           if(!isNetworkErr(err)) break;          // a real error (e.g. bad column) — don't retry
           await new Promise(r=>setTimeout(r, 800*(i+1))); // back off, then retry
         }
