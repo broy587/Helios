@@ -563,8 +563,9 @@ function CloserNotesEditor({log, onChange, dark}) {
   const del = (id) => { if(window.confirm("Delete this closer note?")) onChange(list.filter(n=>n.id!==id)); };
   return (
     <div>
-      {/* Add a new note */}
-      <textarea value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Type a new closer note..." rows={2} style={ta}/>
+      {/* Add a new note. onBlur auto-commits so a typed note is never lost if the rep
+          presses the lead's Save without first tapping "Save Note". */}
+      <textarea value={draft} onChange={e=>setDraft(e.target.value)} onBlur={save} placeholder="Type a new closer note..." rows={2} style={ta}/>
       <button type="button" onClick={save} disabled={!draft.trim()}
         style={{marginTop:6,marginBottom:list.length?12:0,padding:"8px 16px",borderRadius:8,border:"none",background:draft.trim()?"#4338ca":(dark?"#334155":"#cbd5e1"),color:"#fff",fontWeight:700,fontSize:13,cursor:draft.trim()?"pointer":"default"}}>
         💾 Save Note
@@ -4745,6 +4746,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
               {/* Booked badges — always visible so booked appointments can be seen/edited. */}
               {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
               {lead.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {lead.install_appointment}</div>}
+              {lead.cs_appointment && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(220,38,38,0.14)":"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🔴 Cancel Save: {lead.cs_appointment}</div>}
               {/* Single entry point */}
               <button onClick={()=>setShowBookOpts(v=>!v)}
                 style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -4777,6 +4779,19 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                         handleUpdate({...lead,install_appointment:val,install_event_id:evId||null});
                       }}/>
                   </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <PersonalApptButton lead={lead}
+                      label={lead.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                      title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
+                      summary={`🔴 CS - ${lead.name||"Lead"}`}
+                      accent="#dc2626" colorId="11"
+                      onSelect={async(val,evId)=>{
+                        if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
+                        await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                        handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null});
+                      }}/>
+                    <div style={{flex:1}}/>
+                  </div>
                   {/* Cancel buttons for the personal-calendar bookings */}
                   {lead.cb_event_id && (
                     <button onClick={async()=>{
@@ -4800,6 +4815,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                     }}
                       style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                       ✕ Cancel Install
+                    </button>
+                  )}
+                  {(lead.cs_event_id || lead.cs_appointment) && (
+                    <button onClick={async()=>{
+                      if(!window.confirm("Cancel this Cancel Save? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                      if(lead.cs_event_id){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error("Couldn't delete Cancel Save from calendar (clearing anyway):",e); } }
+                      try{ await sb.from("leads").update({cs_appointment:"",cs_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear Cancel Save on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
+                      handleUpdate({...lead,cs_appointment:"",cs_event_id:null});
+                    }}
+                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      ✕ Cancel "Cancel Save"
                     </button>
                   )}
                 </div>
@@ -5271,6 +5297,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
           {/* CAP & Install badges — always visible so booked ones can be seen. */}
           {form.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {form.cap_appointment}</div>}
           {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {form.install_appointment}</div>}
+          {form.cs_appointment && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(220,38,38,0.14)":"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🔴 Cancel Save: {form.cs_appointment}</div>}
           {/* Single entry point — reveals the four booking options. */}
           <button type="button" onClick={()=>setShowBookOpts(v=>!v)}
             style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -5301,6 +5328,19 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                     setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
                   }}/>
               </div>
+              <div style={{display:"flex",gap:8}}>
+                <PersonalApptButton lead={{...form}}
+                  label={form.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                  title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
+                  summary={`🔴 CS - ${form.name||"Lead"}`}
+                  accent="#dc2626" colorId="11"
+                  onSelect={async(val,evId)=>{
+                    if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
+                    setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null}));
+                    if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                  }}/>
+                <div style={{flex:1}}/>
+              </div>
               {(form.install_event_id || form.install_appointment) && (
                 <button type="button" onClick={async()=>{
                   if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
@@ -5309,6 +5349,17 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 }}
                   style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   ✕ Cancel Install
+                </button>
+              )}
+              {(form.cs_event_id || form.cs_appointment) && (
+                <button type="button" onClick={async()=>{
+                  if(!window.confirm("Cancel this Cancel Save? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                  if(form.cs_event_id){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error("Couldn't delete Cancel Save from calendar (clearing anyway):",e); } }
+                  setForm(f=>({...f,cs_appointment:"",cs_event_id:null}));
+                  if(form.id){ try{ await sb.from("leads").update({cs_appointment:"",cs_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                }}
+                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✕ Cancel "Cancel Save"
                 </button>
               )}
             </div>
@@ -12369,11 +12420,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
@@ -12627,7 +12678,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
