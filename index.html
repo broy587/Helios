@@ -4760,8 +4760,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
                         try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
                       }
+                      const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
                       await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                      handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null});
+                      try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                      handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
                     }}/>
                   </div>
                   <div style={{display:"flex",gap:8}}>
@@ -4775,8 +4777,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
                       onSelect={async(val,evId)=>{
                         if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
+                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), install:new Date().toISOString()};
                         await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                        handleUpdate({...lead,install_appointment:val,install_event_id:evId||null});
+                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                        handleUpdate({...lead,install_appointment:val,install_event_id:evId||null,appt_ts:nts});
                       }}/>
                   </div>
                   <div style={{display:"flex",gap:8}}>
@@ -4787,8 +4791,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       accent="#dc2626" colorId="11"
                       onSelect={async(val,evId)=>{
                         if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
+                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cs:new Date().toISOString()};
                         await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                        handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null});
+                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                        handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts});
                       }}/>
                     <div style={{flex:1}}/>
                   </div>
@@ -5310,7 +5316,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
                   else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
                 }} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
-                <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null}))} label="↩️ Personal CB"/>
+                <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),main:new Date().toISOString()}}))} label="↩️ Personal CB"/>
               </div>
               <div style={{display:"flex",gap:8}}>
                 {canBookCap ? (
@@ -5325,7 +5331,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
                   onSelect={async(val,evId)=>{
                     if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
-                    setForm(f=>({...f,install_appointment:val,install_event_id:evId||null}));
+                    setForm(f=>({...f,install_appointment:val,install_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),install:new Date().toISOString()}}));
                   }}/>
               </div>
               <div style={{display:"flex",gap:8}}>
@@ -5336,8 +5342,9 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   accent="#dc2626" colorId="11"
                   onSelect={async(val,evId)=>{
                     if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
-                    setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null}));
-                    if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                    const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cs:new Date().toISOString()};
+                    setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}));
+                    if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
                   }}/>
                 <div style={{flex:1}}/>
               </div>
@@ -5709,28 +5716,49 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
           {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
           {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#6366f1",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>SAVE</span>}
         </div>
-        {lead.appointment && (()=>{
-          try {
-            const MMAP = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"};
-            const raw = lead.appointment;
-            // Handle both formats:
-            // Old: "Jun 15, 2026 - 5:00 PM to 6:30 PM"
-            // New: same, just parse correctly either way
-            const dashIdx = raw.indexOf(' - ');
-            if (dashIdx === -1) return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{raw}</div>;
-            const datePart = raw.substring(0, dashIdx).trim();
-            const afterDash = raw.substring(dashIdx + 3).trim();
-            const startTime = afterDash.indexOf(' to ') > -1 ? afterDash.substring(0, afterDash.indexOf(' to ')).trim() : afterDash;
-            // Parse "Jun 15, 2026" or "Jun 15, 2026"
-            const cleaned = datePart.replace(/,/g,'').trim();
-            const dp = cleaned.split(/\s+/);
-            const month = MMAP[dp[0]] || String(Object.keys(MMAP).indexOf(dp[0])+1).padStart(2,'0');
-            const day = dp[1] ? String(parseInt(dp[1])).padStart(2,'0') : '??';
-            if (month === "00" || day === "NaN") return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{raw}</div>;
-            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{month}/{day} @ {startTime}</div>;
-          } catch(e) {
-            return <div style={{fontSize:10,color:dark?"#a78bfa":"#6b2d4e",fontWeight:600,marginBottom:2}}>{lead.appointment}</div>;
+        {(()=>{
+          const MMAP = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06","Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"};
+          const parse = (raw)=>{
+            if(!raw) return null;
+            try {
+              const dashIdx = raw.indexOf(' - ');
+              const datePart = dashIdx>-1 ? raw.substring(0,dashIdx).trim() : raw.trim();
+              const afterDash = dashIdx>-1 ? raw.substring(dashIdx+3).trim() : "";
+              const startTime = afterDash.indexOf(' to ')>-1 ? afterDash.substring(0,afterDash.indexOf(' to ')).trim() : afterDash;
+              let d = new Date(`${datePart} ${startTime}`); if(isNaN(d.getTime())) d = new Date(datePart);
+              return isNaN(d.getTime()) ? null : d;
+            } catch(e){ return null; }
+          };
+          const fmt = (raw)=>{
+            try {
+              const dashIdx = raw.indexOf(' - '); if(dashIdx===-1) return raw;
+              const datePart = raw.substring(0,dashIdx).trim();
+              const afterDash = raw.substring(dashIdx+3).trim();
+              const startTime = afterDash.indexOf(' to ')>-1 ? afterDash.substring(0,afterDash.indexOf(' to ')).trim() : afterDash;
+              const dp = datePart.replace(/,/g,'').trim().split(/\s+/);
+              const month = MMAP[dp[0]] || String(Object.keys(MMAP).indexOf(dp[0])+1).padStart(2,'0');
+              const day = dp[1] ? String(parseInt(dp[1])).padStart(2,'0') : '??';
+              if(month==="00"||day==="NaN") return raw;
+              return `${month}/${day} @ ${startTime}`;
+            } catch(e){ return raw; }
+          };
+          const at = (lead.appt_ts && typeof lead.appt_ts==="object") ? lead.appt_ts : {};
+          // Each appointment on the lead, with its BOOKING time (falling back to the
+          // scheduled date when no booking timestamp exists, e.g. older leads).
+          const cands = [];
+          const bookedKey = (ts, raw)=> ts ? new Date(ts).getTime() : (parse(raw) ? parse(raw).getTime() : 0);
+          if(lead.appointment){
+            const isCB = !!lead.cb_event_id && !lead.gcal_event_id;
+            cands.push({raw:lead.appointment, label:"", color:isCB?"#db2777":"#16a34a", k:bookedKey(at.main, lead.appointment)});
           }
+          if(lead.cap_appointment) cands.push({raw:lead.cap_appointment, label:"CAP ", color:"#ea580c", k:bookedKey(at.cap, lead.cap_appointment)});
+          if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
+          if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
+          (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label)}); });
+          if(!cands.length) return null;
+          let best=cands[0];
+          for(const c of cands.slice(1)){ if(c.k >= best.k) best=c; } // latest booked wins
+          return <div style={{fontSize:10,color:best.color,fontWeight:700,marginBottom:2}}>{best.label}{fmt(best.raw)}</div>;
         })()}
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -10949,10 +10977,13 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
       const apptStr = `${startTime.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})} - ${startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} to ${endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
       let update, local;
+      const nowTs = new Date().toISOString();
+      const curTs = (lead.appt_ts && typeof lead.appt_ts==="object") ? lead.appt_ts : {};
+      let tsKey = null;
       if(doAppend){
         // Additional appointment: append to the list, never touch the primary
         // closer slot / CAP, and leave the pipeline stage unchanged.
-        const entry = { id:selectedSlot.id, label:apptStr, type:"extra", ts:new Date().toISOString() };
+        const entry = { id:selectedSlot.id, label:apptStr, type:"extra", ts:nowTs };
         const nextExtra = [...(Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]), entry];
         update = { extra_appointments:nextExtra, updated_at:new Date().toISOString() };
         local  = { extra_appointments:nextExtra };
@@ -10960,7 +10991,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         // Booking a CAP records the CAP appointment but does NOT move the lead
         // into the CAP stage — it stays in whatever stage it's currently in.
         update = { cap_appointment:apptStr, cap_event_id:selectedSlot.id, updated_at:new Date().toISOString() };
-        local  = { cap_event_id:selectedSlot.id, cap_appointment:apptStr };
+        local  = { cap_event_id:selectedSlot.id, cap_appointment:apptStr }; tsKey="cap";
       } else {
         // A real booked closer slot replaces any personal comeback on the rep's own calendar.
         if(lead.cb_event_id){
@@ -10968,9 +10999,15 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
           catch(e){ console.error("Couldn't delete old comeback from calendar:",e); }
         }
         update = { appointment:apptStr, gcal_event_id:selectedSlot.id, cb_event_id:null, stage:bookedStage, updated_at:new Date().toISOString() };
-        local  = { gcal_event_id:selectedSlot.id, appointment:apptStr, cb_event_id:null, stage:bookedStage };
+        local  = { gcal_event_id:selectedSlot.id, appointment:apptStr, cb_event_id:null, stage:bookedStage }; tsKey="main";
       }
+      // Record the booking time so the lead card can show the most-recently-booked one.
+      const newTsMap = tsKey ? {...curTs, [tsKey]:nowTs} : curTs;
+      if(tsKey) local.appt_ts = newTsMap;
       if(lead.id){ await sb.from("leads").update(update).eq("id",lead.id); }
+      // Stamp the booking time separately & non-blocking — never let a missing
+      // appt_ts column block the actual booking.
+      if(lead.id && tsKey){ try{ sb.from("leads").update({appt_ts:newTsMap}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){} }
       if(onUpdate) onUpdate(local);
       setDoneMsg("booked");
       setDone(true);
@@ -12420,11 +12457,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
@@ -12678,7 +12715,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,appt_ts:(form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{},history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
