@@ -4424,6 +4424,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
+  const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [showCommission,setShowCommission]=useState(false);
   const [showUtilInfoV,setShowUtilInfoV]=useState(false);
   const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
@@ -4768,7 +4769,27 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     {canBookCap ? (
-                      <CalendarSyncButton lead={lead} onUpdate={updated=>handleUpdate({...lead,...updated})} creatorName={creatorName} capMode={true} label={lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}/>
+                      !capChoice ? (
+                        <button onClick={()=>setCapChoice(true)}
+                          style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #ea580c",background:"#fff7ed",color:"#ea580c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                          {lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}
+                        </button>
+                      ) : (
+                        <React.Fragment>
+                          <CalendarSyncButton lead={lead} onUpdate={updated=>{setCapChoice(false);handleUpdate({...lead,...updated});}} creatorName={creatorName} capMode={true} label="🏢 Closer"/>
+                          <PersonalApptButton lead={lead}
+                            label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
+                            summary={`🟠 CAP - ${lead.name||"Lead"}`} accent="#ea580c" colorId="6"
+                            onSelect={async(val,evId)=>{
+                              if(lead.cap_event_id && lead.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cap_event_id); }catch(e){ console.error(e); } }
+                              const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cap:new Date().toISOString()};
+                              await sb.from("leads").update({cap_appointment:val,cap_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                              try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                              handleUpdate({...lead,cap_appointment:val,cap_event_id:evId||null,appt_ts:nts});
+                              setCapChoice(false);
+                            }}/>
+                        </React.Fragment>
+                      )
                     ) : <div style={{flex:1}}/>}
                     <PersonalApptButton lead={lead}
                       label={lead.install_event_id?"🟩 Change Install":"🟩 Book Install"}
@@ -5081,6 +5102,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [fileErr,setFileErr]=useState("");
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
+  const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   useEffect(()=>{
     setConfirmDelete(false); // never open the form already showing a delete prompt
     setFileErr(""); setUploadingFile(false); setEditImgOpen(null);
@@ -5320,9 +5342,25 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               </div>
               <div style={{display:"flex",gap:8}}>
                 {canBookCap ? (
-                  <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                    setForm(f=>({...f,...updated}));
-                  }} label={form.cap_event_id?"📋 Change CAP":"📋 Book CAP"} creatorName={creatorName} capMode={true}/>
+                  !capChoice ? (
+                    <button type="button" onClick={()=>setCapChoice(true)}
+                      style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #ea580c",background:"#fff7ed",color:"#ea580c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      {form.cap_event_id?"📋 Change CAP":"📋 Book CAP"}
+                    </button>
+                  ) : (
+                    <React.Fragment>
+                      <CalendarSyncButton lead={{...form}} onUpdate={updated=>{ setCapChoice(false); setForm(f=>({...f,...updated})); }} label="🏢 Closer" creatorName={creatorName} capMode={true}/>
+                      <PersonalApptButton lead={{...form}}
+                        label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
+                        summary={`🟠 CAP - ${form.name||"Lead"}`} accent="#ea580c" colorId="6"
+                        onSelect={async(val,evId)=>{
+                          if(form.cap_event_id && form.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cap_event_id); }catch(e){ console.error(e); } }
+                          setForm(f=>({...f,cap_appointment:val,cap_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),cap:new Date().toISOString()}}));
+                          if(form.id){ try{ const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cap:new Date().toISOString()}; await sb.from("leads").update({cap_appointment:val,cap_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                          setCapChoice(false);
+                        }}/>
+                    </React.Fragment>
+                  )
                 ) : <div style={{flex:1}}/>}
                 <PersonalApptButton lead={{...form}}
                   label={form.install_event_id?"🟩 Change Install":"🟩 Book Install"}
