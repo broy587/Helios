@@ -11724,7 +11724,13 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
             </button>
           )}
           {m.file_url && (
-            <button onClick={()=>setViewer({type:"pdf",url:m.file_url,name:m.file_name||m.title||"PDF"})}
+            <button onClick={()=>{
+              // Mobile webviews only render the FIRST page of a PDF inside an iframe,
+              // so on phones open the PDF in the real browser (all pages, scrollable).
+              const isMobile = (typeof window!=="undefined") && ((window.innerWidth<=820) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||""));
+              if(isMobile){ window.open(m.file_url, "_blank", "noopener,noreferrer"); }
+              else { setViewer({type:"pdf",url:m.file_url,name:m.file_name||m.title||"PDF"}); }
+            }}
               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fde8e8",color:"#b91c1c",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               📕 View PDF
             </button>
@@ -12023,7 +12029,15 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
                 </div>
               </div>
             ) : (
-              <iframe src={viewer.url} title={viewer.name} style={{width:"100%",height:"100%",border:"none",borderRadius:8,background:"#fff"}}/>
+              <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column"}}>
+                <iframe src={viewer.url} title={viewer.name} style={{flex:1,width:"100%",border:"none",borderRadius:8,background:"#fff"}}/>
+                <div style={{textAlign:"center",marginTop:8,flexShrink:0}}>
+                  <a href={viewer.url} target="_blank" rel="noreferrer"
+                    style={{fontSize:12,color:"rgba(255,255,255,0.75)",textDecoration:"underline"}}>
+                    Only seeing one page? Open the full PDF ↗
+                  </a>
+                </div>
+              </div>
             )}
           </div>
         </div>
