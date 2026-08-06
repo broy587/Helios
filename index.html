@@ -4425,6 +4425,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
+  const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   const [showCommission,setShowCommission]=useState(false);
   const [showUtilInfoV,setShowUtilInfoV]=useState(false);
   const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
@@ -4805,18 +4806,29 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       }}/>
                   </div>
                   <div style={{display:"flex",gap:8}}>
-                    <PersonalApptButton lead={lead}
-                      label={lead.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
-                      title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
-                      summary={`🔴 CS - ${lead.name||"Lead"}`}
-                      accent="#dc2626" colorId="11"
-                      onSelect={async(val,evId)=>{
-                        if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
-                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cs:new Date().toISOString()};
-                        await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                        handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts});
-                      }}/>
+                    {!csChoice ? (
+                      <button onClick={()=>setCsChoice(true)}
+                        style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                        {lead.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                      </button>
+                    ) : (
+                      <React.Fragment>
+                        <CalendarSyncButton lead={lead} onUpdate={updated=>{setCsChoice(false);handleUpdate({...lead,...updated});}} creatorName={creatorName} csMode={true} label="🏢 Closer"/>
+                        <PersonalApptButton lead={lead}
+                          label="👤 Personal"
+                          title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
+                          summary={`🔴 CS - ${lead.name||"Lead"}`}
+                          accent="#dc2626" colorId="11"
+                          onSelect={async(val,evId)=>{
+                            if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
+                            const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cs:new Date().toISOString()};
+                            await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                            try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                            handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts});
+                            setCsChoice(false);
+                          }}/>
+                      </React.Fragment>
+                    )}
                     <div style={{flex:1}}/>
                   </div>
                   {/* Cancel buttons for the personal-calendar bookings */}
@@ -5103,6 +5115,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
+  const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   useEffect(()=>{
     setConfirmDelete(false); // never open the form already showing a delete prompt
     setFileErr(""); setUploadingFile(false); setEditImgOpen(null);
@@ -5373,17 +5386,28 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   }}/>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <PersonalApptButton lead={{...form}}
-                  label={form.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
-                  title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
-                  summary={`🔴 CS - ${form.name||"Lead"}`}
-                  accent="#dc2626" colorId="11"
-                  onSelect={async(val,evId)=>{
-                    if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
-                    const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cs:new Date().toISOString()};
-                    setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}));
-                    if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
-                  }}/>
+                {!csChoice ? (
+                  <button type="button" onClick={()=>setCsChoice(true)}
+                    style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    {form.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                  </button>
+                ) : (
+                  <React.Fragment>
+                    <CalendarSyncButton lead={{...form}} onUpdate={updated=>{ setCsChoice(false); setForm(f=>({...f,...updated})); }} label="🏢 Closer" creatorName={creatorName} csMode={true}/>
+                    <PersonalApptButton lead={{...form}}
+                      label="👤 Personal"
+                      title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
+                      summary={`🔴 CS - ${form.name||"Lead"}`}
+                      accent="#dc2626" colorId="11"
+                      onSelect={async(val,evId)=>{
+                        if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
+                        const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cs:new Date().toISOString()};
+                        setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}));
+                        if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                        setCsChoice(false);
+                      }}/>
+                  </React.Fragment>
+                )}
                 <div style={{flex:1}}/>
               </div>
               {(form.install_event_id || form.install_appointment) && (
@@ -10617,12 +10641,12 @@ const TeamCalendars = {
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
-function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, appendMode, acReq}) {
+function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode, appendMode, acReq}) {
   const [showModal, setShowModal] = React.useState(false);
   const [localLead, setLocalLead] = React.useState(lead);
   // Sync when the lead's calendar OR identifying fields change (so a brand-new, unsaved lead's typed name/address/notes flow into the booking)
   React.useEffect(()=>setLocalLead(l=>({...l,...lead})),[lead?.gcal_event_id, lead?.cap_event_id, lead?.appointment, lead?.cap_appointment, JSON.stringify(lead?.extra_appointments), lead?.name, lead?.address, lead?.phone, lead?.email, lead?.notes]);
-  const isBooked = appendMode ? false : (capMode ? !!localLead.cap_event_id : !!localLead.gcal_event_id);
+  const isBooked = appendMode ? false : (csMode ? !!localLead.cs_event_id : capMode ? !!localLead.cap_event_id : !!localLead.gcal_event_id);
   const handleUpdate = (updated) => {
     setLocalLead(l=>({...l,...updated}));
     if(onUpdate) onUpdate(updated);
@@ -10630,9 +10654,9 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, append
   const openBooking = (e) => {
     e.stopPropagation();
     // Gate: a rep on a team with configured AC requirements can't book a NEW
-    // closer slot until the account meets them. Doesn't apply to CAP, extra
-    // appointments, managing an already-booked slot, or personal comebacks.
-    if(!capMode && !appendMode && !isBooked && acRequirementsActive(acReq)){
+    // closer slot until the account meets them. Doesn't apply to CAP, Cancel Save,
+    // extra appointments, managing an already-booked slot, or personal comebacks.
+    if(!capMode && !csMode && !appendMode && !isBooked && acRequirementsActive(acReq)){
       const miss = acRequirementsMissing(localLead, acReq);
       if(miss.length>0){
         window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
@@ -10641,13 +10665,15 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, append
     }
     setShowModal(true);
   };
+  const accent = csMode ? "#dc2626" : capMode ? "#ea580c" : "#1a2456";
+  const accentBg = csMode ? "#fef2f2" : capMode ? "#fff7ed" : "#f0f4ff";
   return (
     <>
-      <button onClick={openBooking} title={capMode?"Book CAP appointment":isBooked?"Manage calendar booking":"Book a slot"}
-        style={label?{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${capMode?"#ea580c":"#1a2456"}`,background:capMode?"#fff7ed":"#f0f4ff",color:capMode?"#ea580c":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      <button onClick={openBooking} title={csMode?"Book Cancel Save (team slot)":capMode?"Book CAP appointment":isBooked?"Manage calendar booking":"Book a slot"}
+        style={label?{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${accent}`,background:accentBg,color:accent,fontWeight:700,fontSize:13,cursor:"pointer"}:{width:30,height:30,borderRadius:8,background:isBooked?"#d1fae5":"#e0f2fe",border:isBooked?"1.5px solid #10b981":"none",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         {label||(isBooked?"✅":"📅")}
       </button>
-      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName} capMode={capMode} appendMode={appendMode}/>}
+      {showModal&&<CalendarEventModal lead={localLead} onClose={()=>setShowModal(false)} onUpdate={handleUpdate} creatorName={creatorName} capMode={capMode} csMode={csMode} appendMode={appendMode}/>}
     </>
   );
 }
@@ -10770,9 +10796,9 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
   );
 }
 
-function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appendMode}) {
+function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMode, appendMode}) {
   const dark = useDark();
-  const isBooked = capMode ? !!lead.cap_event_id : !!lead.gcal_event_id;
+  const isBooked = csMode ? !!lead.cs_event_id : capMode ? !!lead.cap_event_id : !!lead.gcal_event_id;
   // "Book another appointment" from the manage view flips this on so the booking
   // appends an extra appointment instead of replacing the existing one.
   const [appendOverride, setAppendOverride] = React.useState(false);
@@ -10906,7 +10932,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
     try {
       // Don't sign in up front — only if the backend can't handle the removal.
       const getToken = () => GCal.signIn();
-      const evId = capMode ? lead.cap_event_id : lead.gcal_event_id;
+      const evId = csMode ? lead.cs_event_id : capMode ? lead.cap_event_id : lead.gcal_event_id;
       // Restore calendar event back to Open Slot — and confirm it actually worked
       // before clearing the lead, so the two never get out of sync.
       if(evId){
@@ -10917,7 +10943,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         }
       }
       let update, local;
-      if(capMode){
+      if(csMode){
+        // Cancel Save is tracked separately; removing it never touches the closer
+        // slot / CAP or the stage.
+        update = { cs_event_id:null, cs_appointment:null, updated_at:new Date().toISOString() };
+        local  = { cs_event_id:null, cs_appointment:null };
+      } else if(capMode){
         // CAP is tracked separately from the closer-slot booking, so removing it
         // never touches gcal_event_id / appointment or the stage.
         update = { cap_event_id:null, cap_appointment:null, updated_at:new Date().toISOString() };
@@ -10970,12 +11001,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
       // Slot" first. CAP and closer-slot bookings are tracked separately, so
       // booking a CAP never disturbs an existing closer-slot booking (or vice versa).
       // In appendMode we're adding an extra appointment, so nothing is released.
-      const oldId = doAppend ? null : (capMode ? lead.cap_event_id : lead.gcal_event_id);
+      const oldId = doAppend ? null : (csMode ? lead.cs_event_id : capMode ? lead.cap_event_id : lead.gcal_event_id);
       const updatedEvent = {
-        summary: doAppend ? `🔵 APPT - ${lead.name||"Lead"}` : (capMode ? `🟠 CAP - ${lead.name||"Lead"}` : `🟢 AC - ${lead.name||"Lead"}`),
+        summary: doAppend ? `🔵 APPT - ${lead.name||"Lead"}` : (csMode ? `🔴 CS - ${lead.name||"Lead"}` : capMode ? `🟠 CAP - ${lead.name||"Lead"}` : `🟢 AC - ${lead.name||"Lead"}`),
         location: lead.address || "", // puts a tappable address on the calendar event for directions
-        description: `${doAppend?"APPOINTMENT BOOKED":(capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
-        colorId: doAppend ? "9" : (capMode ? "6" : "10"), // extra = blueberry, CAP = tangerine, AC = basil green
+        description: `${doAppend?"APPOINTMENT BOOKED":(csMode?"CS BOOKED":capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        colorId: doAppend ? "9" : (csMode ? "11" : capMode ? "6" : "10"), // extra = blueberry, CS = tomato red, CAP = tangerine, AC = basil green
         visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
       };
       let booked = false;
@@ -11012,7 +11043,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         );
         if(!res.ok) throw new Error(await res.text());
       }
-      const bookedStage = capMode ? "CAP" : "AC / Scheduled";
+      const bookedStage = csMode ? lead.stage : (capMode ? "CAP" : "AC / Scheduled");
       // Build the appointment label from the slot times.
       const startTime = new Date(selectedSlot.start.dateTime||selectedSlot.start.date);
       const endTime = new Date(selectedSlot.end.dateTime||selectedSlot.end.date);
@@ -11028,9 +11059,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, appe
         const nextExtra = [...(Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]), entry];
         update = { extra_appointments:nextExtra, updated_at:new Date().toISOString() };
         local  = { extra_appointments:nextExtra };
+      } else if(csMode){
+        // Cancel Save records its own appointment and never changes the stage.
+        update = { cs_appointment:apptStr, cs_event_id:selectedSlot.id, updated_at:new Date().toISOString() };
+        local  = { cs_event_id:selectedSlot.id, cs_appointment:apptStr }; tsKey="cs";
       } else if(capMode){
-        // Booking a CAP records the CAP appointment but does NOT move the lead
-        // into the CAP stage — it stays in whatever stage it's currently in.
         update = { cap_appointment:apptStr, cap_event_id:selectedSlot.id, updated_at:new Date().toISOString() };
         local  = { cap_event_id:selectedSlot.id, cap_appointment:apptStr }; tsKey="cap";
       } else {
