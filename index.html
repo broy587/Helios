@@ -13264,10 +13264,15 @@ function App() {
   // pipelineFilter state already declared at top
 
   // Which teams are visible to this user
-  const visibleTeams = isOwner ? teams : teams.filter(t=>{
-    const ms=teamMembers[t.id]||[];
-    return ms.some(m=>m.user_id===user.id) || t.created_by===user.id;
-  });
+  const visibleTeams = (()=>{
+    const base = isOwner ? (teams||[]) : (teams||[]).filter(t=>{
+      const ms=teamMembers[t.id]||[];
+      return ms.some(m=>m.user_id===user.id) || t.created_by===user.id;
+    });
+    // Put the team(s) the current rep is actually on at the top of the list.
+    const mine = (tid)=>((teamMembers[tid]||[]).some(m=>m.user_id===user.id));
+    return [...base].sort((a,b)=>(mine(b.id)?1:0)-(mine(a.id)?1:0));
+  })();
 
   // Active team for "Team" sub-tab (default to first visible team)
   const activeTeamId = (()=>{
