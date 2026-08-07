@@ -6004,19 +6004,24 @@ function matchesPipelineFilters(lead, filters){
     });
     if(!inWindow) return false;
   }
+  // Appointment day-of-week (0=Sun … 6=Sat). "any" = no restriction.
+  if(filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!==""){
+    const dow = leadApptDayOfWeek(lead);
+    if(dow===null || dow!==Number(filters.apptDay)) return false;
+  }
   return true;
 }
-// Extract an appointment's START hour (0–23) from any appointment on the lead.
-// Uses the most-recently-booked appointment's time so it matches the card.
-function leadApptStartHour(lead){
-  const parseHour = (raw)=>{
-    if(!raw) return null;
-    const m = String(raw).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-    if(!m) return null;
-    let hr = parseInt(m[1],10) % 12;
-    if(/PM/i.test(m[3])) hr += 12;
-    return hr;
-  };
+// Day of week (0=Sun … 6=Sat) of the lead's most-recently-booked appointment.
+function leadApptDayOfWeek(lead){
+  const raw = leadApptRaw(lead);
+  if(!raw) return null;
+  const dashIdx = raw.indexOf(' - ');
+  const datePart = dashIdx>-1 ? raw.substring(0,dashIdx).trim() : raw.trim();
+  const d = new Date(datePart);
+  return isNaN(d.getTime()) ? null : d.getDay();
+}
+// The raw string of the lead's most-recently-booked appointment (any type).
+function leadApptRaw(lead){
   const at = (lead.appt_ts && typeof lead.appt_ts==="object") ? lead.appt_ts : {};
   const cands = [];
   if(lead.appointment) cands.push({raw:lead.appointment, ts: at.main?Date.parse(at.main):0});
@@ -6027,14 +6032,25 @@ function leadApptStartHour(lead){
   if(!cands.length) return null;
   let best=cands[0];
   for(const c of cands.slice(1)){ if((c.ts||0)>=(best.ts||0)) best=c; }
-  return parseHour(best.raw);
+  return best.raw;
+}
+// Extract an appointment's START hour (0–23) from the most-recently-booked appointment.
+function leadApptStartHour(lead){
+  const raw = leadApptRaw(lead);
+  if(!raw) return null;
+  const m = String(raw).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if(!m) return null;
+  let hr = parseInt(m[1],10) % 12;
+  if(/PM/i.test(m[3])) hr += 12;
+  return hr;
 }
 function pipeFilterCount(filters){
   if(!filters) return 0;
   return (Array.isArray(filters.active)?filters.active.length:0)
     + (filters.stale&&filters.stale.on?1:0)
     + (filters.after?1:0) + (filters.before?1:0)
-    + (Array.isArray(filters.appt)?filters.appt.length:0);
+    + (Array.isArray(filters.appt)?filters.appt.length:0)
+    + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0);
 }
 
 function analyzeHygiene(leads, staleDays) {
@@ -6514,7 +6530,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0);
         return (
           <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -6624,10 +6640,21 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       );
                     })}
                   </div>
+                  <select value={draft.apptDay===undefined?"any":String(draft.apptDay)} onChange={e=>setDraftFilters({...draft, apptDay:e.target.value})}
+                    style={{width:"100%",marginTop:10,fontSize:13,fontWeight:600,color:dark?"#f1f5f9":"#1a2456",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",cursor:"pointer"}}>
+                    <option value="any">Any day</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                    <option value="0">Sunday</option>
+                  </select>
                 </div>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],showArchive:false}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",showArchive:false}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
