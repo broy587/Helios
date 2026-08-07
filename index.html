@@ -4413,7 +4413,7 @@ function ZoomableImage({src, onClose}) {
   );
 }
 
-function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cap_event_id, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
@@ -4551,6 +4551,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,repProfile
               {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
               {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#6366f1",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🛟 NEEDS CANCEL SAVE</span>}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                {lead.priority && <span style={{fontSize:11,fontWeight:800,color:"#a16207",background:"#fef9c3",border:"1px solid #fde047",borderRadius:20,padding:"3px 10px"}}>⭐ PRIORITY LEAD</span>}
                 {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
                 {lead.confirmed==="Yes" && <span style={{fontSize:11,fontWeight:600,color:"#065f46",background:"#d1fae5",borderRadius:20,padding:"3px 10px"}}>✓ Text/Call Confirmed</span>}
               </div>
@@ -4565,25 +4566,38 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,repProfile
                 );
               })()}
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-              {lead.address&&onViewInCanvass&&(
-                <button onClick={()=>onViewInCanvass(lead)}
-                  style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #c8b8a2",background:"none",color:"#1a2456",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                  🗺️ Map
-                </button>
-              )}
-              {onArchive && (
-                <button onClick={()=>onArchive(lead)}
-                  title={lead.archived?"Unarchive — show in the pipeline again":"Archive — hide from the pipeline (not deleted)"}
-                  style={{padding:"7px 12px",borderRadius:8,border:`1.5px solid ${lead.archived?"#16a34a":"#c8b8a2"}`,background:"none",color:lead.archived?"#16a34a":"#6b2d4e",fontWeight:600,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                  {lead.archived?"📤 Unarchive":"🗄️ Archive"}
-                </button>
-              )}
-              <button onClick={()=>onEdit(lead)}
-                style={{padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                Edit
-              </button>
-              <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+            <div style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                  <button onClick={()=>onEdit(lead)}
+                    style={{flex:1,padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    Edit
+                  </button>
+                  {onArchive && (
+                    <button onClick={()=>onArchive(lead)}
+                      title={lead.archived?"Unarchive — show in the pipeline again":"Archive — hide from the pipeline (not deleted)"}
+                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.archived?"#16a34a":"#c8b8a2"}`,background:"none",color:lead.archived?"#16a34a":"#6b2d4e",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      {lead.archived?"📤 Unarchive":"🗄️ Archive"}
+                    </button>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                  {onTogglePriority && (
+                    <button onClick={()=>onTogglePriority(lead)}
+                      title={lead.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
+                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.priority?"#eab308":"#c8b8a2"}`,background:lead.priority?"#fef9c3":"none",color:lead.priority?"#a16207":"#6b2d4e",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      {lead.priority?"⭐ Priority":"☆ Priority"}
+                    </button>
+                  )}
+                  {lead.address&&onViewInCanvass&&(
+                    <button onClick={()=>onViewInCanvass(lead)}
+                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid #c8b8a2",background:"none",color:"#1a2456",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      🗺️ Map
+                    </button>
+                  )}
+                </div>
+              </div>
+              <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
           </div>
           {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment]].map(([label,value])=>value?(
@@ -6244,6 +6258,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
   const [filterOpen,setFilterOpen]=useState(false);
   const [draftFilters,setDraftFilters]=useState(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}});
   const [convOpen,setConvOpen]=useState(false);
+  const [priorityOpen,setPriorityOpen]=useState(false);
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -6362,6 +6377,10 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         <button onClick={()=>setConvOpen(true)} title="Conversions"
           style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
           📊
+        </button>
+        <button onClick={()=>setPriorityOpen(true)} title="Priority Comeback list"
+          style={{background:dark?"#1e293b":"#fff",color:"#eab308",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
+          ⭐
         </button>
         <button onClick={()=>{ setDraftFilters(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}}); setFilterOpen(true); }} title="Filter pipeline"
           style={{position:"relative",background:pipeFilterCount(pipeFilters)>0?"#1a2456":(dark?"#1e293b":"#fff"),color:pipeFilterCount(pipeFilters)>0?"#fff":(dark?"#f1f5f9":"#0f172a"),border:`1.5px solid ${pipeFilterCount(pipeFilters)>0?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap",display:"flex",alignItems:"center"}}>
@@ -6504,6 +6523,12 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             setDetailId(null); setAcWarnMsg("");
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
             catch(e){ console.error("Couldn't archive lead:",e); }
+          }}
+          onTogglePriority={async(l)=>{
+            const next = !l.priority;
+            onLeadView({...l,priority:next},"update");
+            try{ await sb.from("leads").update({priority:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
+            catch(e){ console.error("Couldn't set priority:",e); }
           }}
           repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap} acReq={acReq}
           onUpdate={updated=>onLeadView(updated,"update")}
@@ -6664,6 +6689,33 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         );
       })()}
 
+      {priorityOpen && (()=>{
+        const starred = (leads||[]).filter(l=>l.priority && !l.archived);
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1800}} onClick={()=>setPriorityOpen(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:dark?"#0f172a":"#faf6f0",borderRadius:"20px 20px 0 0",width:"min(100vw,560px)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+              <div style={{padding:"18px 20px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+                <div style={{fontWeight:800,fontSize:17,color:"#a16207",display:"flex",alignItems:"center",gap:8}}>⭐ Priority Comeback <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>({starred.length})</span></div>
+                <button onClick={()=>setPriorityOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+              </div>
+              <div style={{overflowY:"auto",padding:"12px 16px 28px"}}>
+                {starred.length===0 ? (
+                  <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No priority leads yet. Star a lead's ⭐ Priority button to add it here.</div>
+                ) : starred.map(l=>(
+                  <button key={l.id} onClick={()=>{ setPriorityOpen(false); setDetailId(l.id); }}
+                    style={{width:"100%",textAlign:"left",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
+                      <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
+                    </div>
+                    <span style={{fontSize:16,flexShrink:0}}>⭐</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {convOpen && (()=>{
         const c = analyzeConversions(leads);
         const Bar = ({label, pct, n, total})=>(
@@ -12677,11 +12729,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
@@ -13584,6 +13636,12 @@ function App() {
             setDetailId(null);
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
             catch(e){ console.error("Couldn't archive lead:",e); }
+          }}
+          onTogglePriority={async(l)=>{
+            const next = !l.priority;
+            setLeads(ls=>ls.map(x=>x.id===l.id?{...x,priority:next}:x));
+            try{ await sb.from("leads").update({priority:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
+            catch(e){ console.error("Couldn't set priority:",e); }
           }}
           repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles} canBookCap={canBookCap} acReq={myAcReq}
           onUpdate={updated=>{
