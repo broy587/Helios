@@ -6390,7 +6390,6 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
           {pipeFilterCount(pipeFilters)>0 && <span style={{position:"absolute",top:-6,right:-6,background:"#6b2d4e",color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",minWidth:16,textAlign:"center",lineHeight:1.4}}>{pipeFilterCount(pipeFilters)}</span>}
         </button>
-        <button onClick={onAddLead} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>+ Add</button>
       </div>
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
         {/* Main pipeline stages — no ARC */}
@@ -13459,9 +13458,9 @@ function App() {
       <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
         {tab==="pipeline" && (
           <>
-            {/* Pipeline sub-tab bar */}
-            {(isPrivileged || isCloser) && (
-              <div style={{background:dark?"#0f172a":"#ede3d6",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderTop:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+            {/* Scope + New Lead row */}
+            <div style={{background:dark?"#0f172a":"#ede3d6",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderTop:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+              {(isPrivileged || isCloser) && (<>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
                   style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${pipelineSubTab==="mine"?"#6b2d4e":dark?"#334155":"#ede3d6"}`,background:pipelineSubTab==="mine"?"#1a2456":dark?"#1e293b":"#faf6f0",color:pipelineSubTab==="mine"?"#fff":dark?"#94a3b8":"#1a2456",fontWeight:pipelineSubTab==="mine"?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",transition:"all 0.15s"}}>
@@ -13518,8 +13517,13 @@ function App() {
                   )}
                 </div>
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
-              </div>
-            )}
+              </>)}
+              <div style={{flex:1}}/>
+              <button onClick={()=>setModal({open:true,lead:null})}
+                style={{background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",fontWeight:800,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(236,72,153,0.35)"}}>
+                + New Lead
+              </button>
+            </div>
             <PipelineBoard leads={visibleLeads} allLeads={leads} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
