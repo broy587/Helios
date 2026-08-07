@@ -6261,13 +6261,16 @@ function analyzeConversions(leads) {
   };
 }
 
-function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters}) {
+function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner}) {
   const dark=useDark();
   const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
   const [filterOpen,setFilterOpen]=useState(false);
   const [draftFilters,setDraftFilters]=useState(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}});
   const [convOpen,setConvOpen]=useState(false);
   const [priorityOpen,setPriorityOpen]=useState(false);
+  const [auditOpen,setAuditOpen]=useState(false);
+  const AUDIT_ALL_STAGES = ["AC / Scheduled","No Show / No Contact","No Show / In Contact","Stale / No Reschedule","No Close / No Offer","No Close / Offer Given","Failed Credit / Disqualified"];
+  const [auditStages,setAuditStages]=useState(AUDIT_ALL_STAGES);
   const [dragId,setDragId]=useState(null);
   const [dragPos,setDragPos]=useState({x:0,y:0});
   const [dragOver,setDragOver]=useState(null);
@@ -6391,6 +6394,12 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           style={{background:dark?"#1e293b":"#fff",color:"#eab308",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
           ⭐
         </button>
+        {isOwner && (
+          <button onClick={()=>setAuditOpen(true)} title="Lead Audit (AC → Disqualified) — owner only"
+            style={{background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>
+            🔍
+          </button>
+        )}
         <button onClick={()=>{ setDraftFilters(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}}); setFilterOpen(true); }} title="Filter pipeline"
           style={{position:"relative",background:pipeFilterCount(pipeFilters)>0?"#1a2456":(dark?"#1e293b":"#fff"),color:pipeFilterCount(pipeFilters)>0?"#fff":(dark?"#f1f5f9":"#0f172a"),border:`1.5px solid ${pipeFilterCount(pipeFilters)>0?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer",fontSize:14,whiteSpace:"nowrap",display:"flex",alignItems:"center"}}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
@@ -6697,6 +6706,125 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         );
       })()}
 
+      {auditOpen && isOwner && (()=>{
+        const AUDIT_STAGES = AUDIT_ALL_STAGES;
+        // Uses `leads` = the exact set currently showing in the pipeline (team/rep
+        // selector + all active pipeline filters already applied), narrowed to the
+        // stages the owner has selected in the audit's stage picker.
+        const activeStages = (auditStages && auditStages.length) ? auditStages : AUDIT_ALL_STAGES;
+        const pool = (leads||[]).filter(l=>activeStages.includes(l.stage));
+        const repName = (id)=>((profiles||[]).find(p=>p.id===id)||{}).name || "—";
+        const fmtDate = (d)=>{ if(!d) return "—"; try{ return new Date(d).toLocaleDateString(); }catch(e){ return String(d); } };
+        const val = (v)=>{
+          if(v===null||v===undefined||v==="") return "—";
+          if(Array.isArray(v)) return v.length?v.join(", "):"—";
+          if(typeof v==="boolean") return v?"Yes":"No";
+          return String(v);
+        };
+        // Field groups for readable display.
+        const groups = (l)=>([
+          ["Customer", [["Name",l.name],["Address",l.address],["Phone",l.phone],["Email",l.email],["Secondary name",l.secondary_name],["Secondary phone",l.secondary_phone],["Secondary email",l.secondary_email]]],
+          ["Status", [["Stage",l.stage],["Temperature",l.temperature],["Soft/Solid",l.soft_solid],["Confirmed",l.confirmed],["Contact status",l.contact_status],["Priority",l.priority],["ARC/Cancel",l.is_arc],["On hold",l.on_hold],["Needs cancel save",l.needs_cancel_save],["Gift card dropped",l.gift_card_dropped],["Bill retrieved",l.bill_retrieved]]],
+          ["Utility", [["Utility",l.utility],["ESIID",l.esiid],["Meter #",l.meter],["Usage input",l.usage_input],["¢/kWh",l.cents_kwh],["Annual kWh",l.annual_kwh],["Average bill",l.average_bill],["Autopay",l.autopay_input],["Knew solar",l.knew_solar],["Closer inside",l.closer_inside]]],
+          ["Sold system", [["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
+          ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
+          ["Appointments", [["Closer/CB",l.appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
+          ["Meta", [["Owner",repName(l.owner_id)],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
+        ]);
+        const exportCsv = ()=>{
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","temperature","soft_solid","confirmed","contact_status","priority","is_arc","on_hold","needs_cancel_save","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","notes"];
+          const esc = (s)=>`"${String(s===null||s===undefined?"":Array.isArray(s)?s.join("; "):s).replace(/"/g,'""')}"`;
+          const noteText = (l)=>{
+            const log = Array.isArray(l.closer_notes_log)?l.closer_notes_log.map(n=>`[${n.by||""} ${n.ts||""}] ${n.text||""}`).join(" | "):"";
+            return [l.notes||"", log].filter(Boolean).join("  ||  ");
+          };
+          const header = ["owner",...keys,"closer_notes"].join(",");
+          const rows = pool.map(l=>[esc(repName(l.owner_id)),...keys.map(k=>esc(l[k])),esc(noteText(l))].join(","));
+          const csv = [header,...rows].join("\n");
+          const blob = new Blob([csv],{type:"text/csv"});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a"); a.href=url; a.download=`lead-audit-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+          setTimeout(()=>URL.revokeObjectURL(url),1000);
+        };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1800}} onClick={()=>setAuditOpen(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:dark?"#0f172a":"#faf6f0",borderRadius:"20px 20px 0 0",width:"min(100vw,760px)",height:"92vh",display:"flex",flexDirection:"column"}}>
+              <div style={{padding:"16px 20px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexShrink:0}}>
+                <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>🔍 Lead Audit <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>· AC → Disqualified ({pool.length})</span></div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <button onClick={exportCsv} style={{background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>⬇ CSV</button>
+                  <button onClick={()=>setAuditOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+                </div>
+              </div>
+              <div style={{padding:"10px 16px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,flexShrink:0}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Stages</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>setAuditStages(AUDIT_ALL_STAGES)} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>All</button>
+                    <button onClick={()=>setAuditStages([])} style={{background:"none",border:"none",color:"#94a3b8",fontSize:11,fontWeight:700,cursor:"pointer"}}>None</button>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {AUDIT_ALL_STAGES.map(s=>{
+                    const on = activeStages.includes(s);
+                    return (
+                      <button key={s} onClick={()=>{
+                        setAuditStages(prev=>{ const cur=(prev&&prev.length)?prev:AUDIT_ALL_STAGES; return cur.includes(s)?cur.filter(x=>x!==s):[...cur,s]; });
+                      }}
+                        style={{padding:"5px 10px",borderRadius:16,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{overflowY:"auto",padding:"12px 16px 28px"}}>
+                {pool.length===0 ? (
+                  <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No leads in these stages.</div>
+                ) : pool.map(l=>(
+                  <div key={l.id} style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                      <div style={{fontWeight:800,fontSize:15,color:dark?"#f1f5f9":"#1a2456"}}>{l.name||"(no name)"}{l.priority?" ⭐":""}</div>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:dark?"#334155":"#f1f5f9",color:dark?"#e2e8f0":"#475569"}}>{l.stage}</span>
+                        <span style={{fontSize:11,color:"#94a3b8"}}>{repName(l.owner_id)}</span>
+                      </div>
+                    </div>
+                    {groups(l).map(([title,fields])=>{
+                      const shown = fields.filter(([,v])=>v!==null&&v!==undefined&&v!==""&&!(Array.isArray(v)&&v.length===0));
+                      if(shown.length===0) return null;
+                      return (
+                        <div key={title} style={{marginBottom:10}}>
+                          <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>{title}</div>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"4px 12px"}}>
+                            {shown.map(([label,v])=>(
+                              <div key={label} style={{fontSize:12,color:dark?"#cbd5e1":"#334155",minWidth:0}}>
+                                <span style={{color:"#94a3b8"}}>{label}: </span><span style={{fontWeight:600,wordBreak:"break-word"}}>{val(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* Notes — always show if present */}
+                    {(l.notes || (Array.isArray(l.closer_notes_log)&&l.closer_notes_log.length>0)) && (
+                      <div style={{marginTop:6,borderTop:`1px solid ${dark?"#334155":"#f1f5f9"}`,paddingTop:8}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Notes</div>
+                        {l.notes && <div style={{fontSize:12,color:dark?"#e2e8f0":"#1e293b",whiteSpace:"pre-wrap",marginBottom:6}}>{l.notes}</div>}
+                        {Array.isArray(l.closer_notes_log) && l.closer_notes_log.map((n,i)=>(
+                          <div key={i} style={{fontSize:12,color:dark?"#cbd5e1":"#334155",background:dark?"#0f172a":"#f8fafc",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+                            <span style={{color:"#94a3b8",fontSize:11}}>{n.by||"—"}{n.ts?` · ${n.ts}`:""}: </span>{n.text||""}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {priorityOpen && (()=>{
         const starred = (leads||[]).filter(l=>l.priority && !l.archived);
         return (
@@ -13535,7 +13663,7 @@ function App() {
                 + New Lead
               </button>
             </div>
-            <PipelineBoard leads={visibleLeads} allLeads={leads} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} isOwner={isOwner} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
