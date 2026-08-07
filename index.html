@@ -4583,7 +4583,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                 </div>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                   {onTogglePriority && (
-                    <button onClick={()=>onTogglePriority(lead)}
+                    <button onClick={()=>{ handleUpdate({priority:!lead.priority}); onTogglePriority(lead); }}
                       title={lead.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
                       style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.priority?"#eab308":"#c8b8a2"}`,background:lead.priority?"#fef9c3":"none",color:lead.priority?"#a16207":"#6b2d4e",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
                       {lead.priority?"⭐ Priority":"☆ Priority"}
