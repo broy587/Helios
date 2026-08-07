@@ -4578,10 +4578,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             <div style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
-                  <button onClick={()=>onEdit(lead)}
-                    style={{flex:1,padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    Edit
-                  </button>
                   {onArchive && (
                     <button onClick={()=>onArchive(lead)}
                       title={lead.archived?"Unarchive — show in the pipeline again":"Archive — hide from the pipeline (not deleted)"}
@@ -4589,6 +4585,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       {lead.archived?"📤 Unarchive":"🗄️ Archive"}
                     </button>
                   )}
+                  <button onClick={()=>onEdit(lead)}
+                    style={{flex:1,padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    Edit
+                  </button>
                 </div>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                   {onTogglePriority && (
