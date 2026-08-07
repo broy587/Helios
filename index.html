@@ -2389,10 +2389,6 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                 )}
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                {selectedTeamId!=="all" && rep.id!==OWNER_ID && (
-                  <button onClick={()=>handleRemoveMember(rep.id)}
-                    style={{background:"none",border:"1.5px solid #e2e8f0",borderRadius:8,padding:"5px 8px",color:"#94a3b8",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Remove</button>
-                )}
                 {(isOwner || isManager) && rep.id!==OWNER_ID && (
                   <div style={{position:"relative"}}>
                     <button onClick={()=>setRepActionOpen(isOpen?null:rep.id)}
@@ -2426,6 +2422,13 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                         <button onClick={()=>{setRepActionOpen(null);setAssignTeamOpen(rep.id);}}
                           style={{width:"100%",padding:"10px 14px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",color:"#0f172a",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
                           Assign to Team
+                        </button>
+                        )}
+                        {/* Remove from this team's list — only when a specific team is selected */}
+                        {selectedTeamId!=="all" && (
+                        <button onClick={()=>{setRepActionOpen(null);handleRemoveMember(rep.id);}}
+                          style={{width:"100%",padding:"10px 14px",border:"none",borderBottom:"1px solid #f1f5f9",background:"#fff",color:"#0f172a",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                          Remove from Team
                         </button>
                         )}
                         {/* Delete rep — owner only */}
