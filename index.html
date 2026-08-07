@@ -4843,6 +4843,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,repProfiles,onTransf
                       ✕ Cancel Personal Comeback
                     </button>
                   )}
+                  {(lead.cap_event_id || lead.cap_appointment) && (
+                    <button onClick={async()=>{
+                      if(!window.confirm("Cancel this CAP? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                      if(lead.cap_event_id){ try{ await GCal.deletePersonalCB(lead.cap_event_id); }catch(e){ console.error("Couldn't delete CAP from calendar (clearing anyway):",e); } }
+                      try{ await sb.from("leads").update({cap_appointment:"",cap_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear CAP on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
+                      handleUpdate({...lead,cap_appointment:"",cap_event_id:null});
+                    }}
+                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fed7aa",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",color:"#c2410c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      ✕ Cancel CAP
+                    </button>
+                  )}
                   {(lead.install_event_id || lead.install_appointment) && (
                     <button onClick={async()=>{
                       if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
@@ -5410,6 +5421,17 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 )}
                 <div style={{flex:1}}/>
               </div>
+              {(form.cap_event_id || form.cap_appointment) && (
+                <button type="button" onClick={async()=>{
+                  if(!window.confirm("Cancel this CAP? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                  if(form.cap_event_id){ try{ await GCal.deletePersonalCB(form.cap_event_id); }catch(e){ console.error("Couldn't delete CAP from calendar (clearing anyway):",e); } }
+                  setForm(f=>({...f,cap_appointment:"",cap_event_id:null}));
+                  if(form.id){ try{ await sb.from("leads").update({cap_appointment:"",cap_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                }}
+                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fed7aa",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",color:"#c2410c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✕ Cancel CAP
+                </button>
+              )}
               {(form.install_event_id || form.install_appointment) && (
                 <button type="button" onClick={async()=>{
                   if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
