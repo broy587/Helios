@@ -6444,6 +6444,13 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           acWarning={acWarnMsg}
           onEdit={l=>{setDetailId(null);setAcWarnMsg("");onLeadView(l,"edit");}}
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);setAcWarnMsg("");}}
+          onArchive={async(l)=>{
+            const next = !l.archived;
+            onLeadView({...l,archived:next},"update");
+            setDetailId(null); setAcWarnMsg("");
+            try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
+            catch(e){ console.error("Couldn't archive lead:",e); }
+          }}
           repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap} acReq={acReq}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
