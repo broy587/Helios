@@ -6638,6 +6638,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);setAcWarnMsg("");}}
           onArchive={async(l)=>{
             const next = !l.archived;
+            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with \"Show Archive\" in the filters.")) return;
             onLeadView({...l,archived:next},"update");
             setDetailId(null); setAcWarnMsg("");
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
@@ -13889,6 +13890,7 @@ function App() {
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
           onArchive={async(l)=>{
             const next = !l.archived;
+            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with \"Show Archive\" in the filters.")) return;
             setLeads(ls=>ls.map(x=>x.id===l.id?{...x,archived:next}:x));
             setDetailId(null);
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
