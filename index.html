@@ -239,13 +239,13 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 // Hierarchy: rep  <  closer  <  manager  <  owner
 // - "members" = anyone who carries leads and appears in rep lists: rep, closer, manager.
 // - isPrivileged (manager/owner) is unchanged — closers do NOT get manager powers.
-// - canBookCap = owner, manager, closer, or self_gen (the CAP-appointment capability).
-// - "self_gen" is a rep in every way EXCEPT it can also book CAPs like a closer.
-//   It does NOT get closer/manager lead-visibility or privileged powers.
+// - canBookCap = every member role (owner, manager, closer, self_gen, and now rep).
+// - "rep" and "self_gen" are now functionally identical — only the displayed title
+//   differs. Both can book CAPs; both see only their own pipeline.
 function isMemberRole(role){ return role==="rep" || role==="self_gen" || role==="closer" || role==="manager"; }
 function isCloserRole(role){ return role==="closer"; }
 function isSelfGenRole(role){ return role==="self_gen"; }
-function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer" || role==="self_gen"; }
+function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || role==="closer" || role==="self_gen" || role==="rep"; }
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
 const GCAL_CALENDAR_ID="ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986@group.calendar.google.com";
 // Team calendar map — add new teams here as they get calendars
@@ -13693,6 +13693,9 @@ function App() {
     : profiles.filter(p=>{
         if (p.id===user.id) return false;
         if (p.ghost_mode) return false; // ghosted users hidden from non-owners
+        // Closers may only see teammates whose role is "rep" (not self-gen, other
+        // closers, or managers). Managers see all member roles on their team.
+        if (isCloser && p.role!=="rep") return false;
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
       })
   ).slice().sort((a,b)=>{
@@ -13710,26 +13713,36 @@ function App() {
     : pipelineFilter.startsWith("rep:") ? "rep"
     : "mine";
 
+  // Closers may only ever see leads owned by teammates whose role is "rep" (plus
+  // their own). This bounds every scope below for a closer.
+  const repRoleIds = new Set((profiles||[]).filter(p=>p.role==="rep").map(p=>p.id));
+  const closerAllowed = (ownerId) => ownerId===user.id || repRoleIds.has(ownerId);
   // Compute visible leads
   const getVisibleLeads = () => {
-    if (pipelineFilter==="mine") return leads.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id));
-    if (pipelineFilter==="all") {
-      if (isOwner) return leads; // owner: truly everything
-      // Safety: a non-owner should never see every team. Bound to their team members.
-      const memberIds=new Set([user.id]);
-      visibleTeams.forEach(t=>(teamMembers[t.id]||[]).forEach(m=>memberIds.add(m.user_id)));
-      return leads.filter(l=>memberIds.has(l.owner_id));
+    let out;
+    if (pipelineFilter==="mine") out = leads.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id));
+    else if (pipelineFilter==="all") {
+      if (isOwner) out = leads; // owner: truly everything
+      else {
+        // Safety: a non-owner should never see every team. Bound to their team members.
+        const memberIds=new Set([user.id]);
+        visibleTeams.forEach(t=>(teamMembers[t.id]||[]).forEach(m=>memberIds.add(m.user_id)));
+        out = leads.filter(l=>memberIds.has(l.owner_id));
+      }
     }
-    if (pipelineFilter.startsWith("team:")) {
+    else if (pipelineFilter.startsWith("team:")) {
       const teamId=pipelineFilter.replace("team:","");
       const memberIds=(teamMembers[teamId]||[]).map(m=>m.user_id);
-      return leads.filter(l=>memberIds.includes(l.owner_id));
+      out = leads.filter(l=>memberIds.includes(l.owner_id));
     }
-    if (pipelineFilter.startsWith("rep:")) {
+    else if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
-      return leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id)));
+      out = leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id)));
     }
-    return leads.filter(l=>l.owner_id===user.id);
+    else out = leads.filter(l=>l.owner_id===user.id);
+    // Closer clamp: never reveal non-rep-role teammates' leads.
+    if (isCloser && !isOwner) out = out.filter(l=>closerAllowed(l.owner_id) || (showAssisted && l.assist_id===user.id));
+    return out;
   };
   const visibleLeads = (()=>{
     let raw = getVisibleLeads();
