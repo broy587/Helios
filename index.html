@@ -5010,10 +5010,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             onUpdate={next=>handleUpdate({...lead,ac_checklist:next})}
           />
           <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
-          {lead.is_arc && (lead.cancel_reason || (Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length>0)) && (
+          {lead.is_arc && (
             <div style={{marginBottom:16,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"14px 16px"}}>
               <div style={{fontSize:12,fontWeight:800,color:"#b91c1c",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>🔴 Reason for Cancelation</div>
-              {lead.cancel_reason && <div style={{fontSize:14,color:dark?"#fca5a5":"#7f1d1d",whiteSpace:"pre-wrap",lineHeight:1.5,marginBottom:(Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length)?10:0}}>{lead.cancel_reason}</div>}
+              {lead.cancel_reason ? <div style={{fontSize:14,color:dark?"#fca5a5":"#7f1d1d",whiteSpace:"pre-wrap",lineHeight:1.5,marginBottom:(Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length)?10:0}}>{lead.cancel_reason}</div>
+                : <div style={{fontSize:13,color:"#94a3b8",fontStyle:"italic",marginBottom:(Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length)?10:0}}>No reason entered yet — tap Edit to add one.</div>}
               {Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length>0 && (
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                   {lead.cancel_tags.map(t=><span key={t} style={{fontSize:12,fontWeight:700,color:"#b91c1c",background:dark?"#4a1c1c":"#fff",border:"1px solid #fecaca",borderRadius:16,padding:"3px 10px"}}>{t}</span>)}
@@ -5756,6 +5757,27 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               This lead will appear in the ARC column. Stats will count up to: <strong>{form.arcStage||form.stage}</strong>
             </div>
           )}
+          {form.isArc && (
+            <div style={{marginTop:12,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"14px 16px"}}>
+              <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Reason for cancelation</div>
+              <div style={{fontSize:12,fontWeight:800,color:dark?"#fca5a5":"#b91c1c",marginTop:2,marginBottom:8}}>Be as detailed as possible with your explanation</div>
+              <textarea value={form.cancelReason||""} onChange={e=>setForm(f=>({...f,cancelReason:e.target.value}))} placeholder="Explain the reason for cancelation…" rows={3}
+                style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#fecaca"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical",marginBottom:12}}/>
+              <div style={{fontSize:12,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Reasons for cancelation</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Select all that apply</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {CANCEL_REASONS.map(t=>{
+                  const on = Array.isArray(form.cancelTags)&&form.cancelTags.includes(t);
+                  return (
+                    <button key={t} type="button" onClick={()=>setForm(f=>{ const cur=Array.isArray(f.cancelTags)?f.cancelTags:[]; return {...f,cancelTags:cur.includes(t)?cur.filter(x=>x!==t):[...cur,t]}; })}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",borderRadius:16,border:`1.5px solid ${on?"#ef4444":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"#4a1c1c":"#fff"):(dark?"#0f172a":"#fff"),color:on?"#b91c1c":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      <span style={{fontSize:12}}>{on?"✓":"＋"}</span>{t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{marginBottom:14}}>
@@ -6012,6 +6034,13 @@ function parseApptDate(raw) {
 
 // ── Pipeline filters (replaces the old hygiene panel) ─────────────────
 function pfNonEmpty(v){ return !!(v && String(v).trim()); }
+// A lead "has closer notes" if its notes log has any entry with text, or the
+// legacy closer_notes string is non-empty.
+function pfHasCloserNotes(l){
+  const log = Array.isArray(l.closer_notes_log) ? l.closer_notes_log : [];
+  if(log.some(n=>n && pfNonEmpty(n.text))) return true;
+  return pfNonEmpty(l.closer_notes);
+}
 function pfHasAppt(l){
   return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) ||
     (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
@@ -6038,6 +6067,8 @@ const PIPELINE_FILTER_DEFS = [
   {key:"no_comm",      group:"General - Lead Includes",         label:"Commission Not Input",                  test:l=>!pfNonEmpty(l.commission)},
   {key:"has_notes",    group:"General - Lead Includes",         label:"Setter Notes",                          test:l=>pfNonEmpty(l.notes)},
   {key:"no_notes",     group:"General - Lead Includes",         label:"No Setter Notes",                       test:l=>!pfNonEmpty(l.notes)},
+  {key:"has_cnotes",   group:"General - Lead Includes",         label:"Closer Notes",                          test:pfHasCloserNotes},
+  {key:"no_cnotes",    group:"General - Lead Includes",         label:"No Closer Notes",                       test:l=>!pfHasCloserNotes(l)},
   {key:"warm",         group:"General - Lead Includes",         label:"🔥 Lead",                               test:l=>l.temperature==="hot"},
   {key:"solid",        group:"General - Lead Includes",         label:"Solid Commitment",                      test:l=>l.soft_solid==="Solid"},
   {key:"confirmed",    group:"General - Lead Includes",         label:"Text/Call Confirmation",                test:l=>l.confirmed==="Yes"},
@@ -6061,7 +6092,7 @@ const PIPELINE_FILTER_DEFS = [
   {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
 ];
 const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Needs attention"];
-const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"]]; // can't both be on
+const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"],["has_cnotes","no_cnotes"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
   const active = Array.isArray(filters.active) ? filters.active : [];
