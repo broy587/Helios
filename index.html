@@ -4450,6 +4450,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const [imgOpen,setImgOpen]=useState(null);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
+  const [assistEditing,setAssistEditing]=useState(false); // view-mode inline assist editor
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   const [showCommission,setShowCommission]=useState(false);
@@ -4626,20 +4627,29 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   const assist = (profiles||[]).find(p=>p.id===lead.assist_id);
                   const allReps = (profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
                   return (
-                    <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                       <span style={{fontSize:13}}>🤝</span>
                       <span>Assist:</span>
-                      <select value={lead.assist_id||""}
-                        onChange={async e=>{
-                          const v=e.target.value||null;
-                          handleUpdate({...lead,assist_id:v});
-                          try{ await sb.from("leads").update({assist_id:v,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                          catch(err){ console.error("Couldn't set assist:",err); }
-                        }}
-                        style={{fontSize:12,fontWeight:700,color:assist?(dark?"#e2e8f0":"#1a2456"):"#94a3b8",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"4px 8px",cursor:"pointer",maxWidth:150}}>
-                        <option value="">— select —</option>
-                        {allReps.map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
-                      </select>
+                      {assistEditing ? (
+                        <select autoFocus value={lead.assist_id||""}
+                          onChange={async e=>{
+                            const v=e.target.value||null;
+                            handleUpdate({...lead,assist_id:v});
+                            setAssistEditing(false);
+                            try{ await sb.from("leads").update({assist_id:v,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+                            catch(err){ console.error("Couldn't set assist:",err); }
+                          }}
+                          onBlur={()=>setAssistEditing(false)}
+                          style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:160}}>
+                          <option value="">none</option>
+                          {allReps.map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
+                        </select>
+                      ) : (
+                        <span onClick={()=>setAssistEditing(true)} title="Click to change assist"
+                          style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                          {assist ? (assist.name||assist.email) : "none"}
+                        </span>
+                      )}
                     </div>
                   );
                 })()}
