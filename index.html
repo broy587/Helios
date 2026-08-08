@@ -13746,7 +13746,7 @@ function App() {
     }
     else if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
-      out = leads.filter(l=>repIds.includes(l.owner_id));
+      out = leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id)));
     }
     else out = leads.filter(l=>l.owner_id===user.id);
     // Closer clamp: a closer can NEVER see a teammate's leads through any scope.
@@ -13941,9 +13941,9 @@ function App() {
                 </div>
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </>)}
-              {(isCloser || isPrivileged) && (pipelineSubTab==="mine") && (
+              {(isCloser || isPrivileged) && (pipelineSubTab==="mine" || pipelineSubTab==="rep") && (
                 <button onClick={()=>setShowAssisted(v=>!v)}
-                  title={showAssisted?"Hide assisted accounts":"Also show accounts you're the assist on"}
+                  title={showAssisted?"Hide assisted accounts":(pipelineSubTab==="rep"?"Also show accounts this rep is the assist on":"Also show accounts you're the assist on")}
                   style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${showAssisted?"#0369a1":(dark?"#334155":"#ede3d6")}`,background:showAssisted?"#0369a1":(dark?"#1e293b":"#faf6f0"),color:showAssisted?"#fff":(dark?"#94a3b8":"#1a2456"),fontWeight:showAssisted?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
                   🤝 Assisted
                 </button>
