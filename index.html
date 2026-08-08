@@ -6148,6 +6148,15 @@ function analyzeConversions(leads) {
   }).length;
   const countAcYes = (field) => acPool.filter(l=>isYes(l,field)).length; // Yes/No field on AC pool
 
+  // Outcome rates for AC-set accounts: of accounts that reached AC/Scheduled or
+  // after, what % currently sit in each dead-end stage (by effective current stage).
+  const effStageName = (l) => STAGE_PROGRESSION[getEffectiveStageIndex(l)] || l.stage;
+  const acOutcome = (stageNames) => acPool.filter(l=>stageNames.includes(effStageName(l))).length;
+  const acNoShowN = acOutcome(["No Show / No Contact","No Show / In Contact"]);
+  const acStaleN  = acOutcome(["Stale / No Reschedule"]);
+  const acNoCloseN= acOutcome(["No Close / No Offer","No Close / Offer Given"]);
+  const acDqN     = acOutcome(["Failed Credit / Disqualified"]);
+
   const avgScore = acPool.length === 0 ? null
     : (acPool.reduce((s,l)=>s + (Array.isArray(l.ac_checklist)?l.ac_checklist.length:0), 0) / acPool.length);
 
@@ -6238,6 +6247,10 @@ function analyzeConversions(leads) {
       {label:"Transitioned inside", pct:pct(countAc("Transitioned Inside"), acPool.length), n:countAc("Transitioned Inside")},
       {label:"Confirmed decision makers / spouses will be present", pct:pct(countAc("Confirmed all decision makers / spouses will be present"), acPool.length), n:countAc("Confirmed all decision makers / spouses will be present")},
       {label:"Knows solar is / can be involved", pct:pct(countAc("Knows solar is / can be involved"), acPool.length), n:countAc("Knows solar is / can be involved")},
+      {label:"→ No Show", pct:pct(acNoShowN, acPool.length), n:acNoShowN},
+      {label:"→ Stale", pct:pct(acStaleN, acPool.length), n:acStaleN},
+      {label:"→ No Close", pct:pct(acNoCloseN, acPool.length), n:acNoCloseN},
+      {label:"→ Disqualified", pct:pct(acDqN, acPool.length), n:acDqN},
     ],
     vc: [
       {label:"Autopay input", pct:pct(countCloser("Autopay Input"), vcPool.length), n:countCloser("Autopay Input")},
