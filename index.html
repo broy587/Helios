@@ -4995,14 +4995,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
-          {lead.stage==="Lead: Need Bill/Appointment" && (
-            <TemperatureSelector value={lead.temperature||""} dark={dark}
-              onChange={async val=>{
-                handleUpdate({...lead,temperature:val});
-                const {error}=await sb.from("leads").update({temperature:val||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                if(error) console.error("Temperature save failed:",error);
-              }}/>
-          )}
           <ACChecklist
             leadId={lead.id}
             initialChecked={lead.ac_checklist||[]}
@@ -5658,10 +5650,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
           <CloserNotesEditor log={form.closerNotesLog} dark={dark} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
         </div>
         )}
-        {form.stage==="Lead: Need Bill/Appointment" && (
-          <TemperatureSelector value={form.temperature||""} dark={dark}
-            onChange={val=>setForm(f=>({...f,temperature:val}))}/>
-        )}
         {/* AC Checklist */}
         <ACChecklist
           leadId={form.id||null}
@@ -5910,7 +5898,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
-          {lead.temperature==="hot" && lead.stage==="Lead: Need Bill/Appointment" && <span style={{fontSize:13,flexShrink:0}} title="Warm lead">🔥</span>}
+          {(()=>{ return null; })()}
           {lead._pending && <span style={{fontSize:10,fontWeight:800,flexShrink:0,color:"#b45309",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:5,padding:"1px 5px"}} title="Saved on this device — will upload when you have service">⏳ Saving</span>}
           {lead.is_arc && lead.stage!=="ARC / Cancels" && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#ef4444",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>ARC</span>}
           {lead.on_hold && !lead.is_arc && <span style={{fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:4,background:"#f59e0b",color:"#fff",flexShrink:0,letterSpacing:"0.05em"}}>HOLD</span>}
@@ -9762,14 +9750,6 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
                 <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>{s}</span>
                 {isOn&&<span style={{color:"#10b981",fontSize:13}}>✓</span>}
               </div>
-              {s==="Lead: Need Bill/Appointment" && (
-                <div onClick={()=>setActiveFilters(f=>warmOn?f.filter(x=>x!=="warm"):[...f,"warm"])}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:warmOn?"rgba(239,68,68,0.18)":"transparent",border:`1px solid ${warmOn?"rgba(239,68,68,0.5)":"rgba(255,255,255,0.06)"}`}}>
-                  <span style={{fontSize:14,width:26,textAlign:"center"}}>🔥</span>
-                  <span style={{fontSize:12,color:warmOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:warmOn?700:400,flex:1}}>🔥 Leads</span>
-                  {warmOn&&<span style={{color:"#ef4444",fontSize:13}}>✓</span>}
-                </div>
-              )}
               </React.Fragment>
             );
           })}
