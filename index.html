@@ -5150,7 +5150,7 @@ function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
   );
 }
 
-const CANCEL_REASONS = ["25 Years","2.99% increase","Moving / Selling the House","Reviews","Lack of Savings","Stories they've heard","Damage to roof","Hail damage","Aesthetics","Permit Poachers","Doesnt want hassle","Doesnt want liability"];
+const CANCEL_REASONS = ["25 Years","2.99% increase","Moving / Selling the House","Reviews","Lack of Savings","Stories they've heard","Damage to roof","Hail damage","Aesthetics","Permit Poachers","Doesnt want hassle","Health concern"];
 function CancelReasonModal({initialReason, initialTags, onSave, onClose}) {
   const dark = useDark();
   const [reason,setReason] = React.useState(initialReason||"");
