@@ -6069,7 +6069,6 @@ const PIPELINE_FILTER_DEFS = [
   {key:"no_notes",     group:"General - Lead Includes",         label:"No Setter Notes",                       test:l=>!pfNonEmpty(l.notes)},
   {key:"has_cnotes",   group:"General - Lead Includes",         label:"Closer Notes",                          test:pfHasCloserNotes},
   {key:"no_cnotes",    group:"General - Lead Includes",         label:"No Closer Notes",                       test:l=>!pfHasCloserNotes(l)},
-  {key:"warm",         group:"General - Lead Includes",         label:"🔥 Lead",                               test:l=>l.temperature==="hot"},
   {key:"solid",        group:"General - Lead Includes",         label:"Solid Commitment",                      test:l=>l.soft_solid==="Solid"},
   {key:"confirmed",    group:"General - Lead Includes",         label:"Text/Call Confirmation",                test:l=>l.confirmed==="Yes"},
   {key:"has_gift",     group:"General - Lead Includes",         label:"Gift Card Dropped Off",                 test:l=>l.gift_card_dropped===true},
@@ -11101,11 +11100,15 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
   };
   const openBooking = (e) => {
     e.stopPropagation();
-    // Gate: a rep on a team with configured AC requirements can't book a NEW
-    // closer slot until the account meets them. Doesn't apply to CAP, Cancel Save,
-    // extra appointments, managing an already-booked slot, or personal comebacks.
-    if(!capMode && !csMode && !appendMode && !isBooked && acRequirementsActive(acReq)){
-      const miss = acRequirementsMissing(localLead, acReq);
+    // Booking a closer slot moves the account to AC/Scheduled. So — for EVERYONE,
+    // any role — require at least one Setters AC Checklist item first. (CAP, Cancel
+    // Save, extra appointments, and managing an already-booked slot are exempt.)
+    if(!capMode && !csMode && !appendMode && !isBooked){
+      const checklist = Array.isArray(localLead.ac_checklist) ? localLead.ac_checklist : (Array.isArray(localLead.acChecklist) ? localLead.acChecklist : []);
+      const miss = [];
+      if(checklist.length===0) miss.push("Mark at least one item in the Setters AC Checklist");
+      // Plus any team-configured Rep Management requirements (reps/self-gen/closers).
+      if(acRequirementsActive(acReq)) miss.push(...acRequirementsMissing(localLead, acReq));
       if(miss.length>0){
         window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
         return;
