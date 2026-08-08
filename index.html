@@ -4609,24 +4609,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     </button>
                   )}
                 </div>
-                {giftCardEligible(lead) && (()=>{
+                {giftCardEligible(lead) && lead.assist_id && (()=>{
                   const assist = (profiles||[]).find(p=>p.id===lead.assist_id);
-                  const allReps = (profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+                  if(!assist) return null;
                   return (
                     <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                       <span style={{fontSize:13}}>🤝</span>
-                      <span>Assist:</span>
-                      <select value={lead.assist_id||""}
-                        onChange={async e=>{
-                          const v=e.target.value||null;
-                          handleUpdate({...lead,assist_id:v});
-                          try{ await sb.from("leads").update({assist_id:v,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                          catch(err){ console.error("Couldn't set assist:",err); }
-                        }}
-                        style={{fontSize:12,fontWeight:700,color:assist?(dark?"#e2e8f0":"#1a2456"):"#94a3b8",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"4px 8px",cursor:"pointer",maxWidth:150}}>
-                        <option value="">— select —</option>
-                        {allReps.map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
-                      </select>
+                      <span>Assist: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{assist.name||assist.email}</span></span>
                     </div>
                   );
                 })()}
@@ -4718,6 +4707,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         </div>
                       </div>
                     ))}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:rows.length?6:0,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 Smart Meter Texas</div>
+                      <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener,noreferrer")}
+                        style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"6px 14px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+                        Open ›
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -4763,13 +4759,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 Smart Meter Texas</div>
-            <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener,noreferrer")}
-              style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"6px 14px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
-              Open ›
-            </button>
-          </div>
           {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
           {(giftCardEligible(lead) || lead.gift_card_dropped) && (
             <div onClick={toggleGift} title="Tap to toggle"
@@ -6504,7 +6493,7 @@ function analyzeConversions(leads) {
   };
 }
 
-function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner}) {
+function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,scopedAllLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner}) {
   const dark=useDark();
   const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
   const [filterOpen,setFilterOpen]=useState(false);
@@ -6779,7 +6768,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           onDelete={id=>{onLeadView(id,"delete");setDetailId(null);setAcWarnMsg("");}}
           onArchive={async(l)=>{
             const next = !l.archived;
-            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with \"Show Archive\" in the filters.")) return;
+            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with the Archive section in the filters.")) return;
             onLeadView({...l,archived:next},"update");
             setDetailId(null); setAcWarnMsg("");
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
@@ -6897,15 +6886,18 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   )}
                 </div>
                 <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Show Archive</div>
-                      <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginTop:2}}>Reveal archived accounts in the pipeline</div>
-                    </div>
-                    <button onClick={()=>setDraftFilters({...draft, showArchive:!draft.showArchive})}
-                      style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:draft.showArchive?"#1a2456":(dark?"#334155":"#cbd5e1"),position:"relative",transition:"background 0.15s",flexShrink:0}}>
-                      <span style={{position:"absolute",top:2,left:draft.showArchive?22:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
-                    </button>
+                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Archive</div>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Choose which accounts appear in the pipeline</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[["all","All accounts"],["only","Only archived"]].map(([val,lbl])=>{
+                      const on = (draft.archiveMode||"all")===val;
+                      return (
+                        <button key={val} onClick={()=>setDraftFilters({...draft, archiveMode:val})}
+                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                          {lbl}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
@@ -6940,7 +6932,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </div>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",showArchive:false}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"all"}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
@@ -6956,7 +6948,16 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         // selector + all active pipeline filters already applied), narrowed to the
         // stages the owner has selected in the audit's stage picker.
         const activeStages = Array.isArray(auditStages) ? auditStages : AUDIT_ALL_STAGES;
-        const pool = (leads||[]).filter(l=>activeStages.includes(l.stage));
+        // Start from `leads` (team/rep + filters applied) but add back archived accounts
+        // from the same scope so the audit still counts them even though they're hidden
+        // from the pipeline board. Merge + de-dupe by id.
+        const auditBase = (()=>{
+          const base = (leads||[]);
+          const archived = (scopedAllLeads||[]).filter(l=>l.archived && matchesPipelineFilters(l, pipeFilters));
+          const seen = new Set(base.map(l=>l.id));
+          return [...base, ...archived.filter(l=>!seen.has(l.id))];
+        })();
+        const pool = auditBase.filter(l=>activeStages.includes(l.stage));
         const repName = (id)=>((profiles||[]).find(p=>p.id===id)||{}).name || "—";
         const fmtDate = (d)=>{ if(!d) return "—"; try{ return new Date(d).toLocaleDateString(); }catch(e){ return String(d); } };
         const val = (v)=>{
@@ -6977,7 +6978,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
         ]);
         const exportCsv = ()=>{
-          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","temperature","soft_solid","confirmed","contact_status","priority","is_arc","on_hold","needs_cancel_save","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","notes"];
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","on_hold","needs_cancel_save","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","notes"];
           const esc = (s)=>`"${String(s===null||s===undefined?"":Array.isArray(s)?s.join("; "):s).replace(/"/g,'""')}"`;
           const noteText = (l)=>{
             const log = Array.isArray(l.closer_notes_log)?l.closer_notes_log.map(n=>`[${n.by||""} ${n.ts||""}] ${n.text||""}`).join(" | "):"";
@@ -7030,7 +7031,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 ) : pool.map(l=>(
                   <div key={l.id} style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-                      <div style={{fontWeight:800,fontSize:15,color:dark?"#f1f5f9":"#1a2456"}}>{l.name||"(no name)"}{l.priority?" ⭐":""}</div>
+                      <div style={{fontWeight:800,fontSize:15,color:dark?"#f1f5f9":"#1a2456"}}>{l.name||"(no name)"}{l.priority?" ⭐":""}{l.archived?<span style={{marginLeft:6,fontSize:10,fontWeight:800,color:"#6b2d4e",background:dark?"#334155":"#f1e8ee",borderRadius:12,padding:"2px 8px",verticalAlign:"middle"}}>🗄️ ARCHIVED</span>:""}</div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
                         <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:dark?"#334155":"#f1f5f9",color:dark?"#e2e8f0":"#475569"}}>{l.stage}</span>
                         <span style={{fontSize:11,color:"#94a3b8"}}>{repName(l.owner_id)}</span>
@@ -7111,7 +7112,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         );
       })()}
       {convOpen && (()=>{
-        const c = analyzeConversions(leads);
+        // Count archived accounts too — Conversions reflects every lead in the current
+        // team/rep scope (allLeads), whether or not it's hidden from the pipeline board.
+        const c = analyzeConversions(scopedAllLeads||allLeads||leadsAll||leads||[]);
         const Bar = ({label, pct, n, total})=>(
           <div style={{marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -13735,8 +13738,11 @@ function App() {
       const ghostedIds = new Set((profiles||[]).filter(p=>p.ghost_mode && p.id!==user.id).map(p=>p.id));
       if(ghostedIds.size>0) raw = raw.filter(l=>!ghostedIds.has(l.owner_id));
     }
-    // Archive: archived leads are hidden from the pipeline unless "Show Archive" is on.
-    if(!(pipeFilters && pipeFilters.showArchive)) raw = raw.filter(l=>!l.archived);
+    // Archive: "all" hides archived (default), "only" shows only archived.
+    const archiveMode = (pipeFilters && pipeFilters.archiveMode) || (pipeFilters && pipeFilters.showArchive ? "show_all" : "all");
+    if(archiveMode==="only") raw = raw.filter(l=>l.archived);
+    else if(archiveMode==="all") raw = raw.filter(l=>!l.archived);
+    // "show_all" (legacy showArchive on) shows everything — no filter.
     return raw;
   })();
 
@@ -13917,7 +13923,7 @@ function App() {
                 + New Lead
               </button>
             </div>
-            <PipelineBoard leads={visibleLeads} allLeads={leads} isOwner={isOwner} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} scopedAllLeads={getVisibleLeads()} isOwner={isOwner} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
@@ -14032,7 +14038,7 @@ function App() {
           onDelete={id=>{deleteLead(id);setDetailId(null);}}
           onArchive={async(l)=>{
             const next = !l.archived;
-            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with \"Show Archive\" in the filters.")) return;
+            if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with the Archive section in the filters.")) return;
             setLeads(ls=>ls.map(x=>x.id===l.id?{...x,archived:next}:x));
             setDetailId(null);
             try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
