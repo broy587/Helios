@@ -12980,6 +12980,7 @@ function App() {
     }
   }, [modal.open, detailId, drawerOpen]);
   const [pipelineFilter,setPipelineFilter]=useState("mine");
+  const [showAssisted,setShowAssisted]=useState(false);
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
   const [canvassLeadFilter,setCanvassLeadFilter]=useState(["mine"]);
@@ -13670,11 +13671,10 @@ function App() {
   const activeRepId = activeRepIds.length===1 ? activeRepIds[0] : ""; // kept for single-select labels
   // Toggle a rep in/out of the multi-select. Removing the last one falls back to "mine".
   const toggleRep = (repId) => {
-    const set = new Set(activeRepIds);
-    if(set.has(repId)) set.delete(repId); else set.add(repId);
-    const ids = Array.from(set);
-    if(ids.length===0){ setPipelineFilter("mine"); return; }
-    setPipelineFilter("rep:"+ids.join(","));
+    // Single-select: picking a rep replaces the current selection (one rep at a time).
+    if(activeRepIds.length===1 && activeRepIds[0]===repId){ setPipelineFilter("mine"); return; }
+    setPipelineFilter("rep:"+repId);
+    setRepDropOpen(false);
   };
 
   // Reps visible to this user
@@ -13712,7 +13712,7 @@ function App() {
 
   // Compute visible leads
   const getVisibleLeads = () => {
-    if (pipelineFilter==="mine") return leads.filter(l=>l.owner_id===user.id);
+    if (pipelineFilter==="mine") return leads.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id));
     if (pipelineFilter==="all") {
       if (isOwner) return leads; // owner: truly everything
       // Safety: a non-owner should never see every team. Bound to their team members.
@@ -13727,7 +13727,7 @@ function App() {
     }
     if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
-      return leads.filter(l=>repIds.includes(l.owner_id));
+      return leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id)));
     }
     return leads.filter(l=>l.owner_id===user.id);
   };
@@ -13917,6 +13917,13 @@ function App() {
                 </div>
                 {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </>)}
+              {(pipelineSubTab==="mine"||pipelineSubTab==="rep") && (
+                <button onClick={()=>setShowAssisted(v=>!v)}
+                  title={showAssisted?"Hide assisted accounts":"Also show accounts this rep is the assist on"}
+                  style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${showAssisted?"#0369a1":(dark?"#334155":"#ede3d6")}`,background:showAssisted?"#0369a1":(dark?"#1e293b":"#faf6f0"),color:showAssisted?"#fff":(dark?"#94a3b8":"#1a2456"),fontWeight:showAssisted?700:500,cursor:"pointer",fontSize:13,whiteSpace:"nowrap"}}>
+                  🤝 Assisted
+                </button>
+              )}
               <div style={{flex:1}}/>
               <button onClick={()=>setModal({open:true,lead:null})}
                 style={{background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",fontWeight:800,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(236,72,153,0.35)"}}>
