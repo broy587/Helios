@@ -6049,11 +6049,18 @@ const PIPELINE_FILTER_DEFS = [
     label:item,
     test:l=>Array.isArray(l.ac_checklist)&&l.ac_checklist.includes(item),
   })),
+  ...VC_CHECKLIST_ITEMS.map((item,i)=>({
+    key:`vcc_${i}`,
+    group:"Closers VC Checklist",
+    label:item,
+    // Uses closer_checklist, falling back to derived legacy answers so older leads still match.
+    test:l=>(Array.isArray(l.closer_checklist)?l.closer_checklist:deriveCloserChecklist(l)).includes(item),
+  })),
   {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
   {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
   {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
 ];
-const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Needs attention"];
+const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Needs attention"];
 const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
