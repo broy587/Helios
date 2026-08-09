@@ -6326,7 +6326,8 @@ function pipeFilterCount(filters){
     + (filters.stale&&filters.stale.on?1:0)
     + (filters.after?1:0) + (filters.before?1:0)
     + (Array.isArray(filters.appt)?filters.appt.length:0)
-    + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0);
+    + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0)
+    + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0);
 }
 
 function analyzeHygiene(leads, staleDays) {
@@ -6839,7 +6840,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0);
         return (
           <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -6923,10 +6924,10 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Archive</div>
                   <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Choose which accounts appear in the pipeline</div>
                   <div style={{display:"flex",gap:8}}>
-                    {[["all","All accounts"],["only","Only archived"]].map(([val,lbl])=>{
-                      const on = (draft.archiveMode||"all")===val;
+                    {[["show_all","All accounts"],["only","Only archived"]].map(([val,lbl])=>{
+                      const on = draft.archiveMode===val;
                       return (
-                        <button key={val} onClick={()=>setDraftFilters({...draft, archiveMode:val})}
+                        <button key={val} onClick={()=>setDraftFilters({...draft, archiveMode: on ? "default" : val})}
                           style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
                           {lbl}
                         </button>
@@ -6966,7 +6967,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </div>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"all"}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"default"}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
@@ -13784,9 +13785,10 @@ function App() {
       if(ghostedIds.size>0) raw = raw.filter(l=>!ghostedIds.has(l.owner_id));
     }
     // Archive: "all" hides archived (default), "only" shows only archived.
-    const archiveMode = (pipeFilters && pipeFilters.archiveMode) || (pipeFilters && pipeFilters.showArchive ? "show_all" : "all");
+    const archiveMode = (pipeFilters && pipeFilters.archiveMode) || (pipeFilters && pipeFilters.showArchive ? "show_all" : "default");
     if(archiveMode==="only") raw = raw.filter(l=>l.archived);
-    else if(archiveMode==="all") raw = raw.filter(l=>!l.archived);
+    else if(archiveMode==="show_all") { /* pipeline + archived: no archive filtering */ }
+    else raw = raw.filter(l=>!l.archived); // default: hide archived
     // "show_all" (legacy showArchive on) shows everything — no filter.
     return raw;
   })();
@@ -13902,8 +13904,9 @@ function App() {
       <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
         {tab==="pipeline" && (
           <>
-            {/* Scope + New Lead row */}
-            <div style={{background:dark?"#0f172a":"#ede3d6",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderTop:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,display:"flex",padding:"8px 16px",gap:8,alignItems:"center"}}>
+            {/* Scope + New Lead row — horizontally scrollable on mobile so nothing clips off-screen */}
+            <div style={{background:dark?"#0f172a":"#ede3d6",borderBottom:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderTop:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,display:"flex",padding:"8px 12px",gap:8,alignItems:"center"}}>
+              <div style={{flex:1,minWidth:0,display:"flex",gap:8,alignItems:"center",overflowX:"auto",WebkitOverflowScrolling:"touch",scrollbarWidth:"none",msOverflowStyle:"none",paddingRight:4}}>
               {isPrivileged && (<>
                 {/* My Pipeline pill */}
                 <button onClick={()=>{setPipelineFilter("mine");setTeamDropOpen(false);setRepDropOpen(false);}}
@@ -13969,9 +13972,9 @@ function App() {
                   🤝 Assisted
                 </button>
               )}
-              <div style={{flex:1}}/>
+              </div>
               <button onClick={()=>setModal({open:true,lead:null})}
-                style={{background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",fontWeight:800,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(236,72,153,0.35)"}}>
+                style={{flexShrink:0,background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",fontWeight:800,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(236,72,153,0.35)"}}>
                 + New Lead
               </button>
             </div>
