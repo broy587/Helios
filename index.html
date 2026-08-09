@@ -7350,7 +7350,34 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         );
       })()}
       {priorityOpen && (()=>{
-        const starred = (leads||[]).filter(l=>l.priority && !l.archived);
+        const starred = (leads||[]).filter(l=>l.priority && !l.archived)
+          .slice().sort((a,b)=>{
+            const ao=(a.priority_order==null?9999:a.priority_order), bo=(b.priority_order==null?9999:b.priority_order);
+            if(ao!==bo) return ao-bo;
+            return 0;
+          });
+        const persistOrder = async (ordered) => {
+          // Write sequential priority_order to every lead so the order sticks.
+          for(let i=0;i<ordered.length;i++){
+            const l=ordered[i];
+            if(l.priority_order!==i){
+              onLeadView({...l,priority_order:i},"update");
+              try{ await sb.from("leads").update({priority_order:i,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("order save failed",e); }
+            }
+          }
+        };
+        const move = (from,to) => {
+          if(to<0||to>=starred.length||from===to) return;
+          const arr=starred.slice();
+          const [it]=arr.splice(from,1);
+          arr.splice(to,0,it);
+          persistOrder(arr);
+        };
+        const removePriority = async (l) => {
+          if(!window.confirm(`Remove "${l.name||"this lead"}" from Priority Comeback? This will also unstar it on the lead.`)) return;
+          onLeadView({...l,priority:false},"update");
+          try{ await sb.from("leads").update({priority:false,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("remove priority failed",e); }
+        };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1800}} onClick={()=>setPriorityOpen(false)}>
             <div onClick={e=>e.stopPropagation()} style={{background:dark?"#0f172a":"#faf6f0",borderRadius:"20px 20px 0 0",width:"min(100vw,560px)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
@@ -7358,18 +7385,31 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 <div style={{fontWeight:800,fontSize:17,color:"#a16207",display:"flex",alignItems:"center",gap:8}}>⭐ Priority Comeback <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>({starred.length})</span></div>
                 <button onClick={()=>setPriorityOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
               </div>
+              {starred.length>0 && <div style={{fontSize:11,color:"#94a3b8",padding:"8px 20px 0"}}>Drag the ⠿ handle to reorder · tap a lead to open</div>}
               <div style={{overflowY:"auto",padding:"12px 16px 28px"}}>
                 {starred.length===0 ? (
                   <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No priority leads yet. Star a lead's ⭐ Priority button to add it here.</div>
-                ) : starred.map(l=>(
-                  <button key={l.id} onClick={()=>{ setPriorityOpen(false); setDetailId(l.id); }}
-                    style={{width:"100%",textAlign:"left",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                    <div style={{minWidth:0}}>
+                ) : starred.map((l,idx)=>(
+                  <div key={l.id}
+                    draggable
+                    onDragStart={e=>{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",String(idx)); }}
+                    onDragOver={e=>{ e.preventDefault(); e.dataTransfer.dropEffect="move"; }}
+                    onDrop={e=>{ e.preventDefault(); const from=parseInt(e.dataTransfer.getData("text/plain"),10); if(!isNaN(from)) move(from,idx); }}
+                    style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+                    <span title="Drag to reorder" style={{fontSize:18,color:"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none"}}>⠿</span>
+                    <div onClick={()=>{ setPriorityOpen(false); setDetailId(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
                       <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
                       <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
                     </div>
-                    <span style={{fontSize:16,flexShrink:0}}>⭐</span>
-                  </button>
+                    <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
+                      <button onClick={()=>move(idx,idx-1)} disabled={idx===0} title="Move up"
+                        style={{background:"none",border:"none",fontSize:13,color:idx===0?"#e2e8f0":"#94a3b8",cursor:idx===0?"default":"pointer",padding:"0 4px",lineHeight:1}}>▲</button>
+                      <button onClick={()=>move(idx,idx+1)} disabled={idx===starred.length-1} title="Move down"
+                        style={{background:"none",border:"none",fontSize:13,color:idx===starred.length-1?"#e2e8f0":"#94a3b8",cursor:idx===starred.length-1?"default":"pointer",padding:"0 4px",lineHeight:1}}>▼</button>
+                    </div>
+                    <button onClick={()=>removePriority(l)} title="Remove from Priority Comeback"
+                      style={{flexShrink:0,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -13409,11 +13449,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
