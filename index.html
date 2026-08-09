@@ -14090,10 +14090,21 @@ function App() {
     : pipelineFilter.startsWith("rep:") ? "rep"
     : "mine";
 
+  // An assisted account (surfaced via the Assisted toggle) only shows when its
+  // EFFECTIVE stage (remembered stage honored for ARC / On Hold / Cancel Save) is
+  // AC / Scheduled, or VC / SRA and after. It is hidden in the Lead stage and in the
+  // dead-end middle stages (No Show, Stale, No Close, Disqualified).
+  const ASSIST_VISIBLE_STAGES = new Set([
+    "AC / Scheduled","VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"
+  ]);
+  const assistShows = (l) => {
+    const eff = STAGE_PROGRESSION[getEffectiveStageIndex(l)] || l.stage;
+    return ASSIST_VISIBLE_STAGES.has(eff);
+  };
   // Compute visible leads
   const getVisibleLeads = () => {
     let out;
-    if (pipelineFilter==="mine") out = leads.filter(l=>l.owner_id===user.id || (showAssisted && (isCloser||isPrivileged) && l.assist_id===user.id));
+    if (pipelineFilter==="mine") out = leads.filter(l=>l.owner_id===user.id || (showAssisted && (isCloser||isPrivileged) && l.assist_id===user.id && assistShows(l)));
     else if (pipelineFilter==="all") {
       if (isOwner) out = leads; // owner: truly everything
       else {
@@ -14110,13 +14121,13 @@ function App() {
     }
     else if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
-      out = leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id)));
+      out = leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id) && assistShows(l)));
     }
     else out = leads.filter(l=>l.owner_id===user.id);
     // Closer clamp: a closer can NEVER see a teammate's leads through any scope.
     // Their only window into others' leads is the Assisted toggle, which reveals
-    // leads where THEY are the assist. Reps/self-gen get no assist visibility.
-    if (isCloser && !isOwner) out = out.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id));
+    // leads where THEY are the assist (subject to the assisted stage rule).
+    if (isCloser && !isOwner) out = out.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id && assistShows(l)));
     return out;
   };
   const visibleLeads = (()=>{
