@@ -13381,6 +13381,10 @@ function App() {
   }, [modal.open, detailId, drawerOpen]);
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [showAssisted,setShowAssisted]=useState(false);
+  const [assistMode,setAssistMode]=useState("just"); // "just" = only assisted, "mine" = mine + assisted
+  const [assistRepFilter,setAssistRepFilter]=useState([]); // which assisted-rep ids to show ([] = all)
+  const [assistDropOpen,setAssistDropOpen]=useState(false);
+  const [assistDropPos,setAssistDropPos]=useState({top:120,left:16});
   const [teamDropOpen,setTeamDropOpen]=useState(false);
   const [repDropOpen,setRepDropOpen]=useState(false);
   const [teamDropPos,setTeamDropPos]=useState({top:120,left:16});
@@ -14126,14 +14130,32 @@ function App() {
     const eff = STAGE_PROGRESSION[getEffectiveStageIndex(l)] || l.stage;
     return ASSIST_VISIBLE_STAGES.has(eff);
   };
+  // Reps the current user is an assist for (used to populate the assisted dropdown).
+  const myAssistRepIds = (()=>{
+    const ids = new Set();
+    (leads||[]).forEach(l=>{ if(l.assist_id===user.id && l.owner_id && l.owner_id!==user.id && assistShows(l)) ids.add(l.owner_id); });
+    return Array.from(ids);
+  })();
   // Compute visible leads
   const getVisibleLeads = () => {
     let out;
-    if (pipelineFilter==="mine") out = leads.filter(l=>l.owner_id===user.id || (showAssisted && (isCloser||isPrivileged) && l.assist_id===user.id && assistShows(l)));
+    if (pipelineFilter==="mine") {
+      const canAssist = showAssisted && (isCloser||isPrivileged);
+      if (canAssist) {
+        // Leads I'm the assist on (stage-gated, optionally narrowed to picked reps).
+        const assisted = leads.filter(l=>l.assist_id===user.id && assistShows(l) &&
+          (assistRepFilter.length===0 || assistRepFilter.includes(l.owner_id)));
+        // "mine" mode also includes my own owned leads; "just" mode shows assisted only.
+        out = (assistMode==="mine")
+          ? leads.filter(l=>l.owner_id===user.id).concat(assisted.filter(l=>l.owner_id!==user.id))
+          : assisted;
+      } else {
+        out = leads.filter(l=>l.owner_id===user.id);
+      }
+    }
     else if (pipelineFilter==="all") {
       if (isOwner) out = leads; // owner: truly everything
       else {
-        // Safety: a non-owner should never see every team. Bound to their team members.
         const memberIds=new Set([user.id]);
         visibleTeams.forEach(t=>(teamMembers[t.id]||[]).forEach(m=>memberIds.add(m.user_id)));
         out = leads.filter(l=>memberIds.has(l.owner_id));
@@ -14146,13 +14168,16 @@ function App() {
     }
     else if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
-      out = leads.filter(l=>repIds.includes(l.owner_id) || (showAssisted && repIds.includes(l.assist_id) && assistShows(l)));
+      if (showAssisted && (isCloser||isPrivileged)) {
+        // Specific-rep + Assisted: ONLY that rep's leads I assist on (stage-gated).
+        out = leads.filter(l=>repIds.includes(l.owner_id) && l.assist_id===user.id && assistShows(l));
+      } else {
+        out = leads.filter(l=>repIds.includes(l.owner_id));
+      }
     }
     else out = leads.filter(l=>l.owner_id===user.id);
-    // Closer clamp: a closer can NEVER see a teammate's leads through any scope.
-    // Their only window into others' leads is the Assisted toggle, which reveals
-    // leads where THEY are the assist (subject to the assisted stage rule).
-    if (isCloser && !isOwner) out = out.filter(l=>l.owner_id===user.id || (showAssisted && l.assist_id===user.id && assistShows(l)));
+    // Closer clamp: a closer can NEVER see a teammate's leads except ones they assist on.
+    if (isCloser && !isOwner) out = out.filter(l=>l.owner_id===user.id || (l.assist_id===user.id && assistShows(l)));
     return out;
   };
   const visibleLeads = (()=>{
@@ -14350,7 +14375,45 @@ function App() {
                   🤝 Assisted
                 </button>
               )}
+              {showAssisted && (isCloser || isPrivileged) && pipelineSubTab==="mine" && (
+                <>
+                  {/* Subtle mine+assisted / just-assisted switch */}
+                  <button onClick={()=>setAssistMode(m=>m==="just"?"mine":"just")}
+                    title="Toggle between just assisted and mine + assisted"
+                    style={{padding:"5px 10px",borderRadius:20,border:`1px solid ${dark?"#334155":"#ded2c0"}`,background:"transparent",color:dark?"#94a3b8":"#6b5d4a",fontWeight:600,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>
+                    {assistMode==="just"?"Just assisted":"Mine + assisted"}
+                  </button>
+                  {/* Assisted-rep multi-select dropdown (reps I assist for) */}
+                  <button onClick={(e)=>{const r=e.currentTarget.getBoundingClientRect();setAssistDropPos({top:r.bottom+6,left:Math.max(8,Math.min(r.left,window.innerWidth-190))});setAssistDropOpen(o=>!o);}}
+                    style={{padding:"5px 10px",borderRadius:20,border:`1px solid ${assistRepFilter.length?"#0369a1":(dark?"#334155":"#ded2c0")}`,background:assistRepFilter.length?"#0369a1":"transparent",color:assistRepFilter.length?"#fff":(dark?"#94a3b8":"#6b5d4a"),fontWeight:600,cursor:"pointer",fontSize:12,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
+                    {assistRepFilter.length?`${assistRepFilter.length} rep${assistRepFilter.length>1?"s":""}`:"All reps"}
+                    <span style={{fontSize:9,opacity:0.7}}>{assistDropOpen?"▲":"▼"}</span>
+                  </button>
+                </>
+              )}
               </div>
+              {assistDropOpen && (<>
+                <div style={{position:"fixed",inset:0,zIndex:3500}} onClick={()=>setAssistDropOpen(false)}/>
+                <div style={{position:"fixed",top:assistDropPos.top,left:assistDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:180,maxHeight:320,overflowY:"auto"}}>
+                  <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>Reps I assist</div>
+                  <button onClick={()=>setAssistRepFilter([])}
+                    style={{display:"block",width:"100%",padding:"9px 12px",border:"none",background:assistRepFilter.length===0?(dark?"#0f172a":"#eff6ff"):(dark?"#1e293b":"#fff"),color:assistRepFilter.length===0?"#0369a1":(dark?"#e2e8f0":"#0f172a"),fontWeight:assistRepFilter.length===0?700:500,cursor:"pointer",fontSize:13,textAlign:"left"}}>
+                    All reps
+                  </button>
+                  {myAssistRepIds.length===0 && <div style={{padding:"10px 12px",fontSize:12,color:"#94a3b8"}}>You're not assisting on any deals yet.</div>}
+                  {myAssistRepIds.map(id=>{
+                    const p=(profiles||[]).find(x=>x.id===id);
+                    const on=assistRepFilter.includes(id);
+                    return (
+                      <button key={id} onClick={()=>setAssistRepFilter(cur=>cur.includes(id)?cur.filter(x=>x!==id):[...cur,id])}
+                        style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"9px 12px",border:"none",background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#0f172a",cursor:"pointer",fontSize:13,textAlign:"left",borderTop:`1px solid ${dark?"#0f172a":"#f8fafc"}`}}>
+                        <span style={{width:16,height:16,borderRadius:4,border:`1.5px solid ${on?"#0369a1":"#cbd5e1"}`,background:on?"#0369a1":"transparent",color:"#fff",fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{on?"✓":""}</span>
+                        {p?(p.name||p.email):"Unknown rep"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>)}
               <button onClick={()=>setModal({open:true,lead:null})}
                 style={{flexShrink:0,background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",border:"none",borderRadius:20,padding:"7px 16px",fontWeight:800,cursor:"pointer",fontSize:13,whiteSpace:"nowrap",boxShadow:"0 2px 8px rgba(236,72,153,0.35)"}}>
                 + New Lead
