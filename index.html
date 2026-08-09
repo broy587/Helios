@@ -4119,13 +4119,25 @@ const VC_CHECKLIST_ITEMS = [
   "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
   "Every true decision maker was present and bought in",
-  "Found a problem that truly resonates with homeowner",
-  "Prepped homeowner for reviews",
+  "Found their WHY",
+  "Objections uncovered and resolved",
+  "Pre-frame outside influence/reviews",
+  "Future Commitment",
   "Sent intro email",
   "Added phone number to homeowners contacts",
   "Downloaded the app on homeowners phone",
   "Customer has crystal clear understanding of what they're agreeing to and what happens next",
+  "CAP/follow-up locked in",
 ];
+
+// Short explanations shown via a "?" tooltip next to each checklist item.
+const VC_ITEM_HELP = {
+  "Found their WHY": "Customer can clearly explain why this makes sense for them.",
+  "Objections uncovered and resolved": "roof/panels, term, moving/selling, reviews/trust, and past solar experiences.",
+  "Pre-frame outside influence/reviews": "prepare for what they'll hear from reviews, neighbors, family, friends, realtors, etc and established \"call me before making a decision based on something you hear\".",
+  "Future Commitment": "directly establish: \"assuming everything we discussed checks out is there anything that would stop you from moving forward through installation?\"",
+  "CAP/follow-up locked in": "Scheduled with customer.",
+};
 
 // Items added later can be date-gated so their Conversions/Audit percentages only
 // count accounts CREATED on/after the given date — old accounts (where the item
@@ -4133,6 +4145,10 @@ const VC_CHECKLIST_ITEMS = [
 // counting as "not done". Format: "exact item string": "YYYY-MM-DD".
 // Example: "New closer step": "2026-08-08"
 const VC_ITEM_SINCE = {
+  "Objections uncovered and resolved": "2026-08-09",
+  "Pre-frame outside influence/reviews": "2026-08-09",
+  "Future Commitment": "2026-08-09",
+  "CAP/follow-up locked in": "2026-08-09",
 };
 
 // Old checklist item strings → new, so leads that already had the old item checked
@@ -4140,6 +4156,7 @@ const VC_ITEM_SINCE = {
 const CLOSER_ITEM_RENAMES = {
   "Decision makers were present": "Every true decision maker was present and bought in",
   "Set crystal clear expectations on the process": "Customer has crystal clear understanding of what they're agreeing to and what happens next",
+  "Found a problem that truly resonates with homeowner": "Found their WHY",
 };
 
 // Build the initial checklist for a lead. If the lead has no closer_checklist
@@ -4168,6 +4185,7 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
   const seed = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
   const [checked, setChecked] = React.useState(seed);
   const [saving, setSaving] = React.useState(false);
+  const [openHelp, setOpenHelp] = React.useState(null); // which item's "?" explanation is open
   const score = checked.length;
   React.useEffect(()=>{
     const next = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
@@ -4208,15 +4226,28 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
       </div>
       {showItems && VC_CHECKLIST_ITEMS.map((item,i)=>{
         const isChecked = checked.includes(item);
+        const help = VC_ITEM_HELP[item];
+        const helpOpen = openHelp===item;
         return (
-          <div key={item} onClick={()=>toggle(item)}
-            style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px",cursor:readOnly?"default":"pointer",borderBottom:i<VC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#d6e2f5"}`:"none"}}>
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#a8bce0"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-              {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+          <div key={item} style={{borderBottom:i<VC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#d6e2f5"}`:"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px"}}>
+              <div onClick={()=>toggle(item)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:readOnly?"default":"pointer",minWidth:0}}>
+                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#a8bce0"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                  {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+                </div>
+                <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400}}>
+                  {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
+                </span>
+              </div>
+              {help && (
+                <button onClick={(e)=>{e.stopPropagation();setOpenHelp(o=>o===item?null:item);}}
+                  title="What does this mean?"
+                  style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`1.5px solid ${helpOpen?"#1a2456":dark?"#475569":"#a8bce0"}`,background:helpOpen?"#1a2456":"transparent",color:helpOpen?"#fff":(dark?"#94a3b8":"#64748b"),fontSize:12,fontWeight:800,cursor:"pointer",lineHeight:1,padding:0}}>?</button>
+              )}
             </div>
-            <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400}}>
-              {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
-            </span>
+            {help && helpOpen && (
+              <div style={{fontSize:12,color:dark?"#cbd5e1":"#475569",background:dark?"#1e293b":"#dbe6fb",borderRadius:8,padding:"8px 10px",margin:"0 4px 8px 34px",lineHeight:1.4}}>{help}</div>
+            )}
           </div>
         );
       })}
@@ -6427,7 +6458,9 @@ function analyzeConversions(leads, opts) {
     if(!since) return vcPool;
     const t = Date.parse(since+"T00:00:00");
     if(isNaN(t)) return vcPool;
-    return vcPool.filter(l=>{ const c=Date.parse(l.created_at); return !isNaN(c) && c>=t; });
+    // Gate by when the lead REACHED VC / SRA (not created date): only accounts that
+    // hit VC on/after the item's start date count toward this item's percentage.
+    return vcPool.filter(l=>{ const r=getStageReachedAt(l, MILESTONE_INDEX.VC); const c=r?(r instanceof Date?r.getTime():Date.parse(r)):NaN; return !isNaN(c) && c>=t; });
   };
   const countCloser = (item) => vcPoolForItem(item).filter(l=>{
     const cc = Array.isArray(l.closer_checklist) ? l.closer_checklist : deriveCloserChecklist(l);
@@ -6554,12 +6587,15 @@ function analyzeConversions(leads, opts) {
       closerStat("Knew solar involved", "Homeowner knew solar was/could be involved"),
       closerStat("Let closer inside", "Homeowner let closer inside"),
       closerStat("Decision makers present", "Every true decision maker was present and bought in"),
-      closerStat("Problem resonated", "Found a problem that truly resonates with homeowner"),
-      closerStat("Prepped for reviews", "Prepped homeowner for reviews"),
+      closerStat("Found their WHY", "Found their WHY"),
+      closerStat("Objections uncovered/resolved", "Objections uncovered and resolved"),
+      closerStat("Pre-frame outside influence/reviews", "Pre-frame outside influence/reviews"),
+      closerStat("Future Commitment", "Future Commitment"),
       closerStat("Sent intro email", "Sent intro email"),
       closerStat("Added to contacts", "Added phone number to homeowners contacts"),
       closerStat("Downloaded the app", "Downloaded the app on homeowners phone"),
       closerStat("Set clear expectations", "Customer has crystal clear understanding of what they're agreeing to and what happens next"),
+      closerStat("CAP/follow-up locked in", "CAP/follow-up locked in"),
     ],
     funnel: [
       {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
