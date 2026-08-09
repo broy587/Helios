@@ -7027,8 +7027,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           const sv = pipeFilters && pipeFilters.stageView;
           if (sv==="leads_acs") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)<=dqIdx);
           else if (sv==="vc_after") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
-          // Assisted view only ever shows VC and after (overrides toward the later half).
-          if (assistViewOn) shownStages = shownStages.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
+          const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
+          // Assisted view shows AC/Scheduled + VC/SRA and after (drops the dead-end
+          // middle stages: No Show, Stale, No Close, Disqualified).
+          const ASSIST_COLS = ["AC / Scheduled","VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"];
+          if (assistViewOn) shownStages = shownStages.filter(s=>ASSIST_COLS.includes(s));
           return shownStages.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
           return (
@@ -10575,7 +10578,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [tagMsg, setTagMsg] = React.useState("");
   const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
-  const [showOpenSlots, setShowOpenSlots] = React.useState(false); // include open slots (removable) in the list
+  const [showOpenSlots, setShowOpenSlots] = React.useState(true); // now default: show everything
+  const [tagKinds, setTagKinds] = React.useState([]); // selected marker filters ([] = show all kinds)
   const [removingId, setRemovingId] = React.useState(null);
   const createdByMe = (ev)=>{
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
@@ -10837,11 +10841,18 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     setTagBusyId(null);
   };
 
-  // Apply the date/day filter (and open-slots toggle) to the loaded events.
+  // Apply the date/day filter and the key-item (kind) multi-select to loaded events.
   const filteredTagEvents = React.useMemo(()=>{
     const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
     const isOpen = (e)=> e.isOpen || (e.summary||"").toLowerCase().includes("open slot");
-    let base = tagEvents.filter(e=> showOpenSlots ? true : !isOpen(e));
+    const kindOf = (e)=>{
+      if(isOpen(e)) return "open";
+      const m=(e.summary||"").match(/^(🟢|🟠|🔵|🟡|🔴|🟣)/u);
+      return m?m[1]:"other";
+    };
+    // Everything shows by default. If specific kinds are selected, keep only those.
+    let base = tagEvents;
+    if(tagKinds.length>0) base = base.filter(e=>tagKinds.includes(kindOf(e)));
     if(tagDate){
       const d0 = new Date(tagDate+"T00:00:00").getTime();
       const d1 = d0 + 24*60*60*1000;
@@ -10858,7 +10869,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
       if(tagFilter==="past") return t<todayStart;
       return true;
     });
-  },[tagEvents,tagFilter,tagDate,showOpenSlots]);
+  },[tagEvents,tagFilter,tagDate,tagKinds]);
 
   // Remove an event: booked appointments are released back to an open slot (and the
   // linked lead is cleared); open slots and meetings are deleted outright.
@@ -11097,17 +11108,31 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                     background:(!tagDate&&tagFilter===v)?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),
                     color:(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#94a3b8":"#475569")}}>{label}</button>
               ))}
+              <span style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#64748b"}}>Pick a date:</span>
               <input type="date" value={tagDate} onChange={e=>setTagDate(e.target.value)}
                 title="Show a specific day"
-                style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#1a2456",background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
+                style={{fontSize:12,fontWeight:600,color:tagDate?(dark?"#cbd5e1":"#1a2456"):(dark?"#64748b":"#94a3b8"),background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
               {tagDate && <button onClick={()=>setTagDate("")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
-            {canManageEvents && (
-              <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,cursor:"pointer",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>
-                <input type="checkbox" checked={showOpenSlots} onChange={e=>setShowOpenSlots(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
-                Show open slots (to remove them)
-              </label>
-            )}
+            {/* Key-item filter — multi-select. None selected = show everything. */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Filter by type <span style={{textTransform:"none",fontWeight:500}}>· tap to toggle, none = all</span></div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[["🟢","AC / Closer"],["🟠","CAP"],["🔵","Extra Appt"],["🟡","Meeting"],["🔴","Needs Reschedule"],["🟣","Follow-Up"],["open","Open Slots"]].map(([k,label])=>{
+                  const on = tagKinds.includes(k);
+                  return (
+                    <button key={k} onClick={()=>setTagKinds(cur=>cur.includes(k)?cur.filter(x=>x!==k):[...cur,k])}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",
+                        border:`1.5px solid ${on?"#0369a1":(dark?"#334155":"#e2e8f0")}`,
+                        background:on?(dark?"#0c4a6e":"#e0f2fe"):(dark?"#0f172a":"#fff"),
+                        color:on?(dark?"#7dd3fc":"#0369a1"):(dark?"#94a3b8":"#475569")}}>
+                      {k!=="open" && <span style={{fontSize:13}}>{k}</span>}{label}
+                    </button>
+                  );
+                })}
+                {tagKinds.length>0 && <button onClick={()=>setTagKinds([])} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer"}}>clear</button>}
+              </div>
+            </div>
             {tagLoading ? (
               <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>Loading appointments…</div>
             ) : tagMsg && tagEvents.length===0 ? (
@@ -14150,9 +14175,10 @@ function App() {
 
   // An assisted account (surfaced via the Assisted toggle) only shows when its
   // EFFECTIVE stage (remembered stage honored for ARC / On Hold / Cancel Save) is
-  // VC / SRA or after. Hidden everywhere before VC.
+  // AC / Scheduled, or VC / SRA and after. Hidden in the Lead stage and the dead-end
+  // middle stages (No Show, Stale, No Close, Disqualified).
   const ASSIST_VISIBLE_STAGES = new Set([
-    "VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"
+    "AC / Scheduled","VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"
   ]);
   const assistShows = (l) => {
     const eff = STAGE_PROGRESSION[getEffectiveStageIndex(l)] || l.stage;
