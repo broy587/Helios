@@ -7016,8 +7016,13 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         </button>
       </div>
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f5ede0",WebkitOverflowScrolling:"touch"}}>
-        {/* Main pipeline stages — no ARC */}
-        {STAGES.map(stage=>{
+        {/* Main pipeline stages — no ARC. When Assisted is on, only VC/SRA and after
+            are relevant (assisted leads only show from VC), so hide earlier columns. */}
+        {(() => {
+          const assistViewOn = commShowAssisted && (commPipelineFilter==="mine" || (commPipelineFilter||"").startsWith("rep:"));
+          const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
+          const shownStages = assistViewOn ? STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx) : STAGES;
+          return shownStages.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
@@ -7073,7 +7078,8 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
               </div>
             </div>
           );
-        })}
+        });
+        })()}
         {/* Needs Cancel Save — separate column, no drag-drop. Positioned before ARC. */}
         {(()=>{
           const ncsLeads=leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold);
