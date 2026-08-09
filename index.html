@@ -4118,14 +4118,21 @@ const VC_CHECKLIST_ITEMS = [
   "Autopay Input",
   "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
-  "Decision makers were present",
+  "Every true decision maker was present and bought in",
   "Found a problem that truly resonates with homeowner",
   "Prepped homeowner for reviews",
   "Sent intro email",
   "Added phone number to homeowners contacts",
   "Downloaded the app on homeowners phone",
-  "Set crystal clear expectations on the process",
+  "Customer has crystal clear understanding of what they're agreeing to and what happens next",
 ];
+
+// Old checklist item strings → new, so leads that already had the old item checked
+// keep it checked after the rename.
+const CLOSER_ITEM_RENAMES = {
+  "Decision makers were present": "Every true decision maker was present and bought in",
+  "Set crystal clear expectations on the process": "Customer has crystal clear understanding of what they're agreeing to and what happens next",
+};
 
 // Build the initial checklist for a lead. If the lead has no closer_checklist
 // yet, migrate the legacy Yes/No closer fields: any field that was "Yes" becomes
@@ -4134,10 +4141,11 @@ const LEGACY_CLOSER_MAP = [
   {field:"autopay_input",   item:"Autopay Input"},
   {field:"knew_solar",      item:"Homeowner knew solar was/could be involved"},
   {field:"closer_inside",   item:"Homeowner let closer inside"},
-  {field:"decision_makers", item:"Decision makers were present"},
+  {field:"decision_makers", item:"Every true decision maker was present and bought in"},
 ];
 function deriveCloserChecklist(lead) {
-  if (lead && Array.isArray(lead.closer_checklist)) return lead.closer_checklist;
+  const applyRenames = (arr) => (Array.isArray(arr)?arr:[]).map(it=>CLOSER_ITEM_RENAMES[it]||it);
+  if (lead && Array.isArray(lead.closer_checklist)) return applyRenames(lead.closer_checklist);
   // No checklist stored yet → derive from the old Yes/No answers.
   const derived = [];
   for (const {field,item} of LEGACY_CLOSER_MAP) {
@@ -6242,7 +6250,7 @@ const PIPELINE_FILTER_DEFS = [
     group:"Closers VC Checklist",
     label:item,
     // Uses closer_checklist, falling back to derived legacy answers so older leads still match.
-    test:l=>(Array.isArray(l.closer_checklist)?l.closer_checklist:deriveCloserChecklist(l)).includes(item),
+    test:l=>deriveCloserChecklist(l).includes(item),
   })),
   {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
   {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
@@ -6390,7 +6398,9 @@ function analyzeHygiene(leads, staleDays) {
 // ── Conversion metrics ────────────────────────────────────────────────
 // Pools are based on whether a lead actually REACHED a milestone (via history),
 // so a lead that hit AC then went No-Show still counts toward "AC or after."
-function analyzeConversions(leads) {
+function analyzeConversions(leads, opts) {
+  const viewerId = opts && opts.viewerId;
+  const splitAssist = !!(opts && opts.splitAssist); // when true, assist-only accounts count at 50%
   const acPool = [], vcPool = [];
   for (const lead of (leads||[])) {
     if (getStageReachedAt(lead, MILESTONE_INDEX.AC) != null) acPool.push(lead);
@@ -6478,6 +6488,7 @@ function analyzeConversions(leads) {
   const pipeLoIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
   const pipeHiIdx = STAGE_PROGRESSION.indexOf("Install Scheduled");
   let pipeCommSum = 0, pipeCommCount = 0, pipeInRange = 0;
+  let pipeCommPersonal = 0, pipeCommAssist = 0; // split: full for owned, 50% for assist-only
   for (const l of (leads||[])) {
     // Only accounts actually sitting in these stages — skip anything pulled into
     // an ARC / On Hold / Needs-Cancel-Save pile.
@@ -6490,6 +6501,12 @@ function analyzeConversions(leads) {
     const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
     if (isNaN(num)) continue;
     pipeCommSum += num; pipeCommCount++;
+    // Commission split: when the viewer is only the ASSIST on this account (and
+    // split mode is on), they earn 50%; when they OWN it, they earn the full 100%.
+    if (splitAssist && viewerId) {
+      if (l.owner_id === viewerId) pipeCommPersonal += num;
+      else if (l.assist_id === viewerId) pipeCommAssist += num * 0.5;
+    }
   }
 
   return {
@@ -6498,6 +6515,7 @@ function analyzeConversions(leads) {
     avgScore, // out of 10
     avgCommission, commCount, avgCommissionInstalled, instCount,
     pipeCommSum, pipeCommCount, pipeInRange,
+    pipeCommPersonal, pipeCommAssist, pipeCommSplit: splitAssist && !!viewerId,
     ac: [
       {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
       {label:"Got contact info", pct:pct(countAc("Contact Info"), acPool.length), n:countAc("Contact Info")},
@@ -6516,13 +6534,13 @@ function analyzeConversions(leads) {
       {label:"Autopay input", pct:pct(countCloser("Autopay Input"), vcPool.length), n:countCloser("Autopay Input")},
       {label:"Knew solar involved", pct:pct(countCloser("Homeowner knew solar was/could be involved"), vcPool.length), n:countCloser("Homeowner knew solar was/could be involved")},
       {label:"Let closer inside", pct:pct(countCloser("Homeowner let closer inside"), vcPool.length), n:countCloser("Homeowner let closer inside")},
-      {label:"Decision makers present", pct:pct(countCloser("Decision makers were present"), vcPool.length), n:countCloser("Decision makers were present")},
+      {label:"Decision makers present", pct:pct(countCloser("Every true decision maker was present and bought in"), vcPool.length), n:countCloser("Every true decision maker was present and bought in")},
       {label:"Problem resonated", pct:pct(countCloser("Found a problem that truly resonates with homeowner"), vcPool.length), n:countCloser("Found a problem that truly resonates with homeowner")},
       {label:"Prepped for reviews", pct:pct(countCloser("Prepped homeowner for reviews"), vcPool.length), n:countCloser("Prepped homeowner for reviews")},
       {label:"Sent intro email", pct:pct(countCloser("Sent intro email"), vcPool.length), n:countCloser("Sent intro email")},
       {label:"Added to contacts", pct:pct(countCloser("Added phone number to homeowners contacts"), vcPool.length), n:countCloser("Added phone number to homeowners contacts")},
       {label:"Downloaded the app", pct:pct(countCloser("Downloaded the app on homeowners phone"), vcPool.length), n:countCloser("Downloaded the app on homeowners phone")},
-      {label:"Set clear expectations", pct:pct(countCloser("Set crystal clear expectations on the process"), vcPool.length), n:countCloser("Set crystal clear expectations on the process")},
+      {label:"Set clear expectations", pct:pct(countCloser("Customer has crystal clear understanding of what they're agreeing to and what happens next"), vcPool.length), n:countCloser("Customer has crystal clear understanding of what they're agreeing to and what happens next")},
     ],
     funnel: [
       {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
@@ -6534,7 +6552,7 @@ function analyzeConversions(leads) {
   };
 }
 
-function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,scopedAllLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner}) {
+function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,scopedAllLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner,commUser,commPipelineFilter,commShowAssisted}) {
   const dark=useDark();
   const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
   const [filterOpen,setFilterOpen]=useState(false);
@@ -7155,7 +7173,10 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
       {convOpen && (()=>{
         // Count archived accounts too — Conversions reflects every lead in the current
         // team/rep scope (allLeads), whether or not it's hidden from the pipeline board.
-        const c = analyzeConversions(scopedAllLeads||allLeads||leadsAll||leads||[]);
+        const c = analyzeConversions(scopedAllLeads||allLeads||leadsAll||leads||[], {
+          viewerId: commUser?.id,
+          splitAssist: (commPipelineFilter==="mine" && commShowAssisted)
+        });
         const Bar = ({label, pct, n, total})=>(
           <div style={{marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -7262,6 +7283,22 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       {c.pipeCommCount>0?c.pipeCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
                     </div>
                   </div>
+                  {c.pipeCommSplit && (
+                    <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% of your own)</span></span>
+                        <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.pipeCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split)</span></span>
+                        <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.pipeCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
+                        <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
+                        <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.pipeCommPersonal+c.pipeCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -13986,7 +14023,7 @@ function App() {
                 + New Lead
               </button>
             </div>
-            <PipelineBoard leads={visibleLeads} allLeads={leads} scopedAllLeads={getVisibleLeads()} isOwner={isOwner} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
+            <PipelineBoard leads={visibleLeads} allLeads={leads} scopedAllLeads={getVisibleLeads()} isOwner={isOwner} commUser={user} commPipelineFilter={pipelineFilter} commShowAssisted={showAssisted} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
