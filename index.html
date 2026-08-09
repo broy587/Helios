@@ -4127,6 +4127,14 @@ const VC_CHECKLIST_ITEMS = [
   "Customer has crystal clear understanding of what they're agreeing to and what happens next",
 ];
 
+// Items added later can be date-gated so their Conversions/Audit percentages only
+// count accounts CREATED on/after the given date — old accounts (where the item
+// didn't exist) are excluded from BOTH the numerator and denominator, instead of
+// counting as "not done". Format: "exact item string": "YYYY-MM-DD".
+// Example: "New closer step": "2026-08-08"
+const VC_ITEM_SINCE = {
+};
+
 // Old checklist item strings → new, so leads that already had the old item checked
 // keep it checked after the rename.
 const CLOSER_ITEM_RENAMES = {
@@ -6412,10 +6420,21 @@ function analyzeConversions(leads, opts) {
   const countAc = (item) => acPool.filter(l=>hasItem(l,item)).length;
   const countVc = (field) => vcPool.filter(l=>isYes(l,field)).length;
   // Closers VC Checklist counts (works for legacy leads via deriveCloserChecklist).
-  const countCloser = (item) => vcPool.filter(l=>{
+  // A VC account's eligibility for a date-gated item: created on/after the item's
+  // "since" date. Items with no "since" always include the whole vcPool.
+  const vcPoolForItem = (item) => {
+    const since = VC_ITEM_SINCE[item];
+    if(!since) return vcPool;
+    const t = Date.parse(since+"T00:00:00");
+    if(isNaN(t)) return vcPool;
+    return vcPool.filter(l=>{ const c=Date.parse(l.created_at); return !isNaN(c) && c>=t; });
+  };
+  const countCloser = (item) => vcPoolForItem(item).filter(l=>{
     const cc = Array.isArray(l.closer_checklist) ? l.closer_checklist : deriveCloserChecklist(l);
     return cc.includes(item);
   }).length;
+  // Returns a Bar-ready stat for a closer item with the correct (possibly date-gated) denominator.
+  const closerStat = (label, item) => { const denom=vcPoolForItem(item).length; const n=countCloser(item); return {label, pct:pct(n,denom), n, total:denom}; };
   const countAcYes = (field) => acPool.filter(l=>isYes(l,field)).length; // Yes/No field on AC pool
 
   // Outcome rates for AC-set accounts: of accounts that reached AC/Scheduled or
@@ -6531,16 +6550,16 @@ function analyzeConversions(leads, opts) {
       {label:"→ Disqualified", pct:pct(acDqN, acPool.length), n:acDqN},
     ],
     vc: [
-      {label:"Autopay input", pct:pct(countCloser("Autopay Input"), vcPool.length), n:countCloser("Autopay Input")},
-      {label:"Knew solar involved", pct:pct(countCloser("Homeowner knew solar was/could be involved"), vcPool.length), n:countCloser("Homeowner knew solar was/could be involved")},
-      {label:"Let closer inside", pct:pct(countCloser("Homeowner let closer inside"), vcPool.length), n:countCloser("Homeowner let closer inside")},
-      {label:"Decision makers present", pct:pct(countCloser("Every true decision maker was present and bought in"), vcPool.length), n:countCloser("Every true decision maker was present and bought in")},
-      {label:"Problem resonated", pct:pct(countCloser("Found a problem that truly resonates with homeowner"), vcPool.length), n:countCloser("Found a problem that truly resonates with homeowner")},
-      {label:"Prepped for reviews", pct:pct(countCloser("Prepped homeowner for reviews"), vcPool.length), n:countCloser("Prepped homeowner for reviews")},
-      {label:"Sent intro email", pct:pct(countCloser("Sent intro email"), vcPool.length), n:countCloser("Sent intro email")},
-      {label:"Added to contacts", pct:pct(countCloser("Added phone number to homeowners contacts"), vcPool.length), n:countCloser("Added phone number to homeowners contacts")},
-      {label:"Downloaded the app", pct:pct(countCloser("Downloaded the app on homeowners phone"), vcPool.length), n:countCloser("Downloaded the app on homeowners phone")},
-      {label:"Set clear expectations", pct:pct(countCloser("Customer has crystal clear understanding of what they're agreeing to and what happens next"), vcPool.length), n:countCloser("Customer has crystal clear understanding of what they're agreeing to and what happens next")},
+      closerStat("Autopay input", "Autopay Input"),
+      closerStat("Knew solar involved", "Homeowner knew solar was/could be involved"),
+      closerStat("Let closer inside", "Homeowner let closer inside"),
+      closerStat("Decision makers present", "Every true decision maker was present and bought in"),
+      closerStat("Problem resonated", "Found a problem that truly resonates with homeowner"),
+      closerStat("Prepped for reviews", "Prepped homeowner for reviews"),
+      closerStat("Sent intro email", "Sent intro email"),
+      closerStat("Added to contacts", "Added phone number to homeowners contacts"),
+      closerStat("Downloaded the app", "Downloaded the app on homeowners phone"),
+      closerStat("Set clear expectations", "Customer has crystal clear understanding of what they're agreeing to and what happens next"),
     ],
     funnel: [
       {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
@@ -7224,7 +7243,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   <span style={{fontSize:11,color:"#94a3b8"}}>{c.vcTotal} account{c.vcTotal===1?"":"s"}</span>
                 </div>
                 {c.vcTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached VC in this view.</div>
-                  : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.vcTotal}/>)}
+                  : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.total!=null?m.total:c.vcTotal}/>)}
 
                 {/* AC to Install Conversions — stage-to-stage progression rates (current stage) */}
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
