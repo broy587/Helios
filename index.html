@@ -2114,6 +2114,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
   const [teamLogo, setTeamLogo] = useState("");
   const [saving, setSaving] = useState(false);
   const [repActionOpen, setRepActionOpen] = useState(null);
+  const [repsListOpen, setRepsListOpen] = useState(false); // collapse the rep list under a dropdown
   const [assignTeamOpen, setAssignTeamOpen] = useState(null);
   const [calAccessOpen, setCalAccessOpen] = useState(null);
   const [showEditTeam, setShowEditTeam] = useState(false);
@@ -2369,13 +2370,18 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
         </div>
       )}
 
-      {/* Rep cards */}
-      {displayReps.length===0 && (
+      {/* Rep cards — collapsed under a dropdown so they don't all show at once */}
+      <button onClick={()=>setRepsListOpen(v=>!v)}
+        style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderRadius:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",cursor:"pointer",marginBottom:repsListOpen?12:0}}>
+        <span style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>{selectedTeamId==="all"?"Manage Reps":"Manage Team Members"} ({displayReps.length})</span>
+        <span style={{fontSize:13,color:"#94a3b8",transform:repsListOpen?"rotate(180deg)":"none",transition:"transform 0.15s"}}>▾</span>
+      </button>
+      {repsListOpen && displayReps.length===0 && (
         <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"20px 0"}}>
           {selectedTeamId==="all" ? "No reps in the system yet." : "No members yet. Add some reps!"}
         </div>
       )}
-      {displayReps.map(rep=>{
+      {repsListOpen && displayReps.map(rep=>{
         const repLeads=leads.filter(l=>l.owner_id===rep.id);
         const repTeams=getRepTeams(rep.id);
         const isOpen=repActionOpen===rep.id;
