@@ -4183,24 +4183,75 @@ function deriveCloserChecklist(lead) {
 // Welcome / intro email template used by the "Sent intro email" quick button.
 // Edit this text to change what gets pre-filled. {name} is replaced with the
 // customer's first name (or "there" if unknown).
-const WELCOME_EMAIL_SUBJECT = "Welcome to the family!";
+const WELCOME_EMAIL_SUBJECT = "Welcome to Sunrun!";
 const WELCOME_EMAIL_BODY =
-`Hi {name},
+`Hello,
 
-Thank you so much for the opportunity to help you go solar! I'm excited to have you on board and to guide you through every step of the process.
+It was Great Chatting with you. I wanted to leave you with some Useful Information just for your own reference.
 
-Here's what happens next:
-• Consultation
-• Site survey
-• Final results
-• Permits
-• Install prep
-• Installation
-• PTO (Permission to Operate)
+Just to recap the key points:
+* No Lien, No Loan, No debt
+* Cheaper Power
+* Flat rate for power, no more spikes in winter or summer
+* 25 Year Maintenance, Unlimited Battery replacement
+* 25 Year Production Guarantee
+* 100% Transferable
 
-I'll be your point of contact throughout, so please save my number and reach out anytime with questions. Looking forward to working with you!
+Here are a few real customer Testimonials from the DFW Area:
+https://vimeo.com/956221903/e5cfe353e1?share=copy
+https://vimeo.com/956889005/02e3d3ec2a?share=copy
+https://vimeo.com/962587287/ff388cd735?share-copy
+https://vimeo.com/1023442446/0707f7a0e6?share=copy
+https://vimeo.com/1019853325/23fdb06d84?share=copy
 
-Best,`;
+Sunrun DFW — 4+ Stars
+
+Sunrun BBB:
+https://www.bbb.org/us/ca/san-jose/profile/solar-energy-equipment-dealers/sunrun-inc-1216-227054
+
+Sunrun Earns Best Company's 2025 Platinum Solar Award and Preferred Partner Award:
+https://investors.sunrun.com/news-events/press-releases/detail/336/sunrun-earns-best-companys-2025-platinum-solar-award-and
+
+We talked about the importance of battery backup, along with fun programs for Sunrun customers once we get the system installed.
+https://www.globenewswire.com/news-release/2024/07/25/2918765/0/en/Sunrun-Customers-Power-Through-Multi-Day-Outages-Help-Neighbors-in-the-Aftermath-of-Hurricane-Beryl.html
+https://investors.sunrun.com/news-events/press-releases/detail/334/sunruns-power-plant-programs-complete-successful-2024
+
+Check Out these links on Property Brothers / Sunrun Partnership. He mentions his pro experience with Solar in the past and why he chose Sunrun.
+https://vimeo.com/990712709/e4c09284ee
+https://www.drewandjonathan.com/property-brothers-news/drew-scott-eco-friendly-home-tour/
+
+I mentioned how Sunrun was the first and the only company to reach 1,000,000 Customers. Check out this link below.
+https://electrifynews.com/news/solar/sunrun-powers-1-million-homes-with-clean-energy-leading-energy-independence/
+
+Partnerships & Recognition
+
+Reliant & Sunrun Reimbursement:
+https://cloud.email.sunrun.com/reliant_reimbursement_etf
+
+Free Nights Plan and $20/month:
+https://www.reliant.com/en/private/residential/campaigns/sunrun
+
+Article:
+https://www.rttnews.com/3604383/sunrun-and-nrg-energy-partner-to-expand-home-battery-capacity-in-texas.aspx
+
+Sunrun + Tesla: Sunrun & Tesla launch home energy partnership
+Sunrun + Ford Motor Co.: First residential vehicle-to-home program
+TXU + Sunrun: Battery Rewards Program (DFW Virtual Power Plant)
+Sunrun + Property Brothers: Drew Scott on why he chose Sunrun / Eco-Friendly Home Tour
+Awards & Recognition: 2025 Platinum Solar Award & Preferred Partner Award
+Customer Reliability Stories: Hurricane Beryl - Sunrun customers powered through outages
+Sunrun's 2024 Power Plant programs: a success
+Sunrun powers 1 million+ homes nationwide
+Governor Endorsed
+
+As you can see you're in really good hands...
+
+As I mentioned, I should have an update for you if you end up being approved within 1 week. I'll reach out to you once I do. I'm hopeful that you will be approved.
+We will talk soon.
+
+Bronson Young
+(435) 459-3274
+Sunrun Regional Manager`;
 
 function IntroEmailButton({email, firstName}) {
   const dark = useDark();
