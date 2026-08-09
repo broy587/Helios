@@ -5518,6 +5518,18 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [fileErr,setFileErr]=useState("");
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
   const [cancelModalOpen,setCancelModalOpen]=useState(false); // ARC cancellation reason popup
+  // A lead can only be flagged ARC / On Hold / Needs Cancel Save once it has reached
+  // VC / SRA or later. Check live stage + remembered flag stages.
+  const reachedVC = (() => {
+    const idx = Math.max(
+      STAGE_PROGRESSION.indexOf(form.stage||""),
+      STAGE_PROGRESSION.indexOf(form.arcStage||""),
+      STAGE_PROGRESSION.indexOf(form.onHoldStage||""),
+      STAGE_PROGRESSION.indexOf(form.ncsStage||"")
+    );
+    return idx >= MILESTONE_INDEX["VC"];
+  })();
+  const flagBlockMsg = "This lead can only be moved to ARC / Cancels, On Hold, or Cancel Save once it has reached VC / SRA or later.";
   const [holdModalOpen,setHoldModalOpen]=useState(false); // On Hold reason/date popup
   const [ncsModalOpen,setNcsModalOpen]=useState(false); // Needs Cancel Save reasoning popup
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
@@ -5976,6 +5988,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
 
 
+        {/* Flag toggles (ARC / On Hold / Needs Cancel Save) can only be turned ON
+            once the lead has reached VC / SRA or later — checked via live stage and
+            remembered flag stages so a currently-flagged lead still qualifies. */}
+        {(()=>{ return null; })()}
         {/* Needs Cancel Save toggle */}
         <div style={{marginBottom:18,background:form.needsCancelSave?(dark?"#312e81":"#eef2ff"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.needsCancelSave?(dark?"#6366f1":"#a5b4fc"):(dark?"#334155":"#e2e8f0")}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -5983,7 +5999,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               <div style={{fontSize:13,fontWeight:700,color:form.needsCancelSave?(dark?"#c7d2fe":"#4338ca"):(dark?"#f1f5f9":"#0f172a")}}>🛟 Needs Cancel Save</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Flag this lead for a cancel save. Stats will reflect the stage it was in when flagged.</div>
             </div>
-            <div onClick={()=>{ const turningOn=!form.needsCancelSave; if(turningOn) setNcsModalOpen(true); setForm(f=>{
+            <div onClick={()=>{ const turningOn=!form.needsCancelSave; if(turningOn && !reachedVC){ window.alert(flagBlockMsg); return; } if(turningOn) setNcsModalOpen(true); setForm(f=>{
               const on = !f.needsCancelSave;
               return {
                 ...f,
@@ -6019,7 +6035,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               <div style={{fontSize:13,fontWeight:700,color:form.onHold?(dark?"#fcd34d":"#b45309"):(dark?"#f1f5f9":"#0f172a")}}>⏸️ On Hold</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Pause this lead. Stats will reflect the stage it was in when put on hold.</div>
             </div>
-            <div onClick={()=>{ const turningOn=!form.onHold; if(turningOn) setHoldModalOpen(true); setForm(f=>{
+            <div onClick={()=>{ const turningOn=!form.onHold; if(turningOn && !reachedVC){ window.alert(flagBlockMsg); return; } if(turningOn) setHoldModalOpen(true); setForm(f=>{
               const on = !f.onHold;
               return {
                 ...f,
@@ -6058,7 +6074,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
               <div style={{fontSize:13,fontWeight:700,color:form.isArc?(dark?"#fca5a5":"#b91c1c"):(dark?"#f1f5f9":"#0f172a")}}>ARC / Cancel</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Mark this lead as cancelled. Stats will reflect the stage it was in when cancelled.</div>
             </div>
-            <div onClick={()=>{ const turningOn=!form.isArc; if(turningOn) setCancelModalOpen(true); setForm(f=>{
+            <div onClick={()=>{ const turningOn=!form.isArc; if(turningOn && !reachedVC){ window.alert(flagBlockMsg); return; } if(turningOn) setCancelModalOpen(true); setForm(f=>{
               const on = !f.isArc;
               return {
                 ...f,
