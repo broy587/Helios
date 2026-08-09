@@ -6758,6 +6758,94 @@ function analyzeConversions(leads, opts) {
   };
 }
 
+function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, onRemove}) {
+  // Local working order so the list reflows live while dragging. Re-syncs when the
+  // incoming starred set changes (add/remove), keyed by id list.
+  const [order, setOrder] = React.useState(starred);
+  const idsKey = starred.map(l=>l.id).join(",");
+  React.useEffect(()=>{ setOrder(starred); }, [idsKey]);
+
+  const [dragId, setDragId] = React.useState(null);
+  const dragIndexRef = React.useRef(-1);
+  const rowRefs = React.useRef({});
+  const movedRef = React.useRef(false);
+
+  const indexOfId = (id, arr) => arr.findIndex(l=>l.id===id);
+
+  const onPointerDown = (e, id) => {
+    // Only start from the handle (this is wired on the handle element).
+    e.preventDefault();
+    setDragId(id);
+    movedRef.current = false;
+    dragIndexRef.current = indexOfId(id, order);
+    try{ e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId); }catch(_){}
+  };
+  const onPointerMove = (e) => {
+    if(dragId==null) return;
+    movedRef.current = true;
+    const y = e.clientY;
+    // Find which row the pointer is over and reorder live.
+    const cur = order;
+    let targetIdx = indexOfId(dragId, cur);
+    for(let i=0;i<cur.length;i++){
+      const el = rowRefs.current[cur[i].id];
+      if(!el) continue;
+      const r = el.getBoundingClientRect();
+      const mid = r.top + r.height/2;
+      if(y < mid){ targetIdx = i; break; }
+      targetIdx = i; // past the last midpoint → this index
+      if(i===cur.length-1 && y >= mid) targetIdx = cur.length-1;
+    }
+    const from = indexOfId(dragId, cur);
+    if(targetIdx!==from && targetIdx>=0){
+      const arr = cur.slice();
+      const [it] = arr.splice(from,1);
+      arr.splice(targetIdx,0,it);
+      setOrder(arr);
+    }
+  };
+  const endDrag = () => {
+    if(dragId==null) return;
+    setDragId(null);
+    dragIndexRef.current = -1;
+    if(movedRef.current) onReorder(order); // persist only if something actually moved
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1800}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:dark?"#0f172a":"#faf6f0",borderRadius:"20px 20px 0 0",width:"min(100vw,560px)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+        <div style={{padding:"18px 20px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div style={{fontWeight:800,fontSize:17,color:"#a16207",display:"flex",alignItems:"center",gap:8}}>⭐ Priority Comeback <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>({order.length})</span></div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+        </div>
+        {order.length>0 && <div style={{fontSize:11,color:"#94a3b8",padding:"8px 20px 0"}}>Drag the ⠿ handle to reorder · tap a lead to open</div>}
+        <div style={{overflowY:"auto",padding:"12px 16px 28px"}}
+          onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
+          {order.length===0 ? (
+            <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No priority leads yet. Star a lead's ⭐ Priority button to add it here.</div>
+          ) : order.map((l)=>{
+            const isDragging = dragId===l.id;
+            return (
+              <div key={l.id} ref={el=>{ if(el) rowRefs.current[l.id]=el; }}
+                style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${isDragging?"#a16207":(dark?"#334155":"#f0e6d6")}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8,boxShadow:isDragging?"0 8px 24px rgba(0,0,0,0.25)":"none",opacity:isDragging?0.95:1,transform:isDragging?"scale(1.02)":"none",transition:isDragging?"none":"transform 0.18s ease, box-shadow 0.18s ease",touchAction:"none"}}>
+                <span title="Drag to reorder"
+                  onPointerDown={e=>onPointerDown(e,l.id)}
+                  style={{fontSize:20,color:isDragging?"#a16207":"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none",padding:"4px 2px"}}>⠿</span>
+                <div onClick={()=>{ if(!movedRef.current) onOpenLead(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
+                  <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
+                  <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
+                </div>
+                <button onClick={()=>onRemove(l)} title="Remove from Priority Comeback"
+                  style={{flexShrink:0,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLeads,scopedAllLeads,onViewInCanvass,onSwitchToCalendar,profiles,repProfiles,onTransfer,canBookCap,acWarning,onClearAcWarning,acReq,pipeFilters,onSavePipeFilters,isOwner,commUser,commPipelineFilter,commShowAssisted}) {
   const dark=useDark();
   const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
@@ -7357,7 +7445,6 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             return 0;
           });
         const persistOrder = async (ordered) => {
-          // Write sequential priority_order to every lead so the order sticks.
           for(let i=0;i<ordered.length;i++){
             const l=ordered[i];
             if(l.priority_order!==i){
@@ -7366,54 +7453,19 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             }
           }
         };
-        const move = (from,to) => {
-          if(to<0||to>=starred.length||from===to) return;
-          const arr=starred.slice();
-          const [it]=arr.splice(from,1);
-          arr.splice(to,0,it);
-          persistOrder(arr);
-        };
         const removePriority = async (l) => {
           if(!window.confirm(`Remove "${l.name||"this lead"}" from Priority Comeback? This will also unstar it on the lead.`)) return;
           onLeadView({...l,priority:false},"update");
           try{ await sb.from("leads").update({priority:false,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("remove priority failed",e); }
         };
         return (
-          <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1800}} onClick={()=>setPriorityOpen(false)}>
-            <div onClick={e=>e.stopPropagation()} style={{background:dark?"#0f172a":"#faf6f0",borderRadius:"20px 20px 0 0",width:"min(100vw,560px)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-              <div style={{padding:"18px 20px",borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-                <div style={{fontWeight:800,fontSize:17,color:"#a16207",display:"flex",alignItems:"center",gap:8}}>⭐ Priority Comeback <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>({starred.length})</span></div>
-                <button onClick={()=>setPriorityOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
-              </div>
-              {starred.length>0 && <div style={{fontSize:11,color:"#94a3b8",padding:"8px 20px 0"}}>Drag the ⠿ handle to reorder · tap a lead to open</div>}
-              <div style={{overflowY:"auto",padding:"12px 16px 28px"}}>
-                {starred.length===0 ? (
-                  <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No priority leads yet. Star a lead's ⭐ Priority button to add it here.</div>
-                ) : starred.map((l,idx)=>(
-                  <div key={l.id}
-                    draggable
-                    onDragStart={e=>{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",String(idx)); }}
-                    onDragOver={e=>{ e.preventDefault(); e.dataTransfer.dropEffect="move"; }}
-                    onDrop={e=>{ e.preventDefault(); const from=parseInt(e.dataTransfer.getData("text/plain"),10); if(!isNaN(from)) move(from,idx); }}
-                    style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#f0e6d6"}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
-                    <span title="Drag to reorder" style={{fontSize:18,color:"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none"}}>⠿</span>
-                    <div onClick={()=>{ setPriorityOpen(false); setDetailId(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
-                      <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
-                      <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0}}>
-                      <button onClick={()=>move(idx,idx-1)} disabled={idx===0} title="Move up"
-                        style={{background:"none",border:"none",fontSize:13,color:idx===0?"#e2e8f0":"#94a3b8",cursor:idx===0?"default":"pointer",padding:"0 4px",lineHeight:1}}>▲</button>
-                      <button onClick={()=>move(idx,idx+1)} disabled={idx===starred.length-1} title="Move down"
-                        style={{background:"none",border:"none",fontSize:13,color:idx===starred.length-1?"#e2e8f0":"#94a3b8",cursor:idx===starred.length-1?"default":"pointer",padding:"0 4px",lineHeight:1}}>▼</button>
-                    </div>
-                    <button onClick={()=>removePriority(l)} title="Remove from Priority Comeback"
-                      style={{flexShrink:0,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <PriorityComebackList
+            starred={starred} dark={dark}
+            onClose={()=>setPriorityOpen(false)}
+            onOpenLead={(id)=>{ setPriorityOpen(false); setDetailId(id); }}
+            onReorder={persistOrder}
+            onRemove={removePriority}
+          />
         );
       })()}
       {convOpen && (()=>{
