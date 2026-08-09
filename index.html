@@ -6554,7 +6554,7 @@ function pipeFilterCount(filters){
     + (filters.after?1:0) + (filters.before?1:0)
     + (Array.isArray(filters.appt)?filters.appt.length:0)
     + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0)
-    + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0);
+    + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0) + (filters.stageView?1:0);
 }
 
 function analyzeHygiene(leads, staleDays) {
@@ -7021,7 +7021,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         {(() => {
           const assistViewOn = commShowAssisted && (commPipelineFilter==="mine" || (commPipelineFilter||"").startsWith("rep:"));
           const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
-          const shownStages = assistViewOn ? STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx) : STAGES;
+          const dqIdx = STAGE_PROGRESSION.indexOf("Failed Credit / Disqualified");
+          let shownStages = STAGES;
+          // "Lead stages" filter: Leads/ACs = Lead → Disqualified; VC and after = VC/SRA →.
+          const sv = pipeFilters && pipeFilters.stageView;
+          if (sv==="leads_acs") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)<=dqIdx);
+          else if (sv==="vc_after") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
+          // Assisted view only ever shows VC and after (overrides toward the later half).
+          if (assistViewOn) shownStages = shownStages.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
           return shownStages.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
           return (
@@ -7188,7 +7195,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0);
         return (
           <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -7224,6 +7231,21 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       <button onClick={()=>setDraftFilters({...draft, after:undefined, before:undefined})}
                         style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
                     )}
+                  </div>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Lead stages</div>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Show only one part of the pipeline</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[["leads_acs","Leads / ACs"],["vc_after","VC and after"]].map(([val,lbl])=>{
+                      const on = draft.stageView===val;
+                      return (
+                        <button key={val} onClick={()=>setDraftFilters({...draft, stageView: on ? undefined : val})}
+                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                          {lbl}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 {PIPELINE_FILTER_GROUPS.map(group=>(
@@ -7315,7 +7337,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </div>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"default"}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"default",stageView:undefined}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
