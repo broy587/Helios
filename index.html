@@ -4119,7 +4119,7 @@ const VC_CHECKLIST_ITEMS = [
   "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
   "Every true decision maker was present and bought in",
-  "Found their WHY",
+  "Found their WHY and customer voiced it",
   "Objections uncovered and resolved",
   "Pre-frame outside influence/reviews",
   "Future Commitment",
@@ -4132,7 +4132,7 @@ const VC_CHECKLIST_ITEMS = [
 
 // Short explanations shown via a "?" tooltip next to each checklist item.
 const VC_ITEM_HELP = {
-  "Found their WHY": "Customer can clearly explain why this makes sense for them.",
+  "Found their WHY and customer voiced it": "customer very clearly explained their why and why this makes sense for them to do it",
   "Objections uncovered and resolved": "roof/panels, term, moving/selling, reviews/trust, and past solar experiences.",
   "Pre-frame outside influence/reviews": "prepare for what they'll hear from reviews, neighbors, family, friends, realtors, etc and established \"call me before making a decision based on something you hear\".",
   "Future Commitment": "directly establish: \"assuming everything we discussed checks out is there anything that would stop you from moving forward through installation?\"",
@@ -4157,7 +4157,8 @@ const VC_ITEM_SINCE = {
 const CLOSER_ITEM_RENAMES = {
   "Decision makers were present": "Every true decision maker was present and bought in",
   "Set crystal clear expectations on the process": "Customer has crystal clear understanding of what they're agreeing to and what happens next",
-  "Found a problem that truly resonates with homeowner": "Found their WHY",
+  "Found a problem that truly resonates with homeowner": "Found their WHY and customer voiced it",
+  "Found their WHY": "Found their WHY and customer voiced it",
 };
 
 // Build the initial checklist for a lead. If the lead has no closer_checklist
@@ -6733,7 +6734,7 @@ function analyzeConversions(leads, opts) {
       closerStat("Knew solar involved", "Homeowner knew solar was/could be involved"),
       closerStat("Let closer inside", "Homeowner let closer inside"),
       closerStat("Decision makers present", "Every true decision maker was present and bought in"),
-      closerStat("Found their WHY", "Found their WHY"),
+      closerStat("Found their WHY", "Found their WHY and customer voiced it"),
       closerStat("Objections uncovered/resolved", "Objections uncovered and resolved"),
       closerStat("Pre-frame outside influence/reviews", "Pre-frame outside influence/reviews"),
       closerStat("Future Commitment", "Future Commitment"),
