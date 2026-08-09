@@ -4137,6 +4137,7 @@ const VC_ITEM_HELP = {
   "Pre-frame outside influence/reviews": "prepare for what they'll hear from reviews, neighbors, family, friends, realtors, etc and established \"call me before making a decision based on something you hear\".",
   "Future Commitment": "directly establish: \"assuming everything we discussed checks out is there anything that would stop you from moving forward through installation?\"",
   "CAP/follow-up locked in": "Scheduled with customer.",
+  "Customer has crystal clear understanding of what they're agreeing to and what happens next": "consultation, site survey, final results, permits, Install prep, installation, PTO.",
 };
 
 // Items added later can be date-gated so their Conversions/Audit percentages only
@@ -4177,6 +4178,66 @@ function deriveCloserChecklist(lead) {
     if (lead && lead[field]==="Yes") derived.push(item);
   }
   return derived;
+}
+
+// Welcome / intro email template used by the "Sent intro email" quick button.
+// Edit this text to change what gets pre-filled. {name} is replaced with the
+// customer's first name (or "there" if unknown).
+const WELCOME_EMAIL_SUBJECT = "Welcome to the family!";
+const WELCOME_EMAIL_BODY =
+`Hi {name},
+
+Thank you so much for the opportunity to help you go solar! I'm excited to have you on board and to guide you through every step of the process.
+
+Here's what happens next:
+• Consultation
+• Site survey
+• Final results
+• Permits
+• Install prep
+• Installation
+• PTO (Permission to Operate)
+
+I'll be your point of contact throughout, so please save my number and reach out anytime with questions. Looking forward to working with you!
+
+Best,`;
+
+function IntroEmailButton({email, firstName}) {
+  const dark = useDark();
+  const [choosing, setChoosing] = React.useState(false);
+  const subject = WELCOME_EMAIL_SUBJECT;
+  const body = WELCOME_EMAIL_BODY.replace(/\{name\}/g, firstName || "there");
+  const to = email || "";
+  const openApp = () => { window.location.href = `googlegmail://co?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; setChoosing(false); };
+  const openBrowser = () => { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,"_blank","noopener,noreferrer"); setChoosing(false); };
+  return (
+    <>
+      <button onClick={(e)=>{ e.stopPropagation(); setChoosing(true); }}
+        title={email?"Send the welcome email":"No email on this lead"}
+        style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"4px 9px",borderRadius:14,border:"none",background:email?"linear-gradient(135deg,#ea4335,#c5221f)":"#cbd5e1",color:"#fff",fontSize:11,fontWeight:700,cursor:email?"pointer":"not-allowed",opacity:email?1:0.7}}
+        disabled={!email}>
+        ✉️ Send
+      </button>
+      {choosing && (
+        <div onClick={()=>setChoosing(false)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2300,padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:18,width:"100%",maxWidth:360,padding:"20px",boxShadow:"0 12px 40px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Send welcome email</div>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,lineHeight:1.4}}>To {to||"customer"} — subject &amp; body are pre-filled. Attach the welcome PDF from the Vault manually before sending.</div>
+            <button onClick={openApp}
+              style={{width:"100%",padding:"13px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#ea4335,#c5221f)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:17}}>📱</span>
+              <span style={{textAlign:"left"}}>Open Gmail App<br/><span style={{fontSize:10,fontWeight:400,opacity:0.85}}>Requires Gmail installed</span></span>
+            </button>
+            <button onClick={openBrowser}
+              style={{width:"100%",padding:"13px 16px",borderRadius:11,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#0f172a",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:17}}>🌐</span>
+              <span>Open in Browser</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, collapsible}) {
@@ -4239,6 +4300,9 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
                   {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
                 </span>
               </div>
+              {item==="Sent intro email" && !readOnly && (
+                <IntroEmailButton email={lead&&(lead.email||lead.secondary_email)} firstName={lead&&(lead.first_name||(lead.name||"").split(" ")[0])}/>
+              )}
               {help && (
                 <button onClick={(e)=>{e.stopPropagation();setOpenHelp(o=>o===item?null:item);}}
                   title="What does this mean?"
