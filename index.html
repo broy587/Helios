@@ -4655,6 +4655,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const [assistEditing,setAssistEditing]=useState(false); // view-mode inline assist editor
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
+  const [closeChoice,setCloseChoice]=useState(false); // Book Close → choose Closer or Personal
+  const [followupChoice,setFollowupChoice]=useState(false); // Follow up (personal only)
   const [showCommission,setShowCommission]=useState(false);
   const [showUtilInfoV,setShowUtilInfoV]=useState(false);
   const [giftMsg,setGiftMsg]=useState(""); // "" | "saving" | "error" for the gift-card checkbox
@@ -5037,23 +5039,33 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               {showBookOpts && (
                 <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
-                    <CalendarSyncButton lead={lead} onUpdate={updated=>{if(onUpdate)onUpdate({...lead,...updated});}} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
-                    <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change CB":"↩️ Personal CB"} onSelect={async(val,cbEventId)=>{
-                      if(lead.cb_event_id && lead.cb_event_id!==cbEventId){
-                        try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); }
-                      }
-                      const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
-                      await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                      try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                      handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
-                    }}/>
+                    {!closeChoice ? (
+                      <button onClick={()=>setCloseChoice(true)}
+                        style={{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                        📅 Book Close
+                      </button>
+                    ) : (
+                      <React.Fragment>
+                        <CalendarSyncButton lead={lead} onUpdate={updated=>{setCloseChoice(false);if(onUpdate)onUpdate({...lead,...updated});}} label="🏢 Closer" creatorName={creatorName} acReq={acReq}/>
+                        <PersonalApptButton lead={lead} label="👤 Personal" title="📅 Personal Close" confirmLabel="Book Close"
+                          summary={`🟢 Close - ${lead.name||"Lead"}`} accent="#16a34a" colorId="10"
+                          onSelect={async(val,cbEventId)=>{
+                            if(lead.cb_event_id && lead.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); } }
+                            const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
+                            await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                            try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                            handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
+                            setCloseChoice(false);
+                          }}/>
+                      </React.Fragment>
+                    )}
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     {canBookCap ? (
                       !capChoice ? (
                         <button onClick={()=>setCapChoice(true)}
                           style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #ea580c",background:"#fff7ed",color:"#ea580c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                          {lead.cap_event_id?"📋 Change CAP":"📋 Book CAP"}
+                          {lead.cap_event_id?"📋 Change CAP":"📋 CAP"}
                         </button>
                       ) : (
                         <React.Fragment>
@@ -5073,7 +5085,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       )
                     ) : <div style={{flex:1}}/>}
                     <PersonalApptButton lead={lead}
-                      label={lead.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                      label={lead.install_event_id?"🟩 Change Install":"🟩 Install"}
                       title="🟩 Book Install" confirmLabel="Book Install"
                       summary={`🟩 Install - ${lead.name||"Lead"}`}
                       fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
@@ -5089,7 +5101,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     {!csChoice ? (
                       <button onClick={()=>setCsChoice(true)}
                         style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                        {lead.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                        {lead.cs_event_id?"🔴 Change Cancel Save":"🔴 Cancel Save"}
                       </button>
                     ) : (
                       <React.Fragment>
@@ -5109,7 +5121,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           }}/>
                       </React.Fragment>
                     )}
-                    <div style={{flex:1}}/>
+                    <PersonalApptButton lead={lead}
+                      label={lead.followup_event_id?"🟣 Change Follow Up":"🟣 Follow Up"}
+                      title="🟣 Book Follow Up" confirmLabel="Book Follow Up"
+                      summary={`🟣 Follow-Up - ${lead.name||"Lead"}`} accent="#9333ea" colorId="3"
+                      onSelect={async(val,evId)=>{
+                        if(lead.followup_event_id && lead.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.followup_event_id); }catch(e){ console.error(e); } }
+                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), followup:new Date().toISOString()};
+                        await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
+                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                        handleUpdate({...lead,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts});
+                      }}/>
                   </div>
                   {/* Cancel buttons for the personal-calendar bookings */}
                   {lead.cb_event_id && (
@@ -5156,6 +5178,17 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     }}
                       style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                       ✕ Cancel "Cancel Save"
+                    </button>
+                  )}
+                  {(lead.followup_event_id || lead.followup_appointment) && (
+                    <button onClick={async()=>{
+                      if(!window.confirm("Cancel this follow up? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                      if(lead.followup_event_id){ try{ await GCal.deletePersonalCB(lead.followup_event_id); }catch(e){ console.error("Couldn't delete follow up from calendar (clearing anyway):",e); } }
+                      try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear follow up on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
+                      handleUpdate({...lead,followup_appointment:"",followup_event_id:null});
+                    }}
+                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #e9d5ff",background:dark?"rgba(147,51,234,0.12)":"#faf5ff",color:"#7e22ce",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                      ✕ Cancel Follow Up
                     </button>
                   )}
                 </div>
@@ -5535,6 +5568,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
+  const [closeChoice,setCloseChoice]=useState(false); // Book Close → choose Closer or Personal
+  const [followupChoice,setFollowupChoice]=useState(false); // Follow up (personal only)
   useEffect(()=>{
     setConfirmDelete(false); // never open the form already showing a delete prompt
     setFileErr(""); setUploadingFile(false); setEditImgOpen(null);
@@ -5766,18 +5801,30 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
           {showBookOpts && (
             <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
               <div style={{display:"flex",gap:8}}>
-                <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
-                  if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
-                  else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
-                }} label="📅 Book Closer" creatorName={creatorName} acReq={acReq}/>
-                <PersonalApptButton lead={{...form}} onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),main:new Date().toISOString()}}))} label="↩️ Personal CB"/>
+                {!closeChoice ? (
+                  <button type="button" onClick={()=>setCloseChoice(true)}
+                    style={{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    📅 Book Close
+                  </button>
+                ) : (
+                  <React.Fragment>
+                    <CalendarSyncButton lead={{...form}} onUpdate={updated=>{
+                      setCloseChoice(false);
+                      if(updated.appointment===null) setForm(f=>({...f,appointment:"",gcal_event_id:"",...(updated.stage?{stage:updated.stage}:{})}));
+                      else if(updated.appointment) setForm(f=>({...f,appointment:updated.appointment,gcal_event_id:updated.gcal_event_id||"",...(updated.stage?{stage:updated.stage}:{})}));
+                    }} label="🏢 Closer" creatorName={creatorName} acReq={acReq}/>
+                    <PersonalApptButton lead={{...form}} label="👤 Personal" title="📅 Personal Close" confirmLabel="Book Close"
+                      summary={`🟢 Close - ${form.name||"Lead"}`} accent="#16a34a" colorId="10"
+                      onSelect={(val,cbEventId)=>{ setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),main:new Date().toISOString()}})); setCloseChoice(false); }}/>
+                  </React.Fragment>
+                )}
               </div>
               <div style={{display:"flex",gap:8}}>
                 {canBookCap ? (
                   !capChoice ? (
                     <button type="button" onClick={()=>setCapChoice(true)}
                       style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #ea580c",background:"#fff7ed",color:"#ea580c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      {form.cap_event_id?"📋 Change CAP":"📋 Book CAP"}
+                      {form.cap_event_id?"📋 Change CAP":"📋 CAP"}
                     </button>
                   ) : (
                     <React.Fragment>
@@ -5795,7 +5842,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   )
                 ) : <div style={{flex:1}}/>}
                 <PersonalApptButton lead={{...form}}
-                  label={form.install_event_id?"🟩 Change Install":"🟩 Book Install"}
+                  label={form.install_event_id?"🟩 Change Install":"🟩 Install"}
                   title="🟩 Book Install" confirmLabel="Book Install"
                   summary={`🟩 Install - ${form.name||"Lead"}`}
                   fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
@@ -5808,7 +5855,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 {!csChoice ? (
                   <button type="button" onClick={()=>setCsChoice(true)}
                     style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #dc2626",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                    {form.cs_event_id?"🔴 Change Cancel Save":"🔴 Book Cancel Save"}
+                    {form.cs_event_id?"🔴 Change Cancel Save":"🔴 Cancel Save"}
                   </button>
                 ) : (
                   <React.Fragment>
@@ -5827,7 +5874,16 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                       }}/>
                   </React.Fragment>
                 )}
-                <div style={{flex:1}}/>
+                <PersonalApptButton lead={{...form}}
+                  label={form.followup_event_id?"🟣 Change Follow Up":"🟣 Follow Up"}
+                  title="🟣 Book Follow Up" confirmLabel="Book Follow Up"
+                  summary={`🟣 Follow-Up - ${form.name||"Lead"}`} accent="#9333ea" colorId="3"
+                  onSelect={async(val,evId)=>{
+                    if(form.followup_event_id && form.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(form.followup_event_id); }catch(e){ console.error(e); } }
+                    const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),followup:new Date().toISOString()};
+                    setForm(f=>({...f,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts}));
+                    if(form.id){ try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                  }}/>
               </div>
               {(form.cap_event_id || form.cap_appointment) && (
                 <button type="button" onClick={async()=>{
@@ -5859,6 +5915,17 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 }}
                   style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   ✕ Cancel "Cancel Save"
+                </button>
+              )}
+              {(form.followup_event_id || form.followup_appointment) && (
+                <button type="button" onClick={async()=>{
+                  if(!window.confirm("Cancel this follow up? It will be removed from your Google Calendar and cleared from the lead.")) return;
+                  if(form.followup_event_id){ try{ await GCal.deletePersonalCB(form.followup_event_id); }catch(e){ console.error("Couldn't delete follow up from calendar (clearing anyway):",e); } }
+                  setForm(f=>({...f,followup_appointment:"",followup_event_id:null}));
+                  if(form.id){ try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                }}
+                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #e9d5ff",background:dark?"rgba(147,51,234,0.12)":"#faf5ff",color:"#7e22ce",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  ✕ Cancel Follow Up
                 </button>
               )}
             </div>
@@ -6314,6 +6381,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           if(lead.cap_appointment) cands.push({raw:lead.cap_appointment, label:"CAP ", color:"#ea580c", k:bookedKey(at.cap, lead.cap_appointment)});
           if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
           if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
+          if(lead.followup_appointment) cands.push({raw:lead.followup_appointment, label:"Follow-Up ", color:"#9333ea", k:bookedKey(at.followup, lead.followup_appointment)});
           (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label)}); });
           if(!cands.length) return null;
           let best=cands[0];
@@ -6419,7 +6487,7 @@ function pfMissingSold(l){
   return ["system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex"].some(f=>!pfNonEmpty(l[f]));
 }
 function pfHasAppt(l){
-  return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) ||
+  return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) || pfNonEmpty(l.cs_appointment) || pfNonEmpty(l.install_appointment) || pfNonEmpty(l.followup_appointment) ||
     (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
 }
 function pfKnowsSolar(l){
@@ -13678,11 +13746,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
@@ -13936,7 +14004,7 @@ function App() {
     const newPhotos = form.billPhotos || [];
     const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
 
-    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,appt_ts:(form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{},cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
+    const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],notes_created_at:((form.notes||"").trim()?(form.notesCreatedAt||new Date().toISOString()):(form.notesCreatedAt||null)),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,followup_appointment:form.followup_appointment||"",followup_event_id:form.followup_event_id||null,appt_ts:(form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{},cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
