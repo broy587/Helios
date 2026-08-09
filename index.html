@@ -6411,6 +6411,13 @@ function pfHasCloserNotes(l){
   if(log.some(n=>n && pfNonEmpty(n.text))) return true;
   return pfNonEmpty(l.closer_notes);
 }
+// "Missing" = any one of the fields in the group is blank.
+function pfMissingUtility(l){
+  return ["utility","esiid","meter","cents_kwh","annual_kwh","average_bill"].some(f=>!pfNonEmpty(l[f]));
+}
+function pfMissingSold(l){
+  return ["system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex"].some(f=>!pfNonEmpty(l[f]));
+}
 function pfHasAppt(l){
   return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) ||
     (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
@@ -6456,11 +6463,13 @@ const PIPELINE_FILTER_DEFS = [
     // Uses closer_checklist, falling back to derived legacy answers so older leads still match.
     test:l=>deriveCloserChecklist(l).includes(item),
   })),
+  {key:"missing_utility", group:"Utility and sold system info", label:"Missing utility info",     test:pfMissingUtility},
+  {key:"missing_sold",    group:"Utility and sold system info", label:"Missing sold system info", test:pfMissingSold},
   {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
   {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
   {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
 ];
-const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Needs attention"];
+const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Utility and sold system info","Needs attention"];
 const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"],["has_cnotes","no_cnotes"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
