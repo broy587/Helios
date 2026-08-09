@@ -4298,10 +4298,9 @@ function IntroEmailButton({email, firstName}) {
   const openBrowser = () => { window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,"_blank","noopener,noreferrer"); setChoosing(false); };
   return (
     <>
-      <button onClick={(e)=>{ e.stopPropagation(); setChoosing(true); }}
-        title={email?"Send the welcome email":"No email on this lead"}
-        style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"4px 9px",borderRadius:14,border:"none",background:email?"linear-gradient(135deg,#ea4335,#c5221f)":"#cbd5e1",color:"#fff",fontSize:11,fontWeight:700,cursor:email?"pointer":"not-allowed",opacity:email?1:0.7}}
-        disabled={!email}>
+      <button onClick={(e)=>{ e.stopPropagation(); if(!email){ window.alert("This lead doesn't have an email address yet. Add the customer's email on the lead (Edit → Email), then tap Send."); return; } setChoosing(true); }}
+        title={email?"Send the welcome email":"No email on this lead yet — tap for details"}
+        style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"4px 9px",borderRadius:14,border:"none",background:email?"linear-gradient(135deg,#ea4335,#c5221f)":"#cbd5e1",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",opacity:email?1:0.75}}>
         ✉️ Send
       </button>
       {choosing && (
