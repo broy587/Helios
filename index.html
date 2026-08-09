@@ -7087,8 +7087,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           );
         });
         })()}
-        {/* Needs Cancel Save — separate column, no drag-drop. Positioned before ARC. */}
-        {(()=>{
+        {/* Needs Cancel Save — separate column, no drag-drop. Positioned before ARC.
+            Hidden when "Leads / ACs" is selected (flagged piles are VC+ concepts). */}
+        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
           const ncsLeads=leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7f1d1d`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
@@ -7108,7 +7109,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         })()}
         {/* On Hold — separate column, no drag-drop (ARC takes priority if both).
             Positioned between Needs Cancel Save and ARC / Cancels. */}
-        {(()=>{
+        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
           const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7c2d12`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
@@ -7127,7 +7128,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           );
         })()}
         {/* ARC / Cancels — separate column, no drag-drop */}
-        {(()=>{
+        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
           const arcLeads=leads.filter(l=>l.is_arc);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #ef4444`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.9}}>
