@@ -10548,6 +10548,35 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
 
 // ── Calendar View ─────────────────────────────────────────────────────
+function RescheduleModal({dark, title, initDate, initTime, initDur, saving, onClose, onSave}) {
+  const [d,setD]=React.useState(initDate);
+  const [t,setT]=React.useState(initTime);
+  const [dur,setDur]=React.useState(initDur);
+  const fld={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+  const lbl={fontSize:12,fontWeight:700,color:dark?"#cbd5e1":"#475569",marginBottom:5,display:"block"};
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2400,padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:18,width:"100%",maxWidth:380,padding:"20px"}}>
+        <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:2}}>Reschedule</div>
+        <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</div>
+        <div style={{marginBottom:12}}><label style={lbl}>Date</label><input type="date" value={d} onChange={e=>setD(e.target.value)} style={fld}/></div>
+        <div style={{marginBottom:12}}><label style={lbl}>Start time</label><input type="time" value={t} onChange={e=>setT(e.target.value)} style={fld}/></div>
+        <div style={{marginBottom:18}}><label style={lbl}>Length</label>
+          <select value={dur} onChange={e=>setDur(parseInt(e.target.value,10))} style={fld}>
+            {[15,30,45,60,90,120].map(n=><option key={n} value={n}>{n} minutes</option>)}
+          </select>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Cancel</button>
+          <button onClick={()=>onSave(d,t,dur)} disabled={saving||!d||!t}
+            style={{flex:2,padding:"12px 0",borderRadius:10,border:"none",background:"#1a2456",color:"#fff",fontWeight:800,fontSize:14,cursor:saving?"default":"pointer",opacity:saving?0.7:1}}>
+            {saving?"Saving…":"Save new time"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManageEvents, canAddOpenSlot, isSelfGen, creatorName}) {
   const dark = useDark();
   const [calKey, setCalKey] = React.useState(0);
@@ -10580,6 +10609,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
   const [showOpenSlots, setShowOpenSlots] = React.useState(true); // now default: show everything
   const [tagKinds, setTagKinds] = React.useState([]); // selected marker filters ([] = show all kinds)
+  const [editEvent, setEditEvent] = React.useState(null); // {ev, calendarId} being rescheduled
   const [removingId, setRemovingId] = React.useState(null);
   const createdByMe = (ev)=>{
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
@@ -10873,14 +10903,56 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
   // Remove an event: booked appointments are released back to an open slot (and the
   // linked lead is cleared); open slots and meetings are deleted outright.
-  const removeEventFromList = async (calendarId, ev) => {
+  // Reschedule an event: PATCH new start/end on the calendar, and if it's linked to a
+  // lead, update that lead's appointment time too so pipeline stays in sync.
+  const [rescheduling, setRescheduling] = React.useState(false);
+  const saveReschedule = async (calendarId, ev, newStartISO, newEndISO) => {
+    setRescheduling(true);
+    try {
+      let ok=false;
+      const body={start:{dateTime:newStartISO},end:{dateTime:newEndISO}};
+      let r=null;
+      try{ r = await CalendarBackend.tryCall("patchEvent",{calendarId,eventId:ev.id,patch:body}); }catch(_){ r=null; }
+      if(r && r.ok) ok=true;
+      if(!ok){
+        // Fallback (or backend has no patchEvent): patch directly via Google sign-in.
+        const token = await GCal.signIn();
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
+          {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(body)});
+        ok=res.ok;
+      }
+      if(ok){
+        // Sync the linked lead's appointment time (whichever field this event maps to).
+        if((ev.description||"").includes("BOOKED:")){
+          const human = new Date(newStartISO).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+          try {
+            await sb.from("leads").update({appointment:human,updated_at:new Date().toISOString()}).eq("gcal_event_id",ev.id);
+            await sb.from("leads").update({cap_appointment:human,updated_at:new Date().toISOString()}).eq("cap_event_id",ev.id);
+            await sb.from("leads").update({cs_appointment:human,updated_at:new Date().toISOString()}).eq("cs_event_id",ev.id);
+            await sb.from("leads").update({install_appointment:human,updated_at:new Date().toISOString()}).eq("install_event_id",ev.id);
+          } catch(e){ console.error("lead time sync failed:",e); }
+        }
+        // Update the event in the local list so the new time shows immediately.
+        setTagEvents(list=>list.map(x=>x.id===ev.id?{...x,start:{dateTime:newStartISO},end:{dateTime:newEndISO}}:x));
+        setEditEvent(null);
+        setCalKey(k=>k+1);
+      } else {
+        window.alert("Couldn't reschedule that event. You may not have edit access to this calendar.");
+      }
+    } catch(e){ console.error(e); window.alert("Error rescheduling: "+((e&&e.message)||"unknown")); }
+    setRescheduling(false);
+  };
+
+  const removeEventFromList = async (calendarId, ev, mode) => {
     if(!canRemoveEvent(ev)) return;
     const isBooked = (ev.description||"").includes("BOOKED:");
     const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
-    const release = isBooked && !isOpen; // release to open slot vs delete
+    // mode: "release" = return a booked slot to an open slot + unlink the lead;
+    //       "delete"  = delete the event outright. Default keeps old behavior.
+    const release = (mode==="release") && isBooked && !isOpen;
     const label = isOpen ? "open slot" : (isBooked ? "appointment" : "meeting");
     const confirmMsg = release
-      ? "Remove this appointment? It will be released back to an open slot on the calendar."
+      ? "Remove the lead from this slot? It returns to an open slot on the calendar and the appointment is cleared on the lead."
       : `Delete this ${label}? This removes it from the calendar.`;
     if(!window.confirm(confirmMsg)) return;
     setRemovingId(ev.id);
@@ -10903,11 +10975,14 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         }
       }
       if(ok){
-        // If it was a booked appointment, clear it off any lead so the two stay in sync.
-        if(release){
+        // Keep pipeline in sync: if this event was linked to a lead, clear the
+        // appointment off that lead — whether we released it or deleted it.
+        if(isBooked){
           try {
             await sb.from("leads").update({gcal_event_id:null,appointment:null,updated_at:new Date().toISOString()}).eq("gcal_event_id",ev.id);
             await sb.from("leads").update({cap_event_id:null,cap_appointment:null,updated_at:new Date().toISOString()}).eq("cap_event_id",ev.id);
+            await sb.from("leads").update({cs_event_id:null,cs_appointment:null,updated_at:new Date().toISOString()}).eq("cs_event_id",ev.id);
+            await sb.from("leads").update({install_event_id:null,install_appointment:null,updated_at:new Date().toISOString()}).eq("install_event_id",ev.id);
           } catch(e){ console.error("lead sync after remove failed:",e); }
         }
         setTagEvents(list=>list.filter(x=>x.id!==ev.id));
@@ -11088,17 +11163,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               Tap a marker to color-tag an appointment (one at a time — tap it again to clear).{canRemoveAny?" Use 🗑️ to remove an event from the calendar.":""}
               {!canManageEvents && <span> You can only tag/remove appointments you created.</span>}
             </div>
-            {/* Emoji key */}
-            <div style={{background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Marker key</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"5px 12px"}}>
-                {APPT_MARKERS.map(m=>(
-                  <div key={m} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:dark?"#cbd5e1":"#475569"}}>
-                    <span style={{fontSize:15}}>{m}</span><span style={{fontWeight:600}}>{MARKER_MEANINGS[m]||""}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
             {/* Day filter */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
               {[["all","All"],["today","Today"],["upcoming","Upcoming"],["past","Past"]].map(([v,label])=>(
@@ -11126,7 +11190,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                         border:`1.5px solid ${on?"#0369a1":(dark?"#334155":"#e2e8f0")}`,
                         background:on?(dark?"#0c4a6e":"#e0f2fe"):(dark?"#0f172a":"#fff"),
                         color:on?(dark?"#7dd3fc":"#0369a1"):(dark?"#94a3b8":"#475569")}}>
-                      {k!=="open" && <span style={{fontSize:13}}>{k}</span>}{label}
+                      <span style={{fontSize:13}}>{k==="open"?"🟦":k}</span>{label}
                     </button>
                   );
                 })}
@@ -11166,10 +11230,24 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                         {!canTag && !isOpenSlot && !removable && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
                         {removable && (
-                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev)} disabled={isRemoving}
-                            title={((ev.description||"").includes("BOOKED:")&&!isOpenSlot)?"Remove appointment (releases the slot)":"Delete from calendar"}
+                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev, "delete")} disabled={isRemoving}
+                            title="Delete this appointment from the calendar"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fecaca`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>
                             {isRemoving?"…":"🗑️"}
+                          </button>
+                        )}
+                        {removable && (ev.description||"").includes("BOOKED:") && !isOpenSlot && (
+                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev, "release")} disabled={isRemoving}
+                            title="Remove lead from this slot (returns it to an open slot & clears the appointment on the lead)"
+                            style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fdba74`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ea580c",fontWeight:700}}>
+                            {isRemoving?"…":"↩️"}
+                          </button>
+                        )}
+                        {allowed && (
+                          <button onClick={()=>setEditEvent({ev, calendarId:teamCfg && teamCfg.calendarId})}
+                            title="Edit date, time & length"
+                            style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>
+                            ✏️
                           </button>
                         )}
                       </div>
@@ -11189,6 +11267,23 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 })}
               </div>
             )}
+            {editEvent && (()=>{
+              const ev=editEvent.ev;
+              const start=new Date(ev.start && (ev.start.dateTime||ev.start.date));
+              const end=new Date(ev.end && (ev.end.dateTime||ev.end.date) || start.getTime()+30*60000);
+              const pad=(n)=>String(n).padStart(2,"0");
+              const dateStr=`${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}`;
+              const timeStr=`${pad(start.getHours())}:${pad(start.getMinutes())}`;
+              const durMin=Math.max(5,Math.round((end.getTime()-start.getTime())/60000))||30;
+              return <RescheduleModal dark={dark} title={stripMarker(ev.summary)||"Appointment"}
+                initDate={dateStr} initTime={timeStr} initDur={durMin} saving={rescheduling}
+                onClose={()=>setEditEvent(null)}
+                onSave={(d,t,dur)=>{
+                  const s=new Date(`${d}T${t}:00`);
+                  const e=new Date(s.getTime()+dur*60000);
+                  saveReschedule(editEvent.calendarId, ev, s.toISOString(), e.toISOString());
+                }}/>;
+            })()}
           </div>
         </div>
       )}
