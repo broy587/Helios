@@ -7174,11 +7174,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           const sv = pipeFilters && pipeFilters.stageView;
           if (sv==="leads_acs") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)<=dqIdx);
           else if (sv==="vc_after") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
-          const acIdx = STAGE_PROGRESSION.indexOf("AC / Scheduled");
-          // Assisted view shows AC/Scheduled + VC/SRA and after (drops the dead-end
-          // middle stages: No Show, Stale, No Close, Disqualified).
-          const ASSIST_COLS = ["AC / Scheduled","VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"];
-          if (assistViewOn) shownStages = shownStages.filter(s=>ASSIST_COLS.includes(s));
+          // Assisted view now shows the ENTIRE pipeline (all stage columns).
           return shownStages.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
           return (
@@ -14433,17 +14429,8 @@ function App() {
     : pipelineFilter.startsWith("rep:") ? "rep"
     : "mine";
 
-  // An assisted account (surfaced via the Assisted toggle) only shows when its
-  // EFFECTIVE stage (remembered stage honored for ARC / On Hold / Cancel Save) is
-  // AC / Scheduled, or VC / SRA and after. Hidden in the Lead stage and the dead-end
-  // middle stages (No Show, Stale, No Close, Disqualified).
-  const ASSIST_VISIBLE_STAGES = new Set([
-    "AC / Scheduled","VC / SRA","CAP","Permitting","Install Scheduled","Install","PTO / REP"
-  ]);
-  const assistShows = (l) => {
-    const eff = STAGE_PROGRESSION[getEffectiveStageIndex(l)] || l.stage;
-    return ASSIST_VISIBLE_STAGES.has(eff);
-  };
+  // An assisted account (surfaced via the Assisted toggle) shows at ANY stage.
+  const assistShows = (l) => true;
   // Reps the current user is an assist for (used to populate the assisted dropdown).
   const myAssistRepIds = (()=>{
     const ids = new Set();
