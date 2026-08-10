@@ -7020,6 +7020,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
   const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
   const [filterOpen,setFilterOpen]=useState(false);
   const [draftFilters,setDraftFilters]=useState(pipeFilters||{active:[],stale:{on:false,mode:"show",days:14}});
+  const [openFilterSections,setOpenFilterSections]=useState({}); // which filter sections are expanded
   const [convOpen,setConvOpen]=useState(false);
   const [priorityOpen,setPriorityOpen]=useState(false);
   const [auditOpen,setAuditOpen]=useState(false);
@@ -7345,6 +7346,23 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
         const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0);
+        // Collapsible section wrapper — each filter section is a dropdown.
+        const FilterSection = ({name, title, count, children}) => {
+          const isOpen = !!openFilterSections[name];
+          return (
+            <div style={{borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
+              <button onClick={()=>setOpenFilterSections(s=>({...s,[name]:!s[name]}))}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"14px 2px",background:"none",border:"none",cursor:"pointer"}}>
+                <span style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:12,fontWeight:800,color:dark?"#e2e8f0":"#334155",textTransform:"uppercase",letterSpacing:"0.05em"}}>{title}</span>
+                  {count>0 && <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1a2456",borderRadius:10,padding:"1px 8px"}}>{count}</span>}
+                </span>
+                <span style={{fontSize:12,color:"#94a3b8",transform:isOpen?"rotate(180deg)":"none",transition:"transform 0.15s"}}>▼</span>
+              </button>
+              {isOpen && <div style={{paddingBottom:14}}>{children}</div>}
+            </div>
+          );
+        };
         return (
           <div onClick={()=>setFilterOpen(false)}
             style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:6000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
@@ -7358,9 +7376,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 <button onClick={()=>setFilterOpen(false)} style={{background:"none",border:"none",fontSize:22,lineHeight:1,cursor:"pointer",color:"#94a3b8",padding:0}}>×</button>
               </div>
               <div style={{padding:"6px 20px 12px",overflowY:"auto",flex:1}}>
-                {/* Created date range — pinned at the top */}
-                <div style={{marginBottom:16,borderBottom:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingBottom:14}}>
-                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"6px 0 10px"}}>Created date range</div>
+                <FilterSection name="dates" title="Created date range" count={(draft.after?1:0)+(draft.before?1:0)}>
                   <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                     <div style={{flex:1,minWidth:130}}>
                       <label style={{display:"block",fontSize:11,fontWeight:700,color:dark?"#cbd5e1":"#475569",marginBottom:4}}>Created on/after</label>
@@ -7381,9 +7397,8 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                         style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
                     )}
                   </div>
-                </div>
-                <div style={{marginBottom:8}}>
-                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Lead stages</div>
+                </FilterSection>
+                <FilterSection name="stages" title="Lead stages" count={draft.stageView?1:0}>
                   <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Show only one part of the pipeline</div>
                   <div style={{display:"flex",gap:8}}>
                     {[["leads_acs","Leads / ACs"],["vc_after","VC and after"]].map(([val,lbl])=>{
@@ -7396,66 +7411,8 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       );
                     })}
                   </div>
-                </div>
-                {PIPELINE_FILTER_GROUPS.map(group=>(
-                  <div key={group} style={{marginBottom:16}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"10px 0 8px"}}>{group}</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                      {PIPELINE_FILTER_DEFS.filter(d=>d.group===group).map(d=>{
-                        const on = activeSet.has(d.key);
-                        return (
-                          <button key={d.key} onClick={()=>toggle(d.key)}
-                            style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                            {on && <span style={{fontSize:12}}>✓</span>}{d.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Stale (no recent activity)</div>
-                    <button onClick={()=>setStale({on:!stale.on})}
-                      style={{width:44,height:24,borderRadius:12,border:"none",cursor:"pointer",background:stale.on?"#1a2456":(dark?"#334155":"#cbd5e1"),position:"relative",transition:"background 0.15s",flexShrink:0}}>
-                      <span style={{position:"absolute",top:2,left:stale.on?22:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
-                    </button>
-                  </div>
-                  {stale.on && (
-                    <div>
-                      <div style={{display:"flex",gap:8,marginBottom:10}}>
-                        {[["show","Show only stale"],["hide","Hide stale"]].map(([m,lbl])=>(
-                          <button key={m} onClick={()=>setStale({mode:m})}
-                            style={{flex:1,padding:"8px 0",borderRadius:10,border:`1.5px solid ${stale.mode===m?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:stale.mode===m?"#1a2456":(dark?"#0f172a":"#fff"),color:stale.mode===m?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:700,cursor:"pointer"}}>{lbl}</button>
-                        ))}
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:12,color:"#94a3b8"}}>Older than:</span>
-                        {[7,14,21,30,60].map(dd=>(
-                          <button key={dd} onClick={()=>setStale({days:dd})}
-                            style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${stale.days===dd?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:stale.days===dd?"#6b2d4e":(dark?"#0f172a":"#fff"),color:stale.days===dd?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{dd}d</button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
-                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Archive</div>
-                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Choose which accounts appear in the pipeline</div>
-                  <div style={{display:"flex",gap:8}}>
-                    {[["show_all","All accounts"],["only","Only archived"]].map(([val,lbl])=>{
-                      const on = draft.archiveMode===val;
-                      return (
-                        <button key={val} onClick={()=>setDraftFilters({...draft, archiveMode: on ? "default" : val})}
-                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                          {lbl}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div style={{marginBottom:8,borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,paddingTop:14}}>
-                  <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Appointments</div>
+                </FilterSection>
+                <FilterSection name="appts" title="Appointments" count={(Array.isArray(draft.appt)?draft.appt.length:0)+((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0)}>
                   <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Show leads with an appointment starting in:</div>
                   <div style={{display:"flex",gap:8}}>
                     {[["morning","8AM–1PM"],["afternoon","1PM–5PM"],["evening","5PM–9PM"]].map(([val,lbl])=>{
@@ -7483,7 +7440,60 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                     <option value="6">Saturday</option>
                     <option value="0">Sunday</option>
                   </select>
-                </div>
+                </FilterSection>
+                {PIPELINE_FILTER_GROUPS.map(group=>{
+                  const groupCount = PIPELINE_FILTER_DEFS.filter(d=>d.group===group && activeSet.has(d.key)).length;
+                  return (
+                  <FilterSection key={group} name={`grp-${group}`} title={group} count={groupCount}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {PIPELINE_FILTER_DEFS.filter(d=>d.group===group).map(d=>{
+                        const on = activeSet.has(d.key);
+                        return (
+                          <button key={d.key} onClick={()=>toggle(d.key)}
+                            style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                            {on && <span style={{fontSize:12}}>✓</span>}{d.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FilterSection>
+                  );
+                })}
+                <FilterSection name="stale" title="Stale (no recent activity)" count={stale.on?1:0}>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Filter by accounts with no recent activity</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[["show","Show only stale"],["hide","Hide stale"]].map(([m,lbl])=>{
+                      const on = stale.on && stale.mode===m;
+                      return (
+                        <button key={m} onClick={()=>{ if(on){ setStale({on:false}); } else { setStale({on:true, mode:m}); } }}
+                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:700,cursor:"pointer"}}>{lbl}</button>
+                      );
+                    })}
+                  </div>
+                  {stale.on && (
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:12}}>
+                      <span style={{fontSize:12,color:"#94a3b8"}}>Older than:</span>
+                      {[7,14,21,30,60].map(dd=>(
+                        <button key={dd} onClick={()=>setStale({days:dd})}
+                          style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${stale.days===dd?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:stale.days===dd?"#6b2d4e":(dark?"#0f172a":"#fff"),color:stale.days===dd?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{dd}d</button>
+                      ))}
+                    </div>
+                  )}
+                </FilterSection>
+                <FilterSection name="archive" title="Archive" count={(draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0}>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Choose which accounts appear in the pipeline</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {[["show_all","All accounts"],["only","Only archived"]].map(([val,lbl])=>{
+                      const on = draft.archiveMode===val;
+                      return (
+                        <button key={val} onClick={()=>setDraftFilters({...draft, archiveMode: on ? "default" : val})}
+                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                          {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </FilterSection>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
                 <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"default",stageView:undefined}); }}
