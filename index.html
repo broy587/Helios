@@ -4697,6 +4697,29 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     setLead(merged);
     if(onUpdate) onUpdate(merged);
   };
+  // Shared appointment booking for all types. intent = "new" | "additional" | "change".
+  //  - new/additional: push onto the type's stack (previous calendar events stay live).
+  //  - change: delete the current top's calendar event, pop it, then push the new one
+  //    (replaces only the top; older stacked bookings remain).
+  // History always records the new booking; nothing is stripped here.
+  const bookApptStacked = async ({key, apptField, evField, tsKey, kind, val, evId, intent, extra}) => {
+    let workingLead = lead;
+    // "Change" replaces the current top: remove its calendar event and pop it first.
+    if(intent==="change"){
+      const top = getApptStack(lead, key).slice(-1)[0];
+      const topEvId = top ? top.event_id : lead[evField];
+      if(topEvId && topEvId!==evId){ try{ await GCal.deletePersonalCB(topEvId); }catch(e){ console.error("change: couldn't delete old event:",e); } }
+      const {stacks} = apptStackPop(lead, key);
+      workingLead = {...lead, appt_stacks:stacks};
+    }
+    const nts = tsKey ? {...((workingLead.appt_ts&&typeof workingLead.appt_ts==="object")?workingLead.appt_ts:{}), [tsKey]:new Date().toISOString()} : (workingLead.appt_ts||{});
+    const entry = {ts:formatTs(), by:"appt", appt:{kind, when:val, id:evId||null}, changes:[`Booked ${kind}: ${val}`]};
+    const nextHist = [entry, ...(Array.isArray(workingLead.history)?workingLead.history:[])];
+    const nextStacks = apptStackPush(workingLead, key, val, evId);
+    const fields = {[apptField]:val, [evField]:evId||null, appt_ts:nts, appt_stacks:nextStacks, history:nextHist, ...(extra||{})};
+    handleUpdate(fields);
+    try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error(kind+" save failed:",e); }
+  };
   // Appointment history: each booking adds an entry (kind + when booked + the appt
   // date/time); removing an appointment strips its matching entry. So two un-removed
   // CAPs both show in history, but a canceled one leaves no trace.
@@ -5132,75 +5155,47 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     ) : (
                       <div style={{display:"flex",gap:6}}>
                         <CalendarSyncButton lead={lead} onUpdate={updated=>{setCloseChoice(false);if(onUpdate)onUpdate({...lead,...updated});}} label="🏢 Closer" creatorName={creatorName} acReq={acReq}/>
-                        <PersonalApptButton lead={lead} label="👤 Personal" title="📅 Personal Close" confirmLabel="Book Close"
+                        <PersonalApptButton lead={lead} existing={!!lead.close_appointment} label="👤 Personal" title="📅 Personal Close" confirmLabel="Book Close"
                           summary={`🟢 Close - ${lead.name||"Lead"}`} accent="#16a34a" colorId="10"
-                          onSelect={async(val,evId)=>{
-                            if(lead.close_event_id && lead.close_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.close_event_id); }catch(e){ console.error(e); } }
-                            const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), close:new Date().toISOString()};
-                            const entry = {ts:formatTs(), by:"appt", appt:{kind:"Close", when:val, id:evId||null}, changes:[`Booked Close: ${val}`]};
-                            const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                            const fields = {close_appointment:val,close_event_id:evId||null,appt_ts:nts,history:nextHist};
-                            handleUpdate(fields);
-                            try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Close save failed:",e); }
+                          onSelect={async(val,evId,intent)=>{
+                            await bookApptStacked({key:"close",apptField:"close_appointment",evField:"close_event_id",tsKey:"close",kind:"Close",val,evId,intent});
                             setCloseChoice(false);
                           }}/>
                       </div>
                     )}
                     {/* Comeback personal button */}
-                    <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change Comeback":"↩️ Comeback"} onSelect={async(val,cbEventId)=>{
-                      if(lead.cb_event_id && lead.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); } }
-                      const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
-                      const entry = {ts:formatTs(), by:"appt", appt:{kind:"Comeback", when:val, id:cbEventId||null}, changes:[`Booked Comeback: ${val}`]};
-                      const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                      const fields = {appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,history:nextHist};
-                      handleUpdate(fields);
-                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                      catch(e){ console.error("comeback save failed:",e); alert("Booked on your calendar, but saving to the lead hit a snag. It's showing here now — if it's gone after refresh, try again."); }
+                    <PersonalApptButton lead={lead} existing={!!(lead.cb_event_id||lead.appointment)} label="↩️ Comeback" onSelect={async(val,cbEventId,intent)=>{
+                      await bookApptStacked({key:"cb",apptField:"appointment",evField:"cb_event_id",tsKey:"main",kind:"Comeback",val,evId:cbEventId,intent,extra:{gcal_event_id:null}});
                     }}/>
                     {/* Follow Up (personal) */}
-                    <PersonalApptButton lead={lead}
-                      label={lead.followup_event_id?"🔁 Change Follow Up":"🔁 Follow Up"}
+                    <PersonalApptButton lead={lead} existing={!!lead.followup_appointment}
+                      label="🔁 Follow Up"
                       title="🟣 Book Follow Up" confirmLabel="Book Follow Up"
                       summary={`🟣 Follow-Up - ${lead.name||"Lead"}`} accent="#9333ea" colorId="3"
-                      onSelect={async(val,evId)=>{
-                        if(lead.followup_event_id && lead.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.followup_event_id); }catch(e){ console.error(e); } }
-                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), followup:new Date().toISOString()};
-                        const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
-                        const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                        const fields = {followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist};
-                        handleUpdate(fields);
-                        try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Follow Up save failed:",e); }
+                      onSelect={async(val,evId,intent)=>{
+                        await bookApptStacked({key:"fu",apptField:"followup_appointment",evField:"followup_event_id",tsKey:"followup",kind:"Follow Up",val,evId,intent});
                       }}/>
                     {/* CAP (Closer or Personal) */}
                     {canBookCap ? (
                       !capChoice ? (
                         <button onClick={()=>setCapChoice(true)}
                           style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #ea580c",background:"#fff7ed",color:"#ea580c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                          {lead.cap_event_id?"📋 Change CAP":"📋 CAP"}
+                          📋 CAP
                         </button>
                       ) : (
                         <div style={{display:"flex",gap:6}}>
                           <CalendarSyncButton lead={lead} onUpdate={updated=>{
                             setCapChoice(false);
-                            // Keep closer-booked CAPs on the same stack as personal ones.
                             const evId = updated.cap_event_id||null;
                             const when = updated.cap_appointment||"";
                             if(when){ const nextStacks = apptStackPush(lead, "cap", when, evId); handleUpdate({...updated, appt_stacks:nextStacks}); }
                             else handleUpdate({...lead,...updated});
                           }} creatorName={creatorName} capMode={true} label="🏢 Closer"/>
-                          <PersonalApptButton lead={lead}
+                          <PersonalApptButton lead={lead} existing={!!lead.cap_appointment}
                             label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
                             summary={`🟠 CAP - ${lead.name||"Lead"}`} accent="#ea580c" colorId="6"
-                            onSelect={async(val,evId)=>{
-                              // Stacked: keep the previous CAP calendar event live; push the
-                              // new booking on top (newest shows on the lead).
-                              const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cap:new Date().toISOString()};
-                              const entry = {ts:formatTs(), by:"appt", appt:{kind:"CAP", when:val, id:evId||null}, changes:[`Booked CAP: ${val}`]};
-                              const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                              const nextStacks = apptStackPush(lead, "cap", val, evId);
-                              const fields = {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts,appt_stacks:nextStacks,history:nextHist};
-                              handleUpdate(fields);
-                              try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("CAP save failed:",e); }
+                            onSelect={async(val,evId,intent)=>{
+                              await bookApptStacked({key:"cap",apptField:"cap_appointment",evField:"cap_event_id",tsKey:"cap",kind:"CAP",val,evId,intent});
                               setCapChoice(false);
                             }}/>
                         </div>
@@ -5215,37 +5210,25 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     ) : (
                       <div style={{display:"flex",gap:6}}>
                         <CalendarSyncButton lead={lead} onUpdate={updated=>{setCsChoice(false);handleUpdate({...lead,...updated});}} creatorName={creatorName} csMode={true} label="🏢 Closer"/>
-                        <PersonalApptButton lead={lead}
+                        <PersonalApptButton lead={lead} existing={!!lead.cs_appointment}
                           label="👤 Personal"
                           title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
                           summary={`🔴 CS - ${lead.name||"Lead"}`}
                           accent="#dc2626" colorId="11"
-                          onSelect={async(val,evId)=>{
-                            if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
-                            const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cs:new Date().toISOString()};
-                            const entry = {ts:formatTs(), by:"appt", appt:{kind:"Cancel Save", when:val, id:evId||null}, changes:[`Booked Cancel Save: ${val}`]};
-                            const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                            const fields = {cs_appointment:val,cs_event_id:evId||null,appt_ts:nts,history:nextHist};
-                            handleUpdate(fields);
-                            try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Cancel Save save failed:",e); }
+                          onSelect={async(val,evId,intent)=>{
+                            await bookApptStacked({key:"cs",apptField:"cs_appointment",evField:"cs_event_id",tsKey:"cs",kind:"Cancel Save",val,evId,intent});
                             setCsChoice(false);
                           }}/>
                       </div>
                     )}
                     {/* Install (personal) */}
-                    <PersonalApptButton lead={lead}
-                      label={lead.install_event_id?"💰 Change Install":"💰 Install"}
+                    <PersonalApptButton lead={lead} existing={!!lead.install_appointment}
+                      label="💰 Install"
                       title="🟩 Book Install" confirmLabel="Book Install"
                       summary={`🟩 Install - ${lead.name||"Lead"}`}
                       fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
-                      onSelect={async(val,evId)=>{
-                        if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
-                        const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), install:new Date().toISOString()};
-                        const entry = {ts:formatTs(), by:"appt", appt:{kind:"Install", when:val, id:evId||null}, changes:[`Booked Install: ${val}`]};
-                        const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                        const fields = {install_appointment:val,install_event_id:evId||null,appt_ts:nts,history:nextHist};
-                        handleUpdate(fields);
-                        try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Install save failed:",e); }
+                      onSelect={async(val,evId,intent)=>{
+                        await bookApptStacked({key:"in",apptField:"install_appointment",evField:"install_event_id",tsKey:"install",kind:"Install",val,evId,intent});
                       }}/>
                   </div>
                   {/* Booked reminders — one card per booked appointment, X clears it. */}
@@ -5275,12 +5258,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       catch(e){ console.error("Couldn't update lead after pop:",e); alert("Couldn't update it — check your connection and try again."); }
                     };
                     const cards = [
-                      lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id","Close")},
-                      (lead.cb_event_id||lead.appointment) && {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id","Comeback")},
-                      lead.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id","Follow Up")},
+                      lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"close").length,clear:()=>popAppt("close","close_appointment","close_event_id")},
+                      (lead.cb_event_id||lead.appointment) && {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cb").length,clear:()=>popAppt("cb","appointment","cb_event_id")},
+                      lead.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",stackCount:getApptStack(lead,"fu").length,clear:()=>popAppt("fu","followup_appointment","followup_event_id")},
                       lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",stackCount:getApptStack(lead,"cap").length,clear:()=>popAppt("cap","cap_appointment","cap_event_id")},
-                      lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id","Cancel Save")},
-                      lead.install_appointment && {key:"in",label:"💰 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id","Install")},
+                      lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cs").length,clear:()=>popAppt("cs","cs_appointment","cs_event_id")},
+                      lead.install_appointment && {key:"in",label:"💰 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"in").length,clear:()=>popAppt("in","install_appointment","install_event_id")},
                     ].filter(Boolean);
                     if(cards.length===0) return null;
                     return (
@@ -12082,10 +12065,15 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, accent, colorId, iconOnly, autoOpen, onClosed}) {
+function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, accent, colorId, iconOnly, autoOpen, onClosed, existing}) {
   const [show, setShow] = React.useState(!!autoOpen);
   React.useEffect(()=>{ if(autoOpen) setShow(true); }, [autoOpen]);
-  const closeSheet = ()=>{ setShow(false); if(onClosed) onClosed(); };
+  const [intentOpen, setIntentOpen] = React.useState(false); // "additional vs change" chooser
+  const intentRef = React.useRef("change"); // which intent the user picked (default change)
+  const closeSheet = ()=>{ setShow(false); setIntentOpen(false); if(onClosed) onClosed(); };
+  // Pressing the trigger: if an appointment already exists, ask additional-vs-change
+  // first; otherwise go straight to date/time.
+  const openBooking = ()=>{ if(existing){ setIntentOpen(true); } else { intentRef.current="new"; setShow(true); } };
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
   const [adding, setAdding] = React.useState(false);
@@ -12151,18 +12139,39 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
       alert("This didn't book — it couldn't be added to your Google Calendar:\n\n"+calErr+"\n\nMake sure you're signed into Google and allow calendar access when prompted, then try again. Nothing was saved to the lead.");
       return;
     }
-    onSelect(apptStr, cbEventId);
+    onSelect(apptStr, cbEventId, intentRef.current);
     setShow(false);
   };
 
   return (
     <>
-      <button onClick={()=>setShow(true)}
+      <button onClick={openBooking}
         style={iconOnly
           ? {flexShrink:0,width:34,height:34,padding:0,borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}
           : {flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
         {label||"↩️ Personal CB"}
       </button>
+      {intentOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setIntentOpen(false)}>
+          <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{title||"Appointment"}</div>
+              <button onClick={()=>setIntentOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",marginBottom:18}}>This lead already has one booked. What would you like to do?</div>
+            <button onClick={()=>{ intentRef.current="additional"; setIntentOpen(false); setShow(true); }}
+              style={{width:"100%",padding:"14px",borderRadius:12,border:`1.5px solid ${accent||"#f59e0b"}`,background:"transparent",color:accent||"#92400e",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10,textAlign:"left"}}>
+              ➕ Schedule additional
+              <div style={{fontSize:11,fontWeight:500,color:dark?"#94a3b8":"#64748b",marginTop:3}}>Keeps the existing appointment and adds this one too.</div>
+            </button>
+            <button onClick={()=>{ intentRef.current="change"; setIntentOpen(false); setShow(true); }}
+              style={{width:"100%",padding:"14px",borderRadius:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer",textAlign:"left"}}>
+              🔄 Change appointment
+              <div style={{fontSize:11,fontWeight:500,color:dark?"#94a3b8":"#64748b",marginTop:3}}>Replaces the current appointment — removes it from your calendar.</div>
+            </button>
+          </div>
+        </div>
+      )}
       {show&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={closeSheet}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
