@@ -6856,7 +6856,7 @@ function analyzeConversions(leads, opts) {
   };
 }
 
-function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, onRemove}) {
+function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, onRemove, onBooked}) {
   // Local working order so the list reflows live while dragging. Re-syncs when the
   // incoming starred set changes (add/remove), keyed by id list.
   const [order, setOrder] = React.useState(starred);
@@ -6933,6 +6933,18 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
                   <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
                 </div>
+                <PersonalApptButton lead={l}
+                  label={l.followup_event_id?"🔁 Change":"🔁 Follow Up"}
+                  title="🔁 Book Follow Up" confirmLabel="Book Follow Up"
+                  summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
+                  onSelect={async(val,evId)=>{
+                    if(l.followup_event_id && l.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(l.followup_event_id); }catch(e){ console.error(e); } }
+                    const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
+                    const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
+                    const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
+                    try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("follow up booking failed:",e); }
+                    if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
+                  }}/>
                 <button onClick={()=>onRemove(l)} title="Remove from Priority Comeback"
                   style={{flexShrink:0,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
               </div>
@@ -7595,6 +7607,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             onOpenLead={(id)=>{ setPriorityOpen(false); setDetailId(id); }}
             onReorder={persistOrder}
             onRemove={removePriority}
+            onBooked={(updated)=>onLeadView(updated,"update")}
           />
         );
       })()}
