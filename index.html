@@ -5176,14 +5176,14 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   {(()=>{
                     const clearAppt = async (fields, evField, kind) => {
                       const evId = lead[evField];
-                      if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
-                      // Remove the matching history entry in the SAME update so a second
-                      // state write can't re-add the just-cleared appointment.
+                      // Clear the UI FIRST so the card disappears instantly, then do the
+                      // slow calendar delete + DB write.
                       const base = Array.isArray(lead.history)?lead.history:[];
                       let removed=false;
                       const nextHist = kind ? base.filter(h=>{ if(removed||!h||!h.appt||h.appt.kind!==kind) return true; if(evId&&h.appt.id){ if(h.appt.id===evId){ removed=true; return false; } return true; } removed=true; return false; }) : base;
                       const merged = {...fields, history:nextHist};
                       handleUpdate({...lead,...merged});
+                      if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (cleared on lead anyway):",e); } }
                       try{ await sb.from("leads").update({...merged,updated_at:new Date().toISOString()}).eq("id",lead.id); }
                       catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); }
                     };
