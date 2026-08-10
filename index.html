@@ -3871,7 +3871,13 @@ function acItemSatisfied(key, lead) {
     case "phone":        return nonEmpty(lead.phone);
     case "email":        return nonEmpty(lead.email);
     case "prescreen":    return acHas("Prescreen Approved") || acHas("Prescreened");
-    case "bill":         return acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved) || (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0);
+    case "bill": {
+      // Requires BOTH: "Bill Acquired" checked in the AC checklist AND at least one
+      // uploaded photo or file on the lead (the utility bill photo).
+      const billChecked = acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved);
+      const hasPhoto = (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0) || (Array.isArray(lead.lead_files)&&lead.lead_files.length>0);
+      return billChecked && hasPhoto;
+    }
     case "confirmation": return nonEmpty(lead.confirmed);
     case "spouses":      return acHas("Confirmed all decision makers / spouses will be present");
     case "knows_solar":  return acHas("Knows solar is / can be involved");
@@ -3902,7 +3908,15 @@ function acRequirementsMissing(lead, req) {
   if(!acRequirementsActive(req)) return [];
   const missing = [];
   const labelFor = (k)=>{ const f = AC_REQ_ITEMS.find(x=>x.key===k); return f?(f.miss||f.label):k; };
-  (req.items||[]).forEach(k=>{ if(!acItemSatisfied(k, lead)) missing.push(labelFor(k)); });
+  const billReason = (l)=>{
+    const cl = l.ac_checklist || l.acChecklist || [];
+    const billChecked = (Array.isArray(cl) && cl.includes("Bill Acquired")) || !!(l.bill_retrieved || l.billRetrieved);
+    const hasPhoto = (Array.isArray(l.bill_photos)&&l.bill_photos.length>0) || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0) || (Array.isArray(l.lead_files)&&l.lead_files.length>0);
+    if(billChecked && !hasPhoto) return "Utility bill photo not uploaded";
+    if(!billChecked && hasPhoto) return "Mark \"Bill Acquired\" in the Setters AC Checklist";
+    return "Utility bill: check \"Bill Acquired\" and upload a photo of the bill";
+  };
+  (req.items||[]).forEach(k=>{ if(!acItemSatisfied(k, lead)) missing.push(k==="bill" ? billReason(lead) : labelFor(k)); });
   const need = Number(req.count)||0;
   if(need > 0){
     const have = AC_REQ_ITEMS.filter(x=>acItemSatisfied(x.key, lead)).length;
@@ -13871,7 +13885,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,bill_photos,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
