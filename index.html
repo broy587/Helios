@@ -4122,7 +4122,7 @@ const VC_CHECKLIST_ITEMS = [
   "Every true decision maker was bought in",
   "Found their WHY and customer voiced it",
   "Objections uncovered and resolved",
-  "Pre-frame outside influence/reviews",
+  "Pre-frame outside influence",
   "Future Commitment",
   "Sent intro email",
   "Added phone number to homeowners contacts",
@@ -4135,7 +4135,7 @@ const VC_CHECKLIST_ITEMS = [
 const VC_ITEM_HELP = {
   "Found their WHY and customer voiced it": "customer very clearly explained their why and why this makes sense for them to do it",
   "Objections uncovered and resolved": "roof/panels, term, moving/selling, reviews/trust, and past solar experiences.",
-  "Pre-frame outside influence/reviews": "prepare for what they'll hear from reviews, neighbors, family, friends, realtors, etc and established \"call me before making a decision based on something you hear\".",
+  "Pre-frame outside influence": "prepare for what they'll hear from reviews, neighbors, family, friends, realtors, etc and established \"call me before making a decision based on something you hear\".",
   "Future Commitment": "directly establish: \"assuming everything we discussed checks out is there anything that would stop you from moving forward through installation?\"",
   "CAP/follow-up locked in": "Scheduled with customer.",
   "Customer has crystal clear understanding of what they're agreeing to and what happens next": "consultation, site survey, final results, permits, Install prep, installation, PTO.",
@@ -4149,7 +4149,7 @@ const VC_ITEM_HELP = {
 const VC_ITEM_SINCE = {
   "Every true decision maker was bought in": "2026-08-09",
   "Objections uncovered and resolved": "2026-08-09",
-  "Pre-frame outside influence/reviews": "2026-08-09",
+  "Pre-frame outside influence": "2026-08-09",
   "Future Commitment": "2026-08-09",
   "CAP/follow-up locked in": "2026-08-09",
 };
@@ -4157,6 +4157,7 @@ const VC_ITEM_SINCE = {
 // Old checklist item strings → new, so leads that already had the old item checked
 // keep it checked after the rename.
 const CLOSER_ITEM_RENAMES = {
+  "Pre-frame outside influence/reviews": "Pre-frame outside influence",
   "Decision makers were present": "Every true decision maker was present",
   "Every true decision maker was present and bought in": "Every true decision maker was present",
   "Set crystal clear expectations on the process": "Customer has crystal clear understanding of what they're agreeing to and what happens next",
@@ -6838,7 +6839,7 @@ function analyzeConversions(leads, opts) {
       closerStat("Decision makers bought in", "Every true decision maker was bought in"),
       closerStat("Found their WHY", "Found their WHY and customer voiced it"),
       closerStat("Objections uncovered/resolved", "Objections uncovered and resolved"),
-      closerStat("Pre-frame outside influence/reviews", "Pre-frame outside influence/reviews"),
+      closerStat("Pre-frame outside influence", "Pre-frame outside influence"),
       closerStat("Future Commitment", "Future Commitment"),
       closerStat("Sent intro email", "Sent intro email"),
       closerStat("Added to contacts", "Added phone number to homeowners contacts"),
