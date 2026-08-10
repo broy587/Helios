@@ -4644,7 +4644,7 @@ function ZoomableImage({src, onClose}) {
 
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
-  const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
+  const handleUpdate = (updated) => { const merged={...lead,...updated}; setLead(merged); if(onUpdate) onUpdate(merged); };
   // Appointment history: each booking adds an entry (kind + when booked + the appt
   // date/time); removing an appointment strips its matching entry. So two un-removed
   // CAPs both show in history, but a canceled one leaves no trace.
@@ -4670,7 +4670,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     setLead(l=>({...l,history:nextHist}));
     if(onUpdate) onUpdate({...leadProp,...lead,history:nextHist});
   };
-  React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cap_event_id, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
+  React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cb_event_id, leadProp?.cap_event_id, leadProp?.cap_appointment, leadProp?.cs_event_id, leadProp?.cs_appointment, leadProp?.install_event_id, leadProp?.install_appointment, leadProp?.followup_event_id, leadProp?.followup_appointment, leadProp?.close_event_id, leadProp?.close_appointment, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
   React.useEffect(()=>{ setShowCommission(false); },[leadProp?.id]); // re-hide commission each time a lead opens
   const dark=useDark();
   const _creatorProfile = (profiles||[]).find(p=>p.id===lead.owner_id);
@@ -5177,9 +5177,15 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     const clearAppt = async (fields, evField, kind) => {
                       const evId = lead[evField];
                       if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
-                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,...fields});
-                      if(kind) apptHistRemove(kind, evId);
+                      // Remove the matching history entry in the SAME update so a second
+                      // state write can't re-add the just-cleared appointment.
+                      const base = Array.isArray(lead.history)?lead.history:[];
+                      let removed=false;
+                      const nextHist = kind ? base.filter(h=>{ if(removed||!h||!h.appt||h.appt.kind!==kind) return true; if(evId&&h.appt.id){ if(h.appt.id===evId){ removed=true; return false; } return true; } removed=true; return false; }) : base;
+                      const merged = {...fields, history:nextHist};
+                      handleUpdate({...lead,...merged});
+                      try{ await sb.from("leads").update({...merged,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+                      catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); }
                     };
                     const cards = [
                       lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id","Close")},
@@ -14632,16 +14638,6 @@ function App() {
                     {pipelineSubTab==="team"&&activeTeamId?(visibleTeams.find(t=>t.id===activeTeamId)?.name||"Team"):"Team"}
                     <span style={{fontSize:9,opacity:0.7}}>{teamDropOpen?"▲":"▼"}</span>
                   </button>
-                  {teamDropOpen&&visibleTeams.length>0&&(
-                    <div style={{position:"fixed",top:teamDropPos.top,left:teamDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:160,maxHeight:280,overflowY:"auto"}}>
-                      {visibleTeams.map(t=>(
-                        <button key={t.id} onClick={()=>{setPipelineFilter(`team:${t.id}`);setTeamDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":dark?"#1e293b":"#fff",color:activeTeamId===t.id?"#f97316":dark?"#e2e8f0":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
-                          {t.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 {/* Reps pill + dropdown */}
                 <div style={{position:"relative"}}>
@@ -14650,32 +14646,7 @@ function App() {
                     {pipelineSubTab==="all"?"All Reps":(pipelineSubTab==="rep"?(activeRepIds.length>1?`${activeRepIds.length} Reps`:(visibleReps.find(r=>r.id===activeRepIds[0])?.name||"Reps")):"Reps")}
                     <span style={{fontSize:9,opacity:0.7}}>{repDropOpen?"▲":"▼"}</span>
                   </button>
-                  {repDropOpen&&visibleReps.length>0&&(
-                    <div style={{position:"fixed",top:repDropPos.top,left:repDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:170,overflow:"hidden",maxHeight:320,overflowY:"auto"}}>
-                      {isOwner&&(
-                        <button onClick={()=>{setPipelineFilter("all");setRepDropOpen(false);}}
-                          style={{display:"block",width:"100%",padding:"10px 14px",border:"none",borderBottom:`2px solid ${dark?"#334155":"#ede3d6"}`,background:pipelineFilter==="all"?"#f0edf5":dark?"#1e293b":"#fff",color:pipelineFilter==="all"?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"left"}}>
-                          👥 View All
-                        </button>
-                      )}
-                      {visibleReps.map(r=>{
-                        const sel=activeRepIds.includes(r.id);
-                        return (
-                          <button key={r.id} onClick={()=>toggleRep(r.id)}
-                            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,width:"100%",padding:"10px 14px",border:"none",background:sel?"#f0edf5":dark?"#1e293b":"#fff",color:sel?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:sel?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
-                            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span>
-                            <span style={{flexShrink:0,width:18,height:18,borderRadius:5,border:`1.5px solid ${sel?"#6b2d4e":dark?"#475569":"#cbd5e1"}`,background:sel?"#6b2d4e":"transparent",color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{sel?"✓":""}</span>
-                          </button>
-                        );
-                      })}
-                      <button onClick={()=>setRepDropOpen(false)}
-                        style={{display:"block",width:"100%",padding:"11px 14px",border:"none",background:dark?"#0f172a":"#1a2456",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"center",position:"sticky",bottom:0}}>
-                        Done
-                      </button>
-                    </div>
-                  )}
                 </div>
-                {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:3500}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
               </>)}
               {(isCloser || isPrivileged) && (pipelineSubTab==="mine" || pipelineSubTab==="rep") && (
                 <button onClick={()=>setShowAssisted(v=>!v)}
@@ -14728,6 +14699,43 @@ function App() {
                 + New Lead
               </button>
             </div>
+            {/* Team / Reps dropdown menus + backdrop — rendered OUTSIDE the horizontally
+                scrollable row so iOS (-webkit-overflow-scrolling) doesn't clip them. */}
+            {(teamDropOpen||repDropOpen)&&<div style={{position:"fixed",inset:0,zIndex:3500}} onClick={()=>{setTeamDropOpen(false);setRepDropOpen(false);}}/>}
+            {teamDropOpen&&visibleTeams.length>0&&(
+              <div style={{position:"fixed",top:teamDropPos.top,left:teamDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:160,maxHeight:280,overflowY:"auto"}}>
+                {visibleTeams.map(t=>(
+                  <button key={t.id} onClick={()=>{setPipelineFilter(`team:${t.id}`);setTeamDropOpen(false);}}
+                    style={{display:"block",width:"100%",padding:"10px 14px",border:"none",background:activeTeamId===t.id?"#fff7ed":dark?"#1e293b":"#fff",color:activeTeamId===t.id?"#f97316":dark?"#e2e8f0":"#0f172a",fontWeight:activeTeamId===t.id?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:"1px solid #f1f5f9"}}>
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {repDropOpen&&visibleReps.length>0&&(
+              <div style={{position:"fixed",top:repDropPos.top,left:repDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:170,overflow:"hidden",maxHeight:320,overflowY:"auto"}}>
+                {isOwner&&(
+                  <button onClick={()=>{setPipelineFilter("all");setRepDropOpen(false);}}
+                    style={{display:"block",width:"100%",padding:"10px 14px",border:"none",borderBottom:`2px solid ${dark?"#334155":"#ede3d6"}`,background:pipelineFilter==="all"?"#f0edf5":dark?"#1e293b":"#fff",color:pipelineFilter==="all"?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"left"}}>
+                    👥 View All
+                  </button>
+                )}
+                {visibleReps.map(r=>{
+                  const sel=activeRepIds.includes(r.id);
+                  return (
+                    <button key={r.id} onClick={()=>toggleRep(r.id)}
+                      style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,width:"100%",padding:"10px 14px",border:"none",background:sel?"#f0edf5":dark?"#1e293b":"#fff",color:sel?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:sel?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span>
+                      <span style={{flexShrink:0,width:18,height:18,borderRadius:5,border:`1.5px solid ${sel?"#6b2d4e":dark?"#475569":"#cbd5e1"}`,background:sel?"#6b2d4e":"transparent",color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{sel?"✓":""}</span>
+                    </button>
+                  );
+                })}
+                <button onClick={()=>setRepDropOpen(false)}
+                  style={{display:"block",width:"100%",padding:"11px 14px",border:"none",background:dark?"#0f172a":"#1a2456",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,textAlign:"center",position:"sticky",bottom:0}}>
+                  Done
+                </button>
+              </div>
+            )}
             <PipelineBoard leads={visibleLeads} allLeads={leads} scopedAllLeads={getVisibleLeads()} isOwner={isOwner} commUser={user} commPipelineFilter={pipelineFilter} commShowAssisted={showAssisted} pipeFilters={pipeFilters} onSavePipeFilters={savePipeFilters} profiles={profiles} repProfiles={repProfiles} onTransfer={handleTransfer} canBookCap={canBookCap} acReq={myAcReq} onAddLead={()=>setModal({open:true,lead:null})} onStageChange={handleStageChange}
               acWarning={acWarning} onClearAcWarning={()=>setAcWarning(null)}
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
