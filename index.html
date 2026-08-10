@@ -6388,6 +6388,7 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
       style={{background:dark?"#1e293b":"#faf6f0",border:`1.5px solid ${lead.is_arc?"#ef4444":lead.on_hold?"#f59e0b":lead.needs_cancel_save?"#6366f1":colors.border}`,borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"grab",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.07)"}`,userSelect:"none",WebkitUserSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between",opacity:isDrag?0.3:lead.is_arc?0.65:lead.on_hold?0.8:lead.needs_cancel_save?0.85:1}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+          {lead.priority && !lead.archived && <span style={{flexShrink:0,fontSize:13,lineHeight:1}} title="Priority Comeback">⭐</span>}
           <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lead.name||"Unnamed Lead"}</div>
           {(()=>{ return null; })()}
           {lead._pending && <span style={{fontSize:10,fontWeight:800,flexShrink:0,color:"#b45309",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:5,padding:"1px 5px"}} title="Saved on this device — will upload when you have service">⏳ Saving</span>}
