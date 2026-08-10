@@ -6867,6 +6867,8 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
   const dragIndexRef = React.useRef(-1);
   const rowRefs = React.useRef({});
   const movedRef = React.useRef(false);
+  const [fuMenu, setFuMenu] = React.useState(null); // {id, top, left} for the follow-up action menu
+  const [fuRebookId, setFuRebookId] = React.useState(null); // lead id to open booking flow for
 
   const indexOfId = (id, arr) => arr.findIndex(l=>l.id===id);
 
@@ -6932,25 +6934,70 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                 <div onClick={()=>{ if(!movedRef.current) onOpenLead(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
                   <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
+                  {l.followup_appointment && <div style={{fontSize:12,color:"#9333ea",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>🔁 {l.followup_appointment}</div>}
                 </div>
-                <PersonalApptButton lead={l}
-                  label={l.followup_event_id?"🔁 Change":"🔁 Follow Up"}
-                  title="🔁 Book Follow Up" confirmLabel="Book Follow Up"
-                  summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
-                  onSelect={async(val,evId)=>{
-                    if(l.followup_event_id && l.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(l.followup_event_id); }catch(e){ console.error(e); } }
-                    const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
-                    const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
-                    const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
-                    try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("follow up booking failed:",e); }
-                    if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
-                  }}/>
+                {l.followup_event_id || l.followup_appointment ? (
+                  <button onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setFuMenu({id:l.id, top:r.bottom+4, left:Math.max(8,Math.min(r.left-60,window.innerWidth-150))}); }}
+                    title="Follow up options"
+                    style={{flexShrink:0,width:34,height:34,padding:0,borderRadius:8,border:"1.5px solid #9333ea",background:"transparent",color:"#9333ea",fontWeight:700,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>🔁</button>
+                ) : (
+                  <PersonalApptButton lead={l}
+                    label="🔁" iconOnly={true}
+                    title="Book follow up" confirmLabel="Book Follow Up"
+                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
+                    onSelect={async(val,evId)=>{
+                      const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
+                      const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
+                      const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
+                      try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("follow up booking failed:",e); }
+                      if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
+                    }}/>
+                )}
+                {fuRebookId===l.id && (
+                  <PersonalApptButton lead={l}
+                    label="🔁" iconOnly={true} autoOpen={true}
+                    title="Reschedule follow up" confirmLabel="Book Follow Up"
+                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
+                    onClosed={()=>setFuRebookId(null)}
+                    onSelect={async(val,evId)=>{
+                      if(l.followup_event_id && l.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(l.followup_event_id); }catch(e){ console.error(e); } }
+                      const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
+                      const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
+                      const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
+                      try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error(e); }
+                      if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
+                      setFuRebookId(null);
+                    }}/>
+                )}
                 <button onClick={()=>onRemove(l)} title="Remove from Priority Comeback"
                   style={{flexShrink:0,background:dark?"#3a1717":"#fef2f2",border:"1.5px solid #fecaca",color:"#b91c1c",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Remove</button>
               </div>
             );
           })}
         </div>
+        {fuMenu && (()=>{
+          const l = order.find(x=>x.id===fuMenu.id);
+          const removeFollowup = async () => {
+            if(!l) return;
+            if(!window.confirm("Remove this follow up? It will be cleared from the lead and your calendar.")) return;
+            if(l.followup_event_id){ try{ await GCal.deletePersonalCB(l.followup_event_id); }catch(e){ console.error(e); } }
+            const base = Array.isArray(l.history)?l.history:[];
+            let removed=false;
+            const nextHist = base.filter(h=>{ if(removed||!h||!h.appt||h.appt.kind!=="Follow Up") return true; if(l.followup_event_id&&h.appt.id){ if(h.appt.id===l.followup_event_id){ removed=true; return false; } return true; } removed=true; return false; });
+            try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error(e); }
+            if(onBooked) onBooked({...l,followup_appointment:"",followup_event_id:null,history:nextHist});
+            setFuMenu(null);
+          };
+          return (<>
+            <div style={{position:"fixed",inset:0,zIndex:3500}} onClick={()=>setFuMenu(null)}/>
+            <div style={{position:"fixed",top:fuMenu.top,left:fuMenu.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:140,overflow:"hidden"}}>
+              <button onClick={()=>{ setFuRebookId(fuMenu.id); setFuMenu(null); }}
+                style={{display:"block",width:"100%",padding:"11px 14px",border:"none",background:"transparent",color:"#9333ea",fontWeight:700,fontSize:13,textAlign:"left",cursor:"pointer"}}>🔁 Reschedule</button>
+              <button onClick={removeFollowup}
+                style={{display:"block",width:"100%",padding:"11px 14px",border:"none",borderTop:`1px solid ${dark?"#334155":"#f1f5f9"}`,background:"transparent",color:"#b91c1c",fontWeight:700,fontSize:13,textAlign:"left",cursor:"pointer"}}>✕ Remove</button>
+            </div>
+          </>);
+        })()}
       </div>
     </div>
   );
@@ -11303,7 +11350,11 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                   const recurring = !!ev.recurringEventId;
                   const removable = canRemoveEvent(ev);
                   const isRemoving = removingId===ev.id;
-                  const canTag = allowed && !isOpenSlot; // open slots aren't tagged, only removed
+                  // A "meeting"/standalone event (not an open slot, not a booked appointment)
+                  // can only be edited/tagged by owner/managers — same rule as removing one.
+                  const isMeetingEvent = !isOpenSlot && !(ev.description||"").includes("BOOKED:");
+                  const canEditEvent = isMeetingEvent ? canManageMeetings : allowed;
+                  const canTag = (isMeetingEvent ? canManageMeetings : allowed) && !isOpenSlot; // open slots aren't tagged, only removed
                   return (
                     <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:(canTag||removable)?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:(canTag||removable)?1:0.55}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:canTag?10:0}}>
@@ -11330,7 +11381,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                             {isRemoving?"…":"↩️"}
                           </button>
                         )}
-                        {allowed && (
+                        {canEditEvent && (
                           <button onClick={()=>setEditEvent({ev, calendarId:teamCfg && teamCfg.calendarId})}
                             title="Edit date, time & length"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>
@@ -11892,8 +11943,10 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, accent, colorId}) {
-  const [show, setShow] = React.useState(false);
+function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, accent, colorId, iconOnly, autoOpen, onClosed}) {
+  const [show, setShow] = React.useState(!!autoOpen);
+  React.useEffect(()=>{ if(autoOpen) setShow(true); }, [autoOpen]);
+  const closeSheet = ()=>{ setShow(false); if(onClosed) onClosed(); };
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
   const [adding, setAdding] = React.useState(false);
@@ -11966,15 +12019,17 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
   return (
     <>
       <button onClick={()=>setShow(true)}
-        style={{flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+        style={iconOnly
+          ? {flexShrink:0,width:34,height:34,padding:0,borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}
+          : {flex:1,padding:"10px 0",borderRadius:8,border:`1.5px solid ${accent||"#f59e0b"}`,background:accent?"transparent":"#fffbeb",color:accent||"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
         {label||"↩️ Personal CB"}
       </button>
       {show&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShow(false)}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={closeSheet}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,480px)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{title||"↩️ Personal Comeback"}</div>
-              <button onClick={()=>setShow(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+              <button onClick={closeSheet} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{marginBottom:14}}>
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
