@@ -4644,6 +4644,31 @@ function ZoomableImage({src, onClose}) {
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   const handleUpdate = (updated) => { setLead(l=>({...l,...updated})); if(onUpdate) onUpdate({...leadProp,...lead,...updated}); };
+  // Appointment history: each booking adds an entry (kind + when booked + the appt
+  // date/time); removing an appointment strips its matching entry. So two un-removed
+  // CAPs both show in history, but a canceled one leaves no trace.
+  const apptHistPush = async (kind, apptVal, eventId) => {
+    const entry = {ts:formatTs(), by:"appt", appt:{kind, when:apptVal, id:eventId||null}, changes:[`Booked ${kind}: ${apptVal}`]};
+    const base = Array.isArray(lead.history)?lead.history:[];
+    const nextHist = [entry, ...base];
+    try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history push failed:",e); }
+    setLead(l=>({...l,history:nextHist}));
+    if(onUpdate) onUpdate({...leadProp,...lead,history:nextHist});
+  };
+  const apptHistRemove = async (kind, eventId) => {
+    const base = Array.isArray(lead.history)?lead.history:[];
+    // Remove the matching appointment entry: prefer exact event-id match, else the
+    // most recent entry of that kind.
+    let removed=false;
+    const nextHist = base.filter(h=>{
+      if(removed || !h || !h.appt || h.appt.kind!==kind) return true;
+      if(eventId && h.appt.id){ if(h.appt.id===eventId){ removed=true; return false; } return true; }
+      removed=true; return false; // no id to match on — drop the newest of this kind
+    });
+    try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history remove failed:",e); }
+    setLead(l=>({...l,history:nextHist}));
+    if(onUpdate) onUpdate({...leadProp,...lead,history:nextHist});
+  };
   React.useEffect(()=>setLead(leadProp),[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cap_event_id, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
   React.useEffect(()=>{ setShowCommission(false); },[leadProp?.id]); // re-hide commission each time a lead opens
   const dark=useDark();
@@ -5027,10 +5052,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           {repProfiles!==undefined&&(
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Appointment</div>
-              {/* Booked badges — always visible so booked appointments can be seen/edited. */}
-              {lead.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {lead.cap_appointment}</div>}
-              {lead.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🟩 Install: {lead.install_appointment}</div>}
-              {lead.cs_appointment && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(220,38,38,0.14)":"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🔴 Cancel Save: {lead.cs_appointment}</div>}
               {/* Single entry point */}
               <button onClick={()=>setShowBookOpts(v=>!v)}
                 style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -5055,6 +5076,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                             await sb.from("leads").update({close_appointment:val,close_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                             try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                             handleUpdate({...lead,close_appointment:val,close_event_id:evId||null,appt_ts:nts});
+                            apptHistPush("Close", val, evId);
                             setCloseChoice(false);
                           }}/>
                       </div>
@@ -5066,6 +5088,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                       try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                       handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
+                      apptHistPush("Comeback", val, cbEventId);
                     }}/>
                     {/* Follow Up (personal) */}
                     <PersonalApptButton lead={lead}
@@ -5078,6 +5101,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                         try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                         handleUpdate({...lead,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts});
+                        apptHistPush("Follow Up", val, evId);
                       }}/>
                     {/* CAP (Closer or Personal) */}
                     {canBookCap ? (
@@ -5098,6 +5122,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                               await sb.from("leads").update({cap_appointment:val,cap_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                               try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                               handleUpdate({...lead,cap_appointment:val,cap_event_id:evId||null,appt_ts:nts});
+                              apptHistPush("CAP", val, evId);
                               setCapChoice(false);
                             }}/>
                         </div>
@@ -5123,6 +5148,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                             await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                             try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                             handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts});
+                            apptHistPush("Cancel Save", val, evId);
                             setCsChoice(false);
                           }}/>
                       </div>
@@ -5139,79 +5165,41 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
                         try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
                         handleUpdate({...lead,install_appointment:val,install_event_id:evId||null,appt_ts:nts});
+                        apptHistPush("Install", val, evId);
                       }}/>
                   </div>
-                  <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
-                  {/* Cancel buttons for the personal-calendar bookings */}
-                  {(lead.close_event_id || lead.close_appointment) && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this close appointment? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      if(lead.close_event_id){ try{ await GCal.deletePersonalCB(lead.close_event_id); }catch(e){ console.error("Couldn't delete close from calendar (clearing anyway):",e); } }
-                      try{ await sb.from("leads").update({close_appointment:"",close_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear close on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,close_appointment:"",close_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #bbf7d0",background:dark?"rgba(22,163,74,0.12)":"#f0fdf4",color:"#15803d",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel Close
-                    </button>
-                  )}
-                  {lead.cb_event_id && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this comeback? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); }
-                      try{ await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear comeback on lead:",e); }
-                      handleUpdate({...lead,appointment:"",cb_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel Comeback
-                    </button>
-                  )}
-                  {(lead.cap_event_id || lead.cap_appointment) && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this CAP? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      if(lead.cap_event_id){ try{ await GCal.deletePersonalCB(lead.cap_event_id); }catch(e){ console.error("Couldn't delete CAP from calendar (clearing anyway):",e); } }
-                      try{ await sb.from("leads").update({cap_appointment:"",cap_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear CAP on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,cap_appointment:"",cap_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fed7aa",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",color:"#c2410c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel CAP
-                    </button>
-                  )}
-                  {(lead.install_event_id || lead.install_appointment) && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      // Try to remove the calendar event, but NEVER let that block clearing the
-                      // lead — otherwise a failed/absent event traps a phantom install.
-                      if(lead.install_event_id){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar (clearing lead anyway):",e); } }
-                      try{ await sb.from("leads").update({install_appointment:"",install_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear install on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,install_appointment:"",install_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel Install
-                    </button>
-                  )}
-                  {(lead.cs_event_id || lead.cs_appointment) && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this Cancel Save? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      if(lead.cs_event_id){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error("Couldn't delete Cancel Save from calendar (clearing anyway):",e); } }
-                      try{ await sb.from("leads").update({cs_appointment:"",cs_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear Cancel Save on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,cs_appointment:"",cs_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel "Cancel Save"
-                    </button>
-                  )}
-                  {(lead.followup_event_id || lead.followup_appointment) && (
-                    <button onClick={async()=>{
-                      if(!window.confirm("Cancel this follow up? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                      if(lead.followup_event_id){ try{ await GCal.deletePersonalCB(lead.followup_event_id); }catch(e){ console.error("Couldn't delete follow up from calendar (clearing anyway):",e); } }
-                      try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear follow up on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
-                      handleUpdate({...lead,followup_appointment:"",followup_event_id:null});
-                    }}
-                      style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #e9d5ff",background:dark?"rgba(147,51,234,0.12)":"#faf5ff",color:"#7e22ce",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                      ✕ Cancel Follow Up
-                    </button>
-                  )}
-                </div>
+                  {/* Booked reminders — one card per booked appointment, X clears it. */}
+                  {(()=>{
+                    const clearAppt = async (fields, evField, kind) => {
+                      const evId = lead[evField];
+                      if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
+                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); return; }
+                      handleUpdate({...lead,...fields});
+                      if(kind) apptHistRemove(kind, evId);
+                    };
+                    const cards = [
+                      lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id","Close")},
+                      (lead.cb_event_id||lead.appointment) && {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id","Comeback")},
+                      lead.followup_appointment && {key:"fu",label:"🟣 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id","Follow Up")},
+                      lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id","CAP")},
+                      lead.cs_appointment && {key:"cs",label:"🔴 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id","Cancel Save")},
+                      lead.install_appointment && {key:"in",label:"🟩 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id","Install")},
+                    ].filter(Boolean);
+                    if(cards.length===0) return null;
+                    return (
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
+                        {cards.map(c=>(
+                          <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                            <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
+                            <button onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
+                              title="Remove this appointment"
+                              style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
               </>)}
               {/* Additional appointments — book any number of extra sits/appointments
                   without disturbing the closer slot or CAP above; each is cancellable. */}
@@ -5915,71 +5903,36 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   }}/>
               </div>
               <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
-              {(form.close_event_id || form.close_appointment) && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this close appointment? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  if(form.close_event_id){ try{ await GCal.deletePersonalCB(form.close_event_id); }catch(e){ console.error("Couldn't delete close (clearing anyway):",e); } }
-                  setForm(f=>({...f,close_appointment:"",close_event_id:null}));
-                  if(form.id){ try{ await sb.from("leads").update({close_appointment:"",close_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #bbf7d0",background:dark?"rgba(22,163,74,0.12)":"#f0fdf4",color:"#15803d",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel Close
-                </button>
-              )}
-              {form.cb_event_id && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this comeback? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error(e); }
-                  setForm(f=>({...f,appointment:"",cb_event_id:null}));
-                  if(form.id){ try{ await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel Comeback
-                </button>
-              )}
-              {(form.cap_event_id || form.cap_appointment) && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this CAP? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  if(form.cap_event_id){ try{ await GCal.deletePersonalCB(form.cap_event_id); }catch(e){ console.error("Couldn't delete CAP from calendar (clearing anyway):",e); } }
-                  setForm(f=>({...f,cap_appointment:"",cap_event_id:null}));
-                  if(form.id){ try{ await sb.from("leads").update({cap_appointment:"",cap_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fed7aa",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",color:"#c2410c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel CAP
-                </button>
-              )}
-              {(form.install_event_id || form.install_appointment) && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this install? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  if(form.install_event_id){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error("Couldn't delete install from calendar (clearing anyway):",e); } }
-                  setForm(f=>({...f,install_appointment:"",install_event_id:null}));
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel Install
-                </button>
-              )}
-              {(form.cs_event_id || form.cs_appointment) && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this Cancel Save? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  if(form.cs_event_id){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error("Couldn't delete Cancel Save from calendar (clearing anyway):",e); } }
-                  setForm(f=>({...f,cs_appointment:"",cs_event_id:null}));
-                  if(form.id){ try{ await sb.from("leads").update({cs_appointment:"",cs_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #fecaca",background:dark?"rgba(239,68,68,0.12)":"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel "Cancel Save"
-                </button>
-              )}
-              {(form.followup_event_id || form.followup_appointment) && (
-                <button type="button" onClick={async()=>{
-                  if(!window.confirm("Cancel this follow up? It will be removed from your Google Calendar and cleared from the lead.")) return;
-                  if(form.followup_event_id){ try{ await GCal.deletePersonalCB(form.followup_event_id); }catch(e){ console.error("Couldn't delete follow up from calendar (clearing anyway):",e); } }
-                  setForm(f=>({...f,followup_appointment:"",followup_event_id:null}));
-                  if(form.id){ try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
-                }}
-                  style={{width:"100%",padding:"9px 0",borderRadius:8,border:"1.5px solid #e9d5ff",background:dark?"rgba(147,51,234,0.12)":"#faf5ff",color:"#7e22ce",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  ✕ Cancel Follow Up
-                </button>
-              )}
+              {(()=>{
+                const clearAppt = async (fields, evField) => {
+                  const evId = form[evField];
+                  if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
+                  setForm(f=>({...f,...fields}));
+                  if(form.id){ try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                };
+                const cards = [
+                  form.close_appointment && {key:"close",label:"📅 Close",val:form.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id")},
+                  (form.cb_event_id||form.appointment) && {key:"cb",label:"↩️ Comeback",val:form.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")},
+                  form.followup_appointment && {key:"fu",label:"🟣 Follow Up",val:form.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id")},
+                  form.cap_appointment && {key:"cap",label:"📋 CAP",val:form.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id")},
+                  form.cs_appointment && {key:"cs",label:"🔴 Cancel Save",val:form.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id")},
+                  form.install_appointment && {key:"in",label:"🟩 Install",val:form.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id")},
+                ].filter(Boolean);
+                if(cards.length===0) return null;
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
+                    {cards.map(c=>(
+                      <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                        <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
+                        <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
+                          title="Remove this appointment"
+                          style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </>)}
           {/* Additional appointments — any number of extra sits/appointments,
