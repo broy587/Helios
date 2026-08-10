@@ -6949,7 +6949,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   {l.followup_appointment && <div style={{fontSize:12,color:"#9333ea",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>🔁 {l.followup_appointment}</div>}
                 </div>
                 {l.followup_event_id || l.followup_appointment ? (
-                  <button onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setFuMenu({id:l.id, top:r.bottom+4, left:Math.max(8,Math.min(r.left-60,window.innerWidth-150))}); }}
+                  <button onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const menuH=96; const spaceBelow=window.innerHeight-r.bottom; const up=spaceBelow<menuH+12; setFuMenu({id:l.id, top: up ? (r.top-menuH-4) : (r.bottom+4), left:Math.max(8,Math.min(r.left-60,window.innerWidth-150))}); }}
                     title="Follow up options"
                     style={{flexShrink:0,width:34,height:34,padding:0,borderRadius:8,border:"1.5px solid #9333ea",background:"transparent",color:"#9333ea",fontWeight:700,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>🔁</button>
                 ) : (
