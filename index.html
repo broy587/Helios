@@ -5062,8 +5062,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     {/* Book Close Closer or Personal */}
                     {!closeChoice ? (
                       <button onClick={()=>setCloseChoice(true)}
-                        style={{padding:"10px 0",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                        📅 Book Close
+                        style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #2563eb",background:dark?"rgba(37,99,235,0.14)":"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                        🤝 Book Close
                       </button>
                     ) : (
                       <div style={{display:"flex",gap:6}}>
@@ -5811,8 +5811,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 {/* Book Close Closer or Personal */}
                 {!closeChoice ? (
                   <button type="button" onClick={()=>setCloseChoice(true)}
-                    style={{padding:"10px 0",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                    📅 Book Close
+                    style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #2563eb",background:dark?"rgba(37,99,235,0.14)":"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    🤝 Book Close
                   </button>
                 ) : (
                   <div style={{display:"flex",gap:6}}>
