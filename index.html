@@ -6861,7 +6861,19 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
   // incoming starred set changes (add/remove), keyed by id list.
   const [order, setOrder] = React.useState(starred);
   const idsKey = starred.map(l=>l.id).join(",");
-  React.useEffect(()=>{ setOrder(starred); }, [idsKey]);
+  // Re-key on follow-up fields too, so booking/removing a follow-up refreshes the
+  // card (the purple line) without waiting for the id set to change.
+  const fuKey = starred.map(l=>`${l.id}:${l.followup_appointment||""}:${l.followup_event_id||""}`).join("|");
+  React.useEffect(()=>{
+    setOrder(prev=>{
+      // Preserve the current drag order, but pull in fresh field data for each lead.
+      const byId = {}; starred.forEach(l=>{ byId[l.id]=l; });
+      const kept = prev.filter(l=>byId[l.id]).map(l=>byId[l.id]);
+      const keptIds = new Set(kept.map(l=>l.id));
+      const added = starred.filter(l=>!keptIds.has(l.id));
+      return [...kept, ...added];
+    });
+  }, [idsKey, fuKey]);
 
   const [dragId, setDragId] = React.useState(null);
   const dragIndexRef = React.useRef(-1);
