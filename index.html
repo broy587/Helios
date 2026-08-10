@@ -5086,10 +5086,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change Comeback":"↩️ Comeback"} onSelect={async(val,cbEventId)=>{
                       if(lead.cb_event_id && lead.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); } }
                       const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
-                      await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                      try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
+                      // Update the UI first so the reminder card + lead card show immediately,
+                      // then persist. A DB hiccup must never leave a booked calendar event
+                      // with nothing showing on the lead.
                       handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
                       apptHistPush("Comeback", val, cbEventId);
+                      try{ await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+                      catch(e){ console.error("comeback save failed:",e); alert("Booked on your calendar, but saving to the lead hit a snag. It's showing here now — if it's gone after refresh, try again."); }
                     }}/>
                     {/* Follow Up (personal) */}
                     <PersonalApptButton lead={lead}
@@ -5835,7 +5838,12 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 )}
                 {/* Comeback (personal) → main appointment / cb_event_id */}
                 <PersonalApptButton lead={{...form}} label={form.cb_event_id?"↩️ Change Comeback":"↩️ Comeback"}
-                  onSelect={(val,cbEventId)=>setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),main:new Date().toISOString()}}))}/>
+                  onSelect={async(val,cbEventId)=>{
+                    if(form.cb_event_id && form.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error(e); } }
+                    const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),main:new Date().toISOString()};
+                    setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:nts}));
+                    if(form.id){ try{ await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error("comeback save failed:",e); } }
+                  }}/>
                 {/* Follow Up (personal) */}
                 <PersonalApptButton lead={{...form}}
                   label={form.followup_event_id?"🔁 Change Follow Up":"🔁 Follow Up"}
