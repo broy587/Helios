@@ -4677,9 +4677,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     const entry = {ts:formatTs(), by:"appt", appt:{kind, when:apptVal, id:eventId||null}, changes:[`Booked ${kind}: ${apptVal}`]};
     const base = Array.isArray(lead.history)?lead.history:[];
     const nextHist = [entry, ...base];
+    const ts = Date.now(); localEditTsRef.current = ts;
+    const merged = {...lead, history:nextHist, _localTs:ts};
+    setLead(merged);
+    if(onUpdate) onUpdate(merged);
     try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history push failed:",e); }
-    setLead(l=>({...l,history:nextHist}));
-    if(onUpdate) onUpdate({...leadProp,...lead,history:nextHist});
   };
   const apptHistRemove = async (kind, eventId) => {
     const base = Array.isArray(lead.history)?lead.history:[];
@@ -4691,9 +4693,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
       if(eventId && h.appt.id){ if(h.appt.id===eventId){ removed=true; return false; } return true; }
       removed=true; return false; // no id to match on — drop the newest of this kind
     });
+    const ts = Date.now(); localEditTsRef.current = ts;
+    const merged = {...lead, history:nextHist, _localTs:ts};
+    setLead(merged);
+    if(onUpdate) onUpdate(merged);
     try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history remove failed:",e); }
-    setLead(l=>({...l,history:nextHist}));
-    if(onUpdate) onUpdate({...leadProp,...lead,history:nextHist});
   };
   const lastIdRef = React.useRef(leadProp?.id);
   React.useEffect(()=>{
@@ -5106,10 +5110,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           onSelect={async(val,evId)=>{
                             if(lead.close_event_id && lead.close_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.close_event_id); }catch(e){ console.error(e); } }
                             const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), close:new Date().toISOString()};
-                            await sb.from("leads").update({close_appointment:val,close_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                            try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                            handleUpdate({...lead,close_appointment:val,close_event_id:evId||null,appt_ts:nts});
-                            apptHistPush("Close", val, evId);
+                            const entry = {ts:formatTs(), by:"appt", appt:{kind:"Close", when:val, id:evId||null}, changes:[`Booked Close: ${val}`]};
+                            const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                            const fields = {close_appointment:val,close_event_id:evId||null,appt_ts:nts,history:nextHist};
+                            handleUpdate(fields);
+                            try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Close save failed:",e); }
                             setCloseChoice(false);
                           }}/>
                       </div>
@@ -5118,12 +5123,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} label={lead.cb_event_id?"↩️ Change Comeback":"↩️ Comeback"} onSelect={async(val,cbEventId)=>{
                       if(lead.cb_event_id && lead.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(lead.cb_event_id); }catch(e){ console.error(e); } }
                       const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), main:new Date().toISOString()};
-                      // Update the UI first so the reminder card + lead card show immediately,
-                      // then persist. A DB hiccup must never leave a booked calendar event
-                      // with nothing showing on the lead.
-                      handleUpdate({...lead,appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts});
-                      apptHistPush("Comeback", val, cbEventId);
-                      try{ await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+                      const entry = {ts:formatTs(), by:"appt", appt:{kind:"Comeback", when:val, id:cbEventId||null}, changes:[`Booked Comeback: ${val}`]};
+                      const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                      const fields = {appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,history:nextHist};
+                      handleUpdate(fields);
+                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }
                       catch(e){ console.error("comeback save failed:",e); alert("Booked on your calendar, but saving to the lead hit a snag. It's showing here now — if it's gone after refresh, try again."); }
                     }}/>
                     {/* Follow Up (personal) */}
@@ -5134,10 +5138,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       onSelect={async(val,evId)=>{
                         if(lead.followup_event_id && lead.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.followup_event_id); }catch(e){ console.error(e); } }
                         const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), followup:new Date().toISOString()};
-                        await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                        handleUpdate({...lead,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts});
-                        apptHistPush("Follow Up", val, evId);
+                        const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
+                        const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                        const fields = {followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist};
+                        handleUpdate(fields);
+                        try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Follow Up save failed:",e); }
                       }}/>
                     {/* CAP (Closer or Personal) */}
                     {canBookCap ? (
@@ -5155,10 +5160,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                             onSelect={async(val,evId)=>{
                               if(lead.cap_event_id && lead.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cap_event_id); }catch(e){ console.error(e); } }
                               const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cap:new Date().toISOString()};
-                              await sb.from("leads").update({cap_appointment:val,cap_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                              try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                              handleUpdate({...lead,cap_appointment:val,cap_event_id:evId||null,appt_ts:nts});
-                              apptHistPush("CAP", val, evId);
+                              const entry = {ts:formatTs(), by:"appt", appt:{kind:"CAP", when:val, id:evId||null}, changes:[`Booked CAP: ${val}`]};
+                              const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                              const fields = {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts,history:nextHist};
+                              handleUpdate(fields);
+                              try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("CAP save failed:",e); }
                               setCapChoice(false);
                             }}/>
                         </div>
@@ -5181,10 +5187,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           onSelect={async(val,evId)=>{
                             if(lead.cs_event_id && lead.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cs_event_id); }catch(e){ console.error(e); } }
                             const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cs:new Date().toISOString()};
-                            await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                            try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                            handleUpdate({...lead,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts});
-                            apptHistPush("Cancel Save", val, evId);
+                            const entry = {ts:formatTs(), by:"appt", appt:{kind:"Cancel Save", when:val, id:evId||null}, changes:[`Booked Cancel Save: ${val}`]};
+                            const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                            const fields = {cs_appointment:val,cs_event_id:evId||null,appt_ts:nts,history:nextHist};
+                            handleUpdate(fields);
+                            try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Cancel Save save failed:",e); }
                             setCsChoice(false);
                           }}/>
                       </div>
@@ -5198,10 +5205,11 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       onSelect={async(val,evId)=>{
                         if(lead.install_event_id && lead.install_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.install_event_id); }catch(e){ console.error(e); } }
                         const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), install:new Date().toISOString()};
-                        await sb.from("leads").update({install_appointment:val,install_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",lead.id);
-                        try{ sb.from("leads").update({appt_ts:nts}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){}
-                        handleUpdate({...lead,install_appointment:val,install_event_id:evId||null,appt_ts:nts});
-                        apptHistPush("Install", val, evId);
+                        const entry = {ts:formatTs(), by:"appt", appt:{kind:"Install", when:val, id:evId||null}, changes:[`Booked Install: ${val}`]};
+                        const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
+                        const fields = {install_appointment:val,install_event_id:evId||null,appt_ts:nts,history:nextHist};
+                        handleUpdate(fields);
+                        try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("Install save failed:",e); }
                       }}/>
                   </div>
                   {/* Booked reminders — one card per booked appointment, X clears it. */}
