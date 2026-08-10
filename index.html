@@ -3904,6 +3904,33 @@ function acRequirementsForUser(teams, teamMembers, userId, role) {
 }
 function acRequirementsActive(req){ return !!req && ((Array.isArray(req.items)&&req.items.length>0) || (Number(req.count)||0) > 0); }
 // Returns a list of human-readable unmet requirements (empty = all satisfied).
+// ── Appointment stacks ────────────────────────────────────────────────
+// Each appointment type can hold a STACK of bookings (newest shown on the lead).
+// Rebooking pushes a new entry (old calendar event stays live). Deleting pops the
+// top and reverts to the previous booking. Stored in the appt_stacks jsonb, keyed
+// by type ("cap", etc). The flat <type>_appointment / <type>_event_id columns keep
+// pointing at the top of the stack so the lead card, filters, etc. work unchanged.
+function getApptStack(lead, key){
+  const s = lead && lead.appt_stacks && typeof lead.appt_stacks==="object" ? lead.appt_stacks[key] : null;
+  return Array.isArray(s) ? s : [];
+}
+// Push a new booking onto a type's stack. Returns the new appt_stacks object.
+function apptStackPush(lead, key, when, eventId){
+  const all = (lead && lead.appt_stacks && typeof lead.appt_stacks==="object") ? {...lead.appt_stacks} : {};
+  const cur = Array.isArray(all[key]) ? all[key] : [];
+  all[key] = [...cur, {when, event_id:eventId||null, ts:new Date().toISOString()}];
+  return all;
+}
+// Pop the TOP booking off a type's stack. Returns {stacks, top, next} where top is
+// the removed booking and next is the new top (or null if the stack is now empty).
+function apptStackPop(lead, key){
+  const all = (lead && lead.appt_stacks && typeof lead.appt_stacks==="object") ? {...lead.appt_stacks} : {};
+  const cur = Array.isArray(all[key]) ? [...all[key]] : [];
+  const top = cur.pop() || null;
+  all[key] = cur;
+  const next = cur.length ? cur[cur.length-1] : null;
+  return {stacks:all, top, next};
+}
 function acRequirementsMissing(lead, req) {
   if(!acRequirementsActive(req)) return [];
   const missing = [];
@@ -5153,16 +5180,25 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         </button>
                       ) : (
                         <div style={{display:"flex",gap:6}}>
-                          <CalendarSyncButton lead={lead} onUpdate={updated=>{setCapChoice(false);handleUpdate({...lead,...updated});}} creatorName={creatorName} capMode={true} label="🏢 Closer"/>
+                          <CalendarSyncButton lead={lead} onUpdate={updated=>{
+                            setCapChoice(false);
+                            // Keep closer-booked CAPs on the same stack as personal ones.
+                            const evId = updated.cap_event_id||null;
+                            const when = updated.cap_appointment||"";
+                            if(when){ const nextStacks = apptStackPush(lead, "cap", when, evId); handleUpdate({...updated, appt_stacks:nextStacks}); }
+                            else handleUpdate({...lead,...updated});
+                          }} creatorName={creatorName} capMode={true} label="🏢 Closer"/>
                           <PersonalApptButton lead={lead}
                             label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
                             summary={`🟠 CAP - ${lead.name||"Lead"}`} accent="#ea580c" colorId="6"
                             onSelect={async(val,evId)=>{
-                              if(lead.cap_event_id && lead.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(lead.cap_event_id); }catch(e){ console.error(e); } }
+                              // Stacked: keep the previous CAP calendar event live; push the
+                              // new booking on top (newest shows on the lead).
                               const nts = {...((lead.appt_ts&&typeof lead.appt_ts==="object")?lead.appt_ts:{}), cap:new Date().toISOString()};
                               const entry = {ts:formatTs(), by:"appt", appt:{kind:"CAP", when:val, id:evId||null}, changes:[`Booked CAP: ${val}`]};
                               const nextHist = [entry, ...(Array.isArray(lead.history)?lead.history:[])];
-                              const fields = {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts,history:nextHist};
+                              const nextStacks = apptStackPush(lead, "cap", val, evId);
+                              const fields = {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts,appt_stacks:nextStacks,history:nextHist};
                               handleUpdate(fields);
                               try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("CAP save failed:",e); }
                               setCapChoice(false);
@@ -5227,11 +5263,22 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       try{ await sb.from("leads").update({...merged,updated_at:new Date().toISOString()}).eq("id",lead.id); }
                       catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); }
                     };
+                    // Stacked removal: pop the top booking, delete ONLY its calendar event,
+                    // and revert the flat fields to the previous booking (or clear if empty).
+                    // History is left intact (prior bookings stay in the audit trail).
+                    const popAppt = async (key, apptField, evField) => {
+                      const {stacks, top, next} = apptStackPop(lead, key);
+                      const fields = {[apptField]: next ? next.when : "", [evField]: next ? (next.event_id||null) : null, appt_stacks:stacks};
+                      handleUpdate(fields);
+                      if(top && top.event_id){ try{ await GCal.deletePersonalCB(top.event_id); }catch(e){ console.error("Couldn't delete popped event from calendar:",e); } }
+                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+                      catch(e){ console.error("Couldn't update lead after pop:",e); alert("Couldn't update it — check your connection and try again."); }
+                    };
                     const cards = [
                       lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id","Close")},
                       (lead.cb_event_id||lead.appointment) && {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id","Comeback")},
                       lead.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id","Follow Up")},
-                      lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id","CAP")},
+                      lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",stackCount:getApptStack(lead,"cap").length,clear:()=>popAppt("cap","cap_appointment","cap_event_id")},
                       lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id","Cancel Save")},
                       lead.install_appointment && {key:"in",label:"💰 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id","Install")},
                     ].filter(Boolean);
@@ -5241,9 +5288,15 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                         {cards.map(c=>(
                           <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
-                            <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
-                            <button onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
-                              title="Remove this appointment"
+                            <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}{c.stackCount>1 && <span style={{marginLeft:6,fontSize:10,fontWeight:800,color:c.color,background:"rgba(0,0,0,0.06)",borderRadius:8,padding:"1px 6px"}}>{c.stackCount} booked</span>}</span>
+                            <button onClick={async()=>{
+                              const typeName=c.label.replace(/^[^ ]+ /,"");
+                              const msg = c.stackCount>1
+                                ? `Remove the current ${typeName} (${c.val})? This deletes just this one from your calendar and reverts to the previous ${typeName} booking. ${c.stackCount-1} earlier booking${c.stackCount-1===1?"":"s"} will remain.`
+                                : `Remove this ${typeName} appointment? It will be cleared from the lead and your calendar.`;
+                              if(window.confirm(msg)) await c.clear();
+                            }}
+                              title={c.stackCount>1?"Remove current booking (reverts to previous)":"Remove this appointment"}
                               style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                           </div>
                         ))}
@@ -13906,11 +13959,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,extra_appointments,history,created_at,updated_at";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email",""));
         return res;
       };
       if (isPrivileged) {
