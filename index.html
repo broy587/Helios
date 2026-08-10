@@ -6929,6 +6929,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
   const movedRef = React.useRef(false);
   const [fuMenu, setFuMenu] = React.useState(null); // {id, top, left} for the follow-up action menu
   const [fuRebookId, setFuRebookId] = React.useState(null); // lead id to open booking flow for
+  const [copiedId, setCopiedId] = React.useState(null); // lead id showing the "copied" checkmark
 
   const indexOfId = (id, arr) => arr.findIndex(l=>l.id===id);
 
@@ -6996,6 +6997,17 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
                   {l.followup_appointment && <div style={{fontSize:12,color:"#9333ea",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>🔁 {l.followup_appointment}</div>}
                 </div>
+                <button onClick={async()=>{
+                  const addr=(l.address||"").trim();
+                  if(!addr){ alert("This lead has no address yet."); return; }
+                  try{ await navigator.clipboard.writeText(addr); }
+                  catch(e){ try{ const ta=document.createElement("textarea"); ta.value=addr; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }catch(_){ alert("Couldn't copy the address."); return; } }
+                  setCopiedId(l.id); setTimeout(()=>setCopiedId(c=>c===l.id?null:c), 1200);
+                }}
+                  title="Copy address"
+                  style={{flexShrink:0,width:34,height:34,padding:0,borderRadius:8,border:`1.5px solid ${copiedId===l.id?"#16a34a":(dark?"#334155":"#cbd5e1")}`,background:"transparent",color:copiedId===l.id?"#16a34a":(dark?"#94a3b8":"#475569"),fontWeight:700,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+                  {copiedId===l.id?"✓":"🏠"}
+                </button>
                 {l.followup_event_id || l.followup_appointment ? (
                   <button onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const menuH=96; const spaceBelow=window.innerHeight-r.bottom; const up=spaceBelow<menuH+12; setFuMenu({id:l.id, top: up ? (r.top-menuH-4) : (r.bottom+4), left:Math.max(8,Math.min(r.left-60,window.innerWidth-150))}); }}
                     title="Follow up options"
