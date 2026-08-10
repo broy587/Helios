@@ -11792,7 +11792,7 @@ const GCal = {
       end   = { date: `${next.getFullYear()}-${pad(next.getMonth()+1)}-${pad(next.getDate())}` };
     }
     const event = {
-      summary: (opts && opts.summary) || `Personal Comeback - ${lead.name || "Lead"}`,
+      summary: (opts && opts.summary) || `CB - ${lead.name || "Lead"}`,
       location: lead.address || "",
       description: [
         lead.phone ? `Phone: ${lead.phone}` : "",
