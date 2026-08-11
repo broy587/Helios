@@ -10138,6 +10138,16 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment" && l.temperature==="hot" && l.address)
           .map(l=>l.address.split(",")[0].toLowerCase().trim()).filter(Boolean)
       : [];
+    // Stage / pile filters apply to home pins THROUGH their linked pipeline lead.
+    // Leads created from a canvass pin never get their own lead marker (the pin
+    // "owns" that address), so without this, stage filtering hid every pin.
+    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:"));
+    const findLinkedLead = (home) => {
+      if(!home.address) return null;
+      const key = home.address.split(",")[0].toLowerCase().trim();
+      if(!key) return null;
+      return (leads||[]).find(l=>l.address && l.address.toLowerCase().includes(key)) || null;
+    };
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
       const la=parseFloat(home.lat), ln=parseFloat(home.lng);
@@ -10147,14 +10157,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       }
       const disp = home.prescreen||"";
       const homeWarm = warmActive && home.address && warmKeys.some(k=>home.address.toLowerCase().includes(k));
+      // Linked pipeline lead (only looked up when a stage/pile filter is active).
+      const linked = stagePileActive ? findLinkedLead(home) : null;
+      const leadStageMatch = !!(linked && leadMatchesCanvassFilters(linked, activeFilters));
       if(hasFilter){
         const dispMatch = disp && activeFilters.includes("disp:"+disp);
-        if(!dispMatch && !homeWarm) return;
+        if(!dispMatch && !homeWarm && !leadStageMatch) return;
       }
       const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-      const emoji = homeWarm ? "🔥" : dispEmojis[disp];
-      const color = homeWarm ? "#ef4444" : (dispColors[disp]||"rgba(255,255,255,0.7)");
+      const stageVis = leadStageMatch ? leadPinVisual(linked, activeFilters) : null;
+      const emoji = homeWarm ? "🔥" : (stageVis ? stageVis.emoji : dispEmojis[disp]);
+      const color = homeWarm ? "#ef4444" : (stageVis ? stageVis.color : (dispColors[disp]||"rgba(255,255,255,0.7)"));
       const marker = emoji ? new window.google.maps.Marker({
         position:{lat:la,lng:ln}, map,
         label:{text:emoji, fontSize:"14px"},
@@ -10179,9 +10193,14 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const warmLeadKey = (activeFilters||[]).includes("warm")
     ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment"&&l.temperature==="hot").map(l=>l.id).join(",")
     : "";
+  // When a stage/pile filter is active, home pins depend on their linked lead's
+  // stage & flags — redraw if any of those change.
+  const leadLinkKey = (activeFilters||[]).some(f=>f.startsWith("stage:")||f.startsWith("pile:"))
+    ? (leads||[]).map(l=>l.id+":"+l.stage+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")).join(",")
+    : "";
 
   // Draw pins whenever the data / filters / scope actually change or the map is ready.
-  React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, warmLeadKey, mapReady]);
+  React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, warmLeadKey, leadLinkKey, mapReady]);
   // Safety redraw shortly after the map instance exists (covers slow mobile init).
   React.useEffect(()=>{
     if(!mapReady) return;
