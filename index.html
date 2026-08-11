@@ -13213,14 +13213,14 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
           ); })()}
           {m.url && <CopyTextButton text={m.url} label="🔗 Copy Link"/>}
           {m.url && (
-            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Link", body:m.url, audience:"recruits"}); }}
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Link", body:m.url, audience:m.audience||"customers"}); }}
               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#e7f9ed",color:"#16a34a",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               📤 Send Link
             </button>
           )}
           {m.location && <CopyTextButton text={m.location} label="📍 Copy Location"/>}
           {m.location && (
-            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Location", body:m.location, audience:"recruits"}); }}
+            <button onClick={()=>{ setPickerSearch(""); setPickerMode("text"); setGmailPicker({title:m.title||"Location", body:m.location, audience:m.audience||"customers"}); }}
               style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,background:"#fef3c7",color:"#b45309",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               📤 Send Location
             </button>
