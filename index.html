@@ -11394,12 +11394,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 ➕ Add Open Slot
               </button>
             )}
-            {canAddOpenSlot && (
-              <button onClick={()=>{ publishOpenSlots(teamCfg && teamCfg.calendarId); setMenuOpen(false); }} disabled={publishingSlots}
-                style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:publishingSlots?"default":"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",opacity:publishingSlots?0.6:1}}>
-                {publishingSlots?"Publishing…":"📢 Publish Slots"}
-              </button>
-            )}
+            {/* "📢 Publish Slots" button removed — redundant now that the backend
+                service account reads calendars with full details and team calendars
+                are public with "See all event details". The publishOpenSlots helper
+                is kept in code in case it's ever needed again. */}
             <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
               🏷️ Tag & Manage
