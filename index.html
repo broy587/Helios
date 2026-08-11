@@ -4160,7 +4160,6 @@ const VC_CHECKLIST_ITEMS = [
   "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
   "Every true decision maker was present",
-  "Every true decision maker was bought in",
   "Found their WHY and customer voiced it",
   "Objections uncovered and resolved",
   "Pre-frame outside influence",
@@ -4188,8 +4187,6 @@ const VC_ITEM_HELP = {
 // counting as "not done". Format: "exact item string": "YYYY-MM-DD".
 // Example: "New closer step": "2026-08-08"
 const VC_ITEM_SINCE = {
-  "Every true decision maker was present": "2026-08-09",
-  "Every true decision maker was bought in": "2026-08-09",
   "Found their WHY and customer voiced it": "2026-08-09",
   "Objections uncovered and resolved": "2026-08-09",
   "Pre-frame outside influence": "2026-08-09",
@@ -4219,13 +4216,16 @@ const LEGACY_CLOSER_MAP = [
 ];
 function deriveCloserChecklist(lead) {
   const applyRenames = (arr) => (Array.isArray(arr)?arr:[]).map(it=>CLOSER_ITEM_RENAMES[it]||it);
-  if (lead && Array.isArray(lead.closer_checklist)) return applyRenames(lead.closer_checklist);
-  // No checklist stored yet → derive from the old Yes/No answers.
-  const derived = [];
+  // Start from the stored checklist (rename-mapped) if present.
+  const out = new Set(lead && Array.isArray(lead.closer_checklist) ? applyRenames(lead.closer_checklist) : []);
+  // ALWAYS also fold in the legacy Yes/No closer fields (e.g. the old "Were all
+  // decision makers present?" answer stored in decision_makers). Older leads answered
+  // these before the checklist existed, and that data must not be lost just because a
+  // closer_checklist array was later created for the lead.
   for (const {field,item} of LEGACY_CLOSER_MAP) {
-    if (lead && lead[field]==="Yes") derived.push(item);
+    if (lead && lead[field]==="Yes") out.add(item);
   }
-  return derived;
+  return Array.from(out);
 }
 
 // Welcome / intro email template used by the "Sent intro email" quick button.
@@ -6932,7 +6932,6 @@ function analyzeConversions(leads, opts) {
       closerStat("Knew solar involved", "Homeowner knew solar was/could be involved"),
       closerStat("Let closer inside", "Homeowner let closer inside"),
       closerStat("Decision makers present", "Every true decision maker was present"),
-      closerStat("Decision makers bought in", "Every true decision maker was bought in"),
       closerStat("Found their WHY", "Found their WHY and customer voiced it"),
       closerStat("Objections uncovered/resolved", "Objections uncovered and resolved"),
       closerStat("Pre-frame outside influence", "Pre-frame outside influence"),
