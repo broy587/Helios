@@ -496,12 +496,19 @@ function getStageReachedAt(lead, minStageIdx) {
   }
 
   // No history entry found — lead was created at or moved to this stage
-  // without a matching history entry. Use updated_at if available, else created_at
+  // without a matching history entry (e.g. created directly in this stage).
+  // Use created_at, NOT updated_at: updated_at bumps on EVERY edit, which was
+  // letting old accounts sneak into "reached recently" pools (date-gated
+  // checklist items, weekly stat windows) just because someone touched them.
+  if (lead.created_at) {
+    const c = new Date(lead.created_at);
+    if (!isNaN(c.getTime())) return c;
+  }
   if (lead.updated_at) {
     const u = new Date(lead.updated_at);
     if (!isNaN(u.getTime())) return u;
   }
-  return new Date(lead.created_at);
+  return null;
 }
 
 // Count leads that reached a milestone within a date range
@@ -7637,7 +7644,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         // Field groups for readable display.
         const groups = (l)=>([
           ["Customer", [["Name",l.name],["Address",l.address],["Phone",l.phone],["Email",l.email],["Secondary name",l.secondary_name],["Secondary phone",l.secondary_phone],["Secondary email",l.secondary_email]]],
-          ["Status", [["Stage",l.stage],["Temperature",l.temperature],["Soft/Solid",l.soft_solid],["Confirmed",l.confirmed],["Contact status",l.contact_status],["Priority",l.priority],["ARC/Cancel",l.is_arc],["On hold",l.on_hold],["Needs cancel save",l.needs_cancel_save],["Gift card dropped",l.gift_card_dropped],["Bill retrieved",l.bill_retrieved]]],
+          ["Status", [["Stage",l.stage],["Temperature",l.temperature],["Soft/Solid",l.soft_solid],["Confirmed",l.confirmed],["Contact status",l.contact_status],["Priority",l.priority],["ARC/Cancel",l.is_arc],["ARC stage",l.arc_stage],["On hold",l.on_hold],["On hold stage",l.on_hold_stage],["Needs cancel save",l.needs_cancel_save],["Cancel-save stage",l.ncs_stage],["Gift card dropped",l.gift_card_dropped],["Bill retrieved",l.bill_retrieved]]],
           ["Utility", [["Utility",l.utility],["ESIID",l.esiid],["Meter #",l.meter],["Usage input",l.usage_input],["¢/kWh",l.cents_kwh],["Annual kWh",l.annual_kwh],["Average bill",l.average_bill],["Autopay",l.autopay_input],["Knew solar",l.knew_solar],["Closer inside",l.closer_inside]]],
           ["Sold system", [["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
           ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
@@ -7646,7 +7653,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
         ]);
         const exportCsv = ()=>{
-          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","on_hold","needs_cancel_save","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","notes"];
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","created_at","updated_at","notes"];
           const esc = (s)=>`"${String(s===null||s===undefined?"":Array.isArray(s)?s.join("; "):s).replace(/"/g,'""')}"`;
           const noteText = (l)=>{
             const log = Array.isArray(l.closer_notes_log)?l.closer_notes_log.map(n=>`[${n.by||""} ${n.ts||""}] ${n.text||""}`).join(" | "):"";
