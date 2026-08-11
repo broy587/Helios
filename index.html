@@ -4091,7 +4091,7 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
         <Pill active={confirmed==="Yes"} activeColor="#047857" activeBg={dark?"#064e3b":"#d1fae5"} onClick={()=>onChange("confirmed", confirmed==="Yes"?"":"Yes")}>{confirmed==="Yes"?"✓ Confirmed":"Confirmed"}</Pill>
       </div>
       {openTip==="textcall" && (
-        <div style={tipStyle}>Customer confirmed appointment over text or call.</div>
+        <div style={tipStyle}>Got a text or call confirmation for the AC appointment.</div>
       )}
     </div>
   );
@@ -5268,7 +5268,18 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     };
                     const cards = [
                       lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"close").length,clear:()=>popAppt("close","close_appointment","close_event_id")},
-                      (lead.cb_event_id||lead.appointment) && {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cb").length,clear:()=>popAppt("cb","appointment","cb_event_id")},
+                      // Main appointment: it's a Comeback ONLY when booked as one (cb_event_id
+                      // set, no closer slot). A closer team slot (Book Close → 🏢 Closer, or the
+                      // original setter booking) shows as Closer Appt instead — and has no ✕,
+                      // because it must be removed through the booking flow so the team-calendar
+                      // slot is properly released back to Open Slot.
+                      (lead.cb_event_id||lead.appointment) && (
+                        (!!lead.cb_event_id && !lead.gcal_event_id)
+                          ? {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cb").length,clear:()=>popAppt("cb","appointment","cb_event_id")}
+                          : lead.gcal_event_id
+                            ? {key:"main",label:"🤝 Closer Appt",val:lead.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",stackCount:0,noClear:true}
+                            : {key:"main",label:"📆 Appointment",val:lead.appointment,color:dark?"#94a3b8":"#475569",bg:dark?"rgba(148,163,184,0.12)":"#f8fafc",bd:dark?"#334155":"#e2e8f0",stackCount:0,clear:()=>popAppt("cb","appointment","cb_event_id")}
+                      ),
                       lead.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",stackCount:getApptStack(lead,"fu").length,clear:()=>popAppt("fu","followup_appointment","followup_event_id")},
                       lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",stackCount:getApptStack(lead,"cap").length,clear:()=>popAppt("cap","cap_appointment","cap_event_id")},
                       lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cs").length,clear:()=>popAppt("cs","cs_appointment","cs_event_id")},
@@ -5279,9 +5290,9 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                         {cards.map(c=>(
-                          <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                          <div key={c.key} title={c.noClear?"To change or remove: 🤝 Book Close → 🏢 Closer":undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                             <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}{c.stackCount>1 && <span style={{marginLeft:6,fontSize:10,fontWeight:800,color:c.color,background:"rgba(0,0,0,0.06)",borderRadius:8,padding:"1px 6px"}}>{c.stackCount} booked</span>}</span>
-                            <button onClick={async()=>{
+                            {!c.noClear && <button onClick={async()=>{
                               const typeName=c.label.replace(/^[^ ]+ /,"");
                               const msg = c.stackCount>1
                                 ? `Remove the current ${typeName} (${c.val})? This deletes just this one from your calendar and reverts to the previous ${typeName} booking. ${c.stackCount-1} earlier booking${c.stackCount-1===1?"":"s"} will remain.`
@@ -5289,7 +5300,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                               if(window.confirm(msg)) await c.clear();
                             }}
                               title={c.stackCount>1?"Remove current booking (reverts to previous)":"Remove this appointment"}
-                              style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                              style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
                           </div>
                         ))}
                       </div>
@@ -6012,7 +6023,15 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                 };
                 const cards = [
                   form.close_appointment && {key:"close",label:"📅 Close",val:form.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id")},
-                  (form.cb_event_id||form.appointment) && {key:"cb",label:"↩️ Comeback",val:form.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")},
+                  // Same discrimination as the detail-view Booked cards: only a true
+                  // personal comeback (cb_event_id, no closer slot) is labeled Comeback.
+                  (form.cb_event_id||form.appointment) && (
+                    (!!form.cb_event_id && !form.gcal_event_id)
+                      ? {key:"cb",label:"↩️ Comeback",val:form.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")}
+                      : form.gcal_event_id
+                        ? {key:"main",label:"🤝 Closer Appt",val:form.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",noClear:true}
+                        : {key:"main",label:"📆 Appointment",val:form.appointment,color:dark?"#94a3b8":"#475569",bg:dark?"rgba(148,163,184,0.12)":"#f8fafc",bd:dark?"#334155":"#e2e8f0",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")}
+                  ),
                   form.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:form.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id")},
                   form.cap_appointment && {key:"cap",label:"📋 CAP",val:form.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id")},
                   form.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:form.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id")},
@@ -6023,11 +6042,11 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                     {cards.map(c=>(
-                      <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                      <div key={c.key} title={c.noClear?"To change or remove: 🤝 Book Close → 🏢 Closer":undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                         <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
-                        <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
+                        {!c.noClear && <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
                           title="Remove this appointment"
-                          style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                          style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
                       </div>
                     ))}
                   </div>
