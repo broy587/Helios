@@ -14566,6 +14566,28 @@ function App() {
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(form[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${form[key]||"-"}"`);}
       const pc=(existing.bill_photos||[]).length,nc=(form.billPhotos||[]).length;
       if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
+      // Note piles: record every added / edited / deleted setter follow-up and
+      // closer note in the history, so the entry's "by" shows who did it.
+      const trunc=(s)=>{ const t=String(s||"").trim().replace(/\s+/g," "); return t.length>60?t.slice(0,60)+"…":t; };
+      const logDiff=(label, oldLog, newLog, legacyFirstText)=>{
+        const o=Array.isArray(oldLog)?oldLog:[], n=Array.isArray(newLog)?newLog:[];
+        const oMap=new Map(o.filter(x=>x&&x.id).map(x=>[x.id,x]));
+        const nMap=new Map(n.filter(x=>x&&x.id).map(x=>[x.id,x]));
+        for(const x of n){
+          if(!x||!x.id) continue;
+          if(!oMap.has(x.id)){
+            // Skip the synthesized legacy entry (old single closer_notes text is
+            // converted to a log entry with a fresh id on every open — not a real add).
+            if(o.length===0 && legacyFirstText && String(x.text||"").trim()===String(legacyFirstText).trim()) continue;
+            changes.push(`${label}: Added "${trunc(x.text)}"`);
+          } else if((oMap.get(x.id).text||"")!==(x.text||"")){
+            changes.push(`${label}: Edited "${trunc(oMap.get(x.id).text)}" to "${trunc(x.text)}"`);
+          }
+        }
+        for(const x of o){ if(x&&x.id&&!nMap.has(x.id)) changes.push(`${label}: Deleted "${trunc(x.text)}"`); }
+      };
+      logDiff("Setter note", existing.setter_notes_log, form.setterNotesLog);
+      logDiff("Closer note", existing.closer_notes_log, form.closerNotesLog, existing.closer_notes);
     }
     const author=(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown";
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),by:author,changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),by:author,changes:["Lead created"]}];
