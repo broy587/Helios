@@ -11,6 +11,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Preload Google Sign-In at page load. Loading it lazily on the first booking
+       click ate the user's click gesture (script load takes ~0.5-1s), so the
+       browser blocked the sign-in popup: "Failed to open pop-up window". -->
+  <script src="https://accounts.google.com/gsi/client" id="gsi-script" async defer></script>
   <!-- Preconnect to CDNs so connections start before scripts download -->
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
@@ -9481,6 +9485,44 @@ const CANVASS_PILES = [
   {key:"pile:arc",     label:"ARC / Cancels",     emoji:"🔴", color:"#ef4444"},
 ];
 
+// ── Shared geocoder with a persistent cache ───────────────────────────
+// Uses the Maps JS SDK Geocoder (works even with referrer-restricted API keys,
+// unlike the raw REST endpoint the app previously fetched) and caches results
+// in localStorage so each address is geocoded ONCE ever instead of on every
+// canvass visit — a ~95% cut in Geocoding API usage.
+let __geoCache = null;
+function geoCacheLoad(){
+  if(__geoCache) return __geoCache;
+  try{ __geoCache = JSON.parse(localStorage.getItem("pp_geocode_cache_v1")||"{}"); }
+  catch(e){ __geoCache = {}; }
+  return __geoCache;
+}
+function geoCacheSave(){
+  try{ localStorage.setItem("pp_geocode_cache_v1", JSON.stringify(__geoCache)); }catch(e){}
+}
+async function gmapsGeocode(address){
+  const key = (address||"").trim().toLowerCase();
+  if(!key) return null;
+  const cache = geoCacheLoad();
+  if(cache[key]) return cache[key];
+  if(!(window.google && window.google.maps)) return null;
+  const out = await new Promise((resolve)=>{
+    try{
+      new window.google.maps.Geocoder().geocode({address}, (results, status)=>{
+        if(status==="OK" && results && results[0]){
+          const l = results[0].geometry.location;
+          resolve({lat:l.lat(), lng:l.lng()});
+        } else {
+          if(status!=="ZERO_RESULTS") console.error("Geocode failed:", status, address);
+          resolve(null);
+        }
+      });
+    }catch(e){ console.error("Geocode error:", e); resolve(null); }
+  });
+  if(out){ cache[key]=out; geoCacheSave(); }
+  return out;
+}
+
 // ── Canvass View Picker ───────────────────────────────────────────────
 function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, myTeamMemberIds, canvassLeadFilter, setCanvassLeadFilter}) {
   const [open, setOpen] = React.useState(false);
@@ -10077,12 +10119,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
       );
       if(alreadyPinned) return;
-      // Geocode the lead address
+      // Geocode the lead address (cached; SDK geocoder works with restricted keys)
       try {
-        const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(lead.address)}&key=${gmapsKey}`);
-        const data = await res.json();
-        if(!data.results||!data.results[0]) return;
-        const loc = data.results[0].geometry.location;
+        const loc = await gmapsGeocode(lead.address);
+        if(!loc) return;
         // Stale check — if filter changed since we started geocoding, discard
         if(gen!==leadGenRef.current) return;
         // Icon reflects the current filter state (generic ⚡ when nothing filtered).
@@ -10163,6 +10203,11 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       if(hasFilter){
         const dispMatch = disp && activeFilters.includes("disp:"+disp);
         if(!dispMatch && !homeWarm && !leadStageMatch) return;
+      } else {
+        // Default view (no filters): hide disposition pins (🏠 ↩️ ⏰ 🚫). Only
+        // lead ⚡ pins and plain undispositioned homes show — dispositions appear
+        // when their chip is selected in the Filter Pins panel.
+        if(disp && disp!=="lead") return;
       }
       const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
@@ -10211,13 +10256,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[mapReady]);
 
   const geocodeAddress=async(address)=>{
-    const res=await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${gmapsKey}`);
-    const data=await res.json();
-    if(data.results&&data.results.length>0){
-      const loc=data.results[0].geometry.location;
-      return {lat:loc.lat,lng:loc.lng};
-    }
-    return null;
+    // Cached SDK geocoder — see gmapsGeocode. Works with referrer-restricted keys.
+    return await gmapsGeocode(address);
   };
 
   // Fetch buildings from OpenStreetMap Overpass API
@@ -11773,6 +11813,11 @@ const GCal = {
   _tokenClient: null,
   _accessToken: null,
   _tokenExpiry: null,
+  // The CURRENT sign-in attempt's promise handlers. The token client's callbacks
+  // are created once and shared by every attempt, so they must settle whichever
+  // attempt is live — stored here — never a captured (possibly dead) promise.
+  _pendingResolve: null,
+  _pendingReject: null,
 
   isSignedIn() {
     return this._accessToken && Date.now() < this._tokenExpiry;
@@ -11807,12 +11852,26 @@ const GCal = {
         reject(new Error("Google Sign-In not available. Please refresh the app and try again."));
         return;
       }
+      // If an earlier attempt is somehow still pending (popup closed with no
+      // callback, etc.), fail it now — otherwise its handlers stay orphaned.
+      if(this._pendingReject){ try{ this._pendingReject(new Error("Superseded by a new sign-in attempt.")); }catch(e){} }
+      this._pendingResolve = resolve;
+      this._pendingReject = reject;
       if(!this._tokenClient) {
         this._tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: GCAL_CLIENT_ID,
           scope: "https://www.googleapis.com/auth/calendar.events",
+          // NOTE: these callbacks are shared by EVERY sign-in attempt (the token
+          // client is created once). They settle the current attempt via
+          // _pendingResolve/_pendingReject. The old code captured the FIRST
+          // attempt's resolve/reject forever — so after a failed first attempt
+          // (e.g. blocked popup), every later attempt signed in successfully but
+          // hung forever on "Adding to calendar…" because its own promise was
+          // never resolved.
           callback: (resp) => {
-            if(resp.error) { reject(new Error(resp.error_description||resp.error)); return; }
+            const res = this._pendingResolve, rej = this._pendingReject;
+            this._pendingResolve = this._pendingReject = null;
+            if(resp.error) { if(rej) rej(new Error(resp.error_description||resp.error)); return; }
             this._accessToken = resp.access_token;
             const ttl = (resp.expires_in && resp.expires_in>0) ? resp.expires_in : 3600;
             this._tokenExpiry = Date.now() + (ttl - 60) * 1000;
@@ -11823,9 +11882,13 @@ const GCal = {
               localStorage.setItem("gcal_token", resp.access_token);
               localStorage.setItem("gcal_token_expiry", String(this._tokenExpiry));
             } catch(e){}
-            resolve(resp.access_token);
+            if(res) res(resp.access_token);
           },
-          error_callback: (err) => { reject(new Error(err.message||"Sign-in failed")); },
+          error_callback: (err) => {
+            const rej = this._pendingReject;
+            this._pendingResolve = this._pendingReject = null;
+            if(rej) rej(new Error((err&&err.message)||"Sign-in failed"));
+          },
         });
       }
       // Try silent refresh first using saved email hint
