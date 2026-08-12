@@ -631,7 +631,7 @@ function CloserNotesEditor({log, onChange, dark, placeholder, deleteMsg}) {
 // stamp and every integration that reads lead.notes — calendar descriptions,
 // canvass popups, audit). Every note after that goes into setter_notes_log.
 // The first note renders as an editable box pinned at the bottom of the pile.
-function SetterNotesEditor({firstText, firstTs, log, onFirst, onLog, dark}) {
+function SetterNotesEditor({firstText, firstTs, log, onFirst, onFirstDelete, onLog, dark}) {
   const [draft, setDraft] = React.useState("");
   const list = Array.isArray(log) ? log : [];
   const hasFirst = !!((firstText||"").trim());
@@ -664,8 +664,13 @@ function SetterNotesEditor({firstText, firstTs, log, onFirst, onLog, dark}) {
       ))}
       {hasFirst && (
         <div style={{marginBottom:8,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px",background:dark?"#0f172a":"#fbfaf7"}}>
-          <div style={{marginBottom:5}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
             <span style={{fontSize:11,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5}}>🕒 First taken {formatNoteTime(firstTs)}</span>
+            {onFirstDelete && (
+              <button type="button" title="Delete note"
+                onClick={()=>{ if(window.confirm("Delete this setter note? This can't be undone once the lead is saved.")) onFirstDelete(); }}
+                style={{background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer",lineHeight:1}}>🗑️</button>
+            )}
           </div>
           <textarea value={firstText||""} onChange={e=>onFirst(e.target.value, false)} rows={2} style={ta}/>
         </div>
@@ -6163,6 +6168,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
           <SetterNotesEditor firstText={form.notes} firstTs={form.notesCreatedAt||(initial&&initial.created_at)}
             log={form.setterNotesLog||[]} dark={dark}
             onFirst={(text,stampNow)=>setForm(f=>({...f,notes:text,notesCreatedAt:(stampNow&&!f.notesCreatedAt)?new Date().toISOString():f.notesCreatedAt}))}
+            onFirstDelete={()=>setForm(f=>({...f,notes:"",notesCreatedAt:null}))}
             onLog={l=>setForm(f=>({...f,setterNotesLog:l}))}/>
         </div>
           );
