@@ -626,6 +626,54 @@ function CloserNotesEditor({log, onChange, dark, placeholder, deleteMsg}) {
   );
 }
 
+// Setter-notes editor: same pile behavior as closer notes, EXCEPT the very first
+// saved note becomes the lead's classic `notes` field (keeping its "First taken"
+// stamp and every integration that reads lead.notes — calendar descriptions,
+// canvass popups, audit). Every note after that goes into setter_notes_log.
+// The first note renders as an editable box pinned at the bottom of the pile.
+function SetterNotesEditor({firstText, firstTs, log, onFirst, onLog, dark}) {
+  const [draft, setDraft] = React.useState("");
+  const list = Array.isArray(log) ? log : [];
+  const hasFirst = !!((firstText||"").trim());
+  const ta = {width:"100%",padding:"8px 11px",borderRadius:6,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"};
+  const save = () => {
+    const t = draft.trim(); if(!t) return;
+    if(!hasFirst) onFirst(t, true); // first note ever → classic notes field + First taken stamp
+    else onLog([{id:makeNoteId(), text:t, ts:new Date().toISOString()}, ...list]);
+    setDraft("");
+  };
+  const editText = (id,text) => onLog(list.map(n=>n.id===id?{...n,text}:n)); // ts never touched
+  const del = (id) => { if(window.confirm("Delete this setter note?")) onLog(list.filter(n=>n.id!==id)); };
+  return (
+    <div>
+      {/* onBlur auto-commits so a typed note is never lost if the rep presses the
+          lead's Save without first tapping "Save Note". */}
+      <textarea value={draft} onChange={e=>setDraft(e.target.value)} onBlur={save} placeholder={hasFirst?"Type a new setter / follow up note...":"Setter notes..."} rows={2} style={ta}/>
+      <button type="button" onClick={save} disabled={!draft.trim()}
+        style={{marginTop:6,marginBottom:(list.length||hasFirst)?12:0,padding:"8px 16px",borderRadius:8,border:"none",background:draft.trim()?"#4338ca":(dark?"#334155":"#cbd5e1"),color:"#fff",fontWeight:700,fontSize:13,cursor:draft.trim()?"pointer":"default"}}>
+        💾 Save Note
+      </button>
+      {list.map(n=>(
+        <div key={n.id} style={{marginBottom:8,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px",background:dark?"#0f172a":"#fbfaf7"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontSize:11,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5}}>🕒 {formatNoteTime(n.ts)}</span>
+            <button type="button" onClick={()=>del(n.id)} title="Delete note" style={{background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:13,cursor:"pointer",lineHeight:1}}>🗑️</button>
+          </div>
+          <textarea value={n.text||""} onChange={e=>editText(n.id, e.target.value)} rows={2} style={ta}/>
+        </div>
+      ))}
+      {hasFirst && (
+        <div style={{marginBottom:8,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px",background:dark?"#0f172a":"#fbfaf7"}}>
+          <div style={{marginBottom:5}}>
+            <span style={{fontSize:11,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5}}>🕒 First taken {formatNoteTime(firstTs)}</span>
+          </div>
+          <textarea value={firstText||""} onChange={e=>onFirst(e.target.value, false)} rows={2} style={ta}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const inputStyle = {
   width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
   fontSize:14,color:"#1e293b",background:"#f8fafc",outline:"none",boxSizing:"border-box",fontFamily:"inherit"
@@ -6100,38 +6148,22 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,ca
         </div>
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         {(()=>{
-          // Setter notes now pile up like closer notes. The FIRST note is the classic
-          // notes field (saved with the lead). Once it exists, the input switches to
-          // "Setter / Follow Up Notes" and each save adds a separate dated box
-          // (stored in setter_notes_log). Layout is decided from the SAVED lead
-          // (initial), not live typing, so the textarea never swaps mid-keystroke.
-          const savedFirstNote = !!(((initial&&initial.notes)||"").trim());
-          const logMode = savedFirstNote || (Array.isArray(form.setterNotesLog)&&form.setterNotesLog.length>0);
+          // Setter notes pile up like closer notes — every note has its own 💾 Save
+          // Note button, including the very FIRST one (which becomes the classic
+          // notes field with its "First taken" stamp). Once any note exists, the
+          // section title flips to "Setter / Follow Up Notes".
+          const hasFirst = !!(((form.notes)||"").trim());
+          const hasLog = Array.isArray(form.setterNotesLog)&&form.setterNotesLog.length>0;
           return (
         <div style={{marginBottom:14}}>
           <label style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-            <span>{logMode?"Setter / Follow Up Notes":"Setter Notes"}</span>
+            <span>{(hasFirst||hasLog)?"Setter / Follow Up Notes":"Setter Notes"}</span>
             {form.notesCreatedAt && <span style={{fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"none",letterSpacing:0}}>First taken {formatNoteTime(form.notesCreatedAt)}</span>}
           </label>
-          {!logMode ? (
-            <textarea placeholder="Setter notes..." value={form.notes} onChange={set("notes")} rows={3} style={{...inputStyle,resize:"vertical"}}/>
-          ) : (
-            <>
-              <CloserNotesEditor log={form.setterNotesLog||[]} dark={dark}
-                placeholder="Type a new setter / follow up note..."
-                deleteMsg="Delete this setter note?"
-                onChange={l=>setForm(f=>({...f,setterNotesLog:l}))}/>
-              {savedFirstNote && (
-                <div style={{marginTop:8,border:`1px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:8,padding:"8px 10px",background:dark?"#0f172a":"#fbfaf7"}}>
-                  <div style={{marginBottom:5}}>
-                    <span style={{fontSize:11,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5}}>🕒 First taken {formatNoteTime(form.notesCreatedAt||initial.created_at)}</span>
-                  </div>
-                  <textarea value={form.notes} onChange={set("notes")} rows={2}
-                    style={{width:"100%",padding:"8px 11px",borderRadius:6,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"}}/>
-                </div>
-              )}
-            </>
-          )}
+          <SetterNotesEditor firstText={form.notes} firstTs={form.notesCreatedAt||(initial&&initial.created_at)}
+            log={form.setterNotesLog||[]} dark={dark}
+            onFirst={(text,stampNow)=>setForm(f=>({...f,notes:text,notesCreatedAt:(stampNow&&!f.notesCreatedAt)?new Date().toISOString():f.notesCreatedAt}))}
+            onLog={l=>setForm(f=>({...f,setterNotesLog:l}))}/>
         </div>
           );
         })()}
@@ -7429,8 +7461,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         });
         })()}
         {/* Needs Cancel Save — separate column, no drag-drop. Positioned before ARC.
-            Hidden when "Leads / ACs" is selected (flagged piles are VC+ concepts). */}
-        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
+            Hidden when "Leads / ACs" is selected (flagged piles are VC+ concepts),
+            or when specific stage lists are picked and this pile isn't one of them. */}
+        {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:ncs")))?null:(()=>{
           const ncsLeads=leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7f1d1d`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
@@ -7449,8 +7482,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           );
         })()}
         {/* On Hold — separate column, no drag-drop (ARC takes priority if both).
-            Positioned between Needs Cancel Save and ARC / Cancels. */}
-        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
+            Positioned between Needs Cancel Save and ARC / Cancels. Hidden when
+            specific stage lists are picked and this pile isn't one of them. */}
+        {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:on_hold")))?null:(()=>{
           const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7c2d12`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
@@ -7468,8 +7502,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             </div>
           );
         })()}
-        {/* ARC / Cancels — separate column, no drag-drop */}
-        {(pipeFilters&&pipeFilters.stageView==="leads_acs")?null:(()=>{
+        {/* ARC / Cancels — separate column, no drag-drop. Hidden when specific
+            stage lists are picked and this pile isn't one of them. */}
+        {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:arc")))?null:(()=>{
           const arcLeads=leads.filter(l=>l.is_arc);
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #ef4444`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.9}}>
@@ -7607,23 +7642,27 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:14,marginBottom:8}}>
                     <span style={{fontSize:11,color:dark?"#64748b":"#94a3b8"}}>Or pick specific stage lists:</span>
                     <span style={{display:"flex",gap:6,flexShrink:0}}>
-                      <button onClick={()=>setDraftFilters({...draft, stages:[...STAGES]})}
+                      <button onClick={()=>setDraftFilters({...draft, stages:[...STAGES,"pile:ncs","pile:on_hold","pile:arc"]})}
                         style={{padding:"4px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontSize:11,fontWeight:700,cursor:"pointer"}}>Select all</button>
                       <button onClick={()=>setDraftFilters({...draft, stages:[]})}
                         style={{padding:"4px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#94a3b8",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
                     </span>
                   </div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {STAGES.map(s=>{
-                      const on = Array.isArray(draft.stages) && draft.stages.includes(s);
+                    {[...STAGES.map(s=>({key:s,label:s})),
+                      {key:"pile:ncs",label:"🛟 Needs Cancel Save"},
+                      {key:"pile:on_hold",label:"⏸️ On Hold"},
+                      {key:"pile:arc",label:"🔴 ARC / Cancels"},
+                    ].map(o=>{
+                      const on = Array.isArray(draft.stages) && draft.stages.includes(o.key);
                       return (
-                        <button key={s} onClick={()=>{
+                        <button key={o.key} onClick={()=>{
                           const cur = Array.isArray(draft.stages)?draft.stages:[];
-                          const next = on ? cur.filter(x=>x!==s) : [...cur, s];
+                          const next = on ? cur.filter(x=>x!==o.key) : [...cur, o.key];
                           setDraftFilters({...draft, stages:next});
                         }}
                           style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                          {on && <span style={{fontSize:11}}>✓</span>}{s}
+                          {on && <span style={{fontSize:11}}>✓</span>}{o.label}
                         </button>
                       );
                     })}
