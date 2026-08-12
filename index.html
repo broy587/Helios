@@ -3532,9 +3532,8 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
     {key:"closerInside",db:"closer_inside",label:"Did homeowner let closer inside?"},
     {key:"decisionMakers",db:"decision_makers",label:"Were all decision makers present?"}
   ];
-  const followUpAgreed = readOnly ? (localVals["follow_up_agreed"]!==undefined?localVals["follow_up_agreed"]:(lead?.follow_up_agreed||"")) : (form?.followUpAgreed||"");
-  const followUpDate = readOnly ? (localVals["follow_up_date"]!==undefined?localVals["follow_up_date"]:(lead?.follow_up_date||"")) : (form?.followUpDate||"");
-  const hasFollowUp = followUpAgreed==="Yes" || !!followUpDate;
+  // "In close follow up date scheduled" was removed from the UI (Aug 2026).
+  // The follow_up_agreed / follow_up_date columns still exist in the DB for old data.
   if (readOnly) {
     return (
       <div>
@@ -3577,21 +3576,6 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             </div>
           );
         })()}
-        <div style={{marginBottom:16,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
-              <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",lineHeight:1.4,fontWeight:600}}>In close follow up date scheduled</div>
-              {followHelp}
-            </div>
-            <span style={{fontSize:12,fontWeight:700,padding:"3px 14px",borderRadius:20,flexShrink:0,background:hasFollowUp?(dark?"#064e3b":"#d1fae5"):(dark?"#7f1d1d":"#fee2e2"),color:hasFollowUp?(dark?"#6ee7b7":"#047857"):(dark?"#fca5a5":"#b91c1c")}}>{hasFollowUp?"Yes":"No"}</span>
-          </div>
-          {hasFollowUp && followUpDate && (
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
-              <span style={{fontSize:11,color:dark?"#94a3b8":"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
-              <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#1a2456"}}>{followUpDate}</span>
-            </div>
-          )}
-        </div>
       </div>
     );
   }
@@ -3678,34 +3662,6 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
                 })}
               </div>
             </div>
-          </div>
-        )}
-      </div>
-      <div style={{marginBottom:22,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"14px 14px 16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-          <div style={{fontSize:12,color:dark?"#94a3b8":"#475569",fontWeight:600,lineHeight:1.4}}>In close follow up date scheduled</div>
-          {followHelp}
-        </div>
-        <div style={{display:"flex",gap:10}}>
-          {["Yes","No"].map(opt=>{
-            const active = opt==="Yes" ? hasFollowUp : !hasFollowUp && form.followUpAgreed==="No";
-            return (
-            <button key={opt} type="button" onClick={()=>{
-                if(opt==="No") setForm(f=>({...f,followUpAgreed:"No",followUpDate:""}));
-                else setForm(f=>({...f,followUpAgreed:"Yes"}));
-              }}
-              style={{flex:1,padding:"9px 0",borderRadius:8,border:`2px solid ${active?(opt==="Yes"?"#10b981":"#ef4444"):"#e2e8f0"}`,background:active?(opt==="Yes"?"#f0fdf4":"#fff5f5"):"#fff",color:active?(opt==="Yes"?"#10b981":"#ef4444"):"#64748b",fontWeight:active?700:500,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              <span style={{width:13,height:13,borderRadius:"50%",border:`2px solid ${active?(opt==="Yes"?"#10b981":"#ef4444"):"#cbd5e1"}`,background:active?(opt==="Yes"?"#10b981":"#ef4444"):"transparent",display:"inline-block"}}/>
-              {opt}
-            </button>
-            );
-          })}
-        </div>
-        {hasFollowUp&&(
-          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
-            <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>Follow-up date:</span>
-            <input type="date" value={form.followUpDate||""} onChange={e=>setForm(f=>({...f,followUpDate:e.target.value}))}
-              style={{flex:1,padding:"6px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1a2456",fontSize:13,outline:"none"}}/>
           </div>
         )}
       </div>
@@ -6675,11 +6631,41 @@ const PIPELINE_FILTER_DEFS = [
   })),
   {key:"missing_utility", group:"Utility and sold system info", label:"Missing utility info",     test:pfMissingUtility},
   {key:"missing_sold",    group:"Utility and sold system info", label:"Missing sold system info", test:pfMissingSold},
-  {key:"ac_followup",  group:"Needs attention", label:"In close: agreed to follow up later",       test:l=>l.follow_up_agreed==="Yes"},
-  {key:"appt_passed",  group:"Needs attention", label:"Appointment date passed",                   test:pfApptPassed},
-  {key:"missing_appt", group:"Needs attention", label:"Missing appointment (Lead / AC stage)",     test:l=>(l.stage==="Lead: Need Bill/Appointment"||l.stage==="AC / Scheduled") && !pfHasAppt(l)},
 ];
-const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Utility and sold system info","Needs attention"];
+const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Utility and sold system info"];
+
+// ── Appointment-type filter ───────────────────────────────────────────
+// Six bookable appointment types. The filter matches leads whose MOST RECENT
+// booked appointment (by booking time in appt_ts) is one of the selected types.
+const APPT_TYPE_FILTERS = [
+  {key:"close",    label:"🤝 Close"},
+  {key:"cb",       label:"↩️ Comeback"},
+  {key:"followup", label:"🔁 Follow Up"},
+  {key:"cap",      label:"📋 CAP"},
+  {key:"cs",       label:"🛟 Cancel Save"},
+  {key:"install",  label:"💰 Install"},
+];
+function leadLatestApptType(l){
+  if(!l) return null;
+  const ts = (l.appt_ts && typeof l.appt_ts==="object") ? l.appt_ts : {};
+  const T = (k)=>{ const v = Date.parse(ts[k]||""); return isNaN(v) ? 0 : v; };
+  const entries = [];
+  // Main appointment field: a Comeback when booked as one (cb_event_id, no closer
+  // slot); otherwise a closer-slot / Close booking. Booking time lives in ts.main.
+  if(pfNonEmpty(l.appointment)){
+    const isCB = !!l.cb_event_id && !l.gcal_event_id;
+    entries.push({type:isCB?"cb":"close", t:T("main")});
+  }
+  if(pfNonEmpty(l.close_appointment))    entries.push({type:"close",    t:T("close")});
+  if(pfNonEmpty(l.followup_appointment)) entries.push({type:"followup", t:T("followup")});
+  if(pfNonEmpty(l.cap_appointment))      entries.push({type:"cap",      t:T("cap")});
+  if(pfNonEmpty(l.cs_appointment))       entries.push({type:"cs",       t:T("cs")});
+  if(pfNonEmpty(l.install_appointment))  entries.push({type:"install",  t:T("install")});
+  if(entries.length===0) return null;
+  let best = entries[0];
+  for(const e of entries){ if(e.t > best.t) best = e; }
+  return best.type;
+}
 const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"],["has_cnotes","no_cnotes"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
@@ -6722,6 +6708,13 @@ function matchesPipelineFilters(lead, filters){
     const dow = leadApptDayOfWeek(lead);
     if(dow===null || dow!==Number(filters.apptDay)) return false;
   }
+  // Appointment TYPE (OR within the group): show only leads whose MOST RECENT
+  // booked appointment is one of the selected types.
+  const apptTypes = Array.isArray(filters.apptType) ? filters.apptType : [];
+  if(apptTypes.length){
+    const t = leadLatestApptType(lead);
+    if(!t || !apptTypes.includes(t)) return false;
+  }
   return true;
 }
 // Day of week (0=Sun … 6=Sat) of the lead's most-recently-booked appointment.
@@ -6759,10 +6752,13 @@ function leadApptStartHour(lead){
 }
 function pipeFilterCount(filters){
   if(!filters) return 0;
-  return (Array.isArray(filters.active)?filters.active.length:0)
+  // Count only keys that still exist as filters (saved filters may hold keys of
+  // since-removed filter chips, e.g. the old "Needs attention" group).
+  return (Array.isArray(filters.active)?filters.active.filter(k=>PIPELINE_FILTER_DEFS.some(d=>d.key===k)).length:0)
     + (filters.stale&&filters.stale.on?1:0)
     + (filters.after?1:0) + (filters.before?1:0)
     + (Array.isArray(filters.appt)?filters.appt.length:0)
+    + (Array.isArray(filters.apptType)?filters.apptType.length:0)
     + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0)
     + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0) + (filters.stageView?1:0);
 }
@@ -7491,7 +7487,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + (Array.isArray(draft.apptType)?draft.apptType.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0);
         // Collapsible section wrapper — each filter section is a dropdown.
         const FilterSection = ({name, title, count, children}) => {
           const isOpen = !!openFilterSections[name];
@@ -7587,6 +7583,24 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                     <option value="0">Sunday</option>
                   </select>
                 </FilterSection>
+                <FilterSection name="apptType" title="Appointment type" count={Array.isArray(draft.apptType)?draft.apptType.length:0}>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Show leads whose most recent scheduled appointment is one of:</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {APPT_TYPE_FILTERS.map(t=>{
+                      const on = Array.isArray(draft.apptType) && draft.apptType.includes(t.key);
+                      return (
+                        <button key={t.key} onClick={()=>{
+                          const cur = Array.isArray(draft.apptType)?draft.apptType:[];
+                          const next = on ? cur.filter(x=>x!==t.key) : [...cur, t.key];
+                          setDraftFilters({...draft, apptType:next});
+                        }}
+                          style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                          {on && <span style={{fontSize:12}}>✓</span>}{t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </FilterSection>
                 {PIPELINE_FILTER_GROUPS.map(group=>{
                   const groupCount = PIPELINE_FILTER_DEFS.filter(d=>d.group===group && activeSet.has(d.key)).length;
                   return (
@@ -7642,7 +7656,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </FilterSection>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptDay:"any",archiveMode:"default",stageView:undefined}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptType:[],apptDay:"any",archiveMode:"default",stageView:undefined}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
