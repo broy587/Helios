@@ -6806,7 +6806,8 @@ function pipeFilterCount(filters){
     + (Array.isArray(filters.appt)?filters.appt.length:0)
     + (Array.isArray(filters.apptType)?filters.apptType.length:0)
     + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0)
-    + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0) + (filters.stageView?1:0);
+    + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0) + (filters.stageView?1:0)
+    + (Array.isArray(filters.stages)?filters.stages.length:0);
 }
 
 function analyzeHygiene(leads, staleDays) {
@@ -7365,6 +7366,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           const sv = pipeFilters && pipeFilters.stageView;
           if (sv==="leads_acs") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)<=dqIdx);
           else if (sv==="vc_after") shownStages = STAGES.filter(s=>STAGE_PROGRESSION.indexOf(s)>=vcIdx);
+          // Specific stage lists picked in the filter → render ONLY those columns.
+          const pickedStages = (pipeFilters && Array.isArray(pipeFilters.stages)) ? pipeFilters.stages : [];
+          if (pickedStages.length) shownStages = shownStages.filter(s=>pickedStages.includes(s));
           // Assisted view now shows the ENTIRE pipeline (all stage columns).
           return shownStages.map(stage=>{
           const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
@@ -7533,7 +7537,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + (Array.isArray(draft.apptType)?draft.apptType.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + (Array.isArray(draft.apptType)?draft.apptType.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0) + (Array.isArray(draft.stages)?draft.stages.length:0);
         // Collapsible section wrapper — each filter section is a dropdown.
         const FilterSection = ({name, title, count, children}) => {
           const isOpen = !!openFilterSections[name];
@@ -7586,7 +7590,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                     )}
                   </div>
                 </FilterSection>
-                <FilterSection name="stages" title="Lead stages" count={draft.stageView?1:0}>
+                <FilterSection name="stages" title="Lead stages" count={(draft.stageView?1:0)+((Array.isArray(draft.stages)&&draft.stages.length)?draft.stages.length:0)}>
                   <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Show only one part of the pipeline</div>
                   <div style={{display:"flex",gap:8}}>
                     {[["leads_acs","Leads / ACs"],["vc_after","VC and after"]].map(([val,lbl])=>{
@@ -7595,6 +7599,31 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                         <button key={val} onClick={()=>setDraftFilters({...draft, stageView: on ? undefined : val})}
                           style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
                           {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Specific stage lists — multi-select. Only the selected columns render on the board. */}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:14,marginBottom:8}}>
+                    <span style={{fontSize:11,color:dark?"#64748b":"#94a3b8"}}>Or pick specific stage lists:</span>
+                    <span style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>setDraftFilters({...draft, stages:[...STAGES]})}
+                        style={{padding:"4px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontSize:11,fontWeight:700,cursor:"pointer"}}>Select all</button>
+                      <button onClick={()=>setDraftFilters({...draft, stages:[]})}
+                        style={{padding:"4px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#94a3b8":"#94a3b8",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
+                    </span>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {STAGES.map(s=>{
+                      const on = Array.isArray(draft.stages) && draft.stages.includes(s);
+                      return (
+                        <button key={s} onClick={()=>{
+                          const cur = Array.isArray(draft.stages)?draft.stages:[];
+                          const next = on ? cur.filter(x=>x!==s) : [...cur, s];
+                          setDraftFilters({...draft, stages:next});
+                        }}
+                          style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:12,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                          {on && <span style={{fontSize:11}}>✓</span>}{s}
                         </button>
                       );
                     })}
@@ -7702,7 +7731,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </FilterSection>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptType:[],apptDay:"any",archiveMode:"default",stageView:undefined}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptType:[],apptDay:"any",archiveMode:"default",stageView:undefined,stages:[]}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
