@@ -4911,7 +4911,9 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   if (!lead) return null;
   const colors=getStageColor(lead.stage);
   return (
-    <div style={{position:"fixed",inset:0,zIndex:1000}}>
+    // zIndex 2500 keeps the lead detail ABOVE the Priority Comeback sheet (1800)
+    // so opening a lead from that list layers on top of it instead of under it.
+    <div style={{position:"fixed",inset:0,zIndex:2500}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>{if(!confirmDelete&&!showTransfer)onClose();}}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:26,width:"min(96vw,460px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a"}}>
@@ -7076,7 +7078,7 @@ function analyzeConversions(leads, opts) {
   };
 }
 
-function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, onRemove, onBooked}) {
+function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, onRemove, onBooked, profiles}) {
   // Local working order so the list reflows live while dragging. Re-syncs when the
   // incoming starred set changes (add/remove), keyed by id list.
   const [order, setOrder] = React.useState(starred);
@@ -7199,7 +7201,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   style={{fontSize:20,color:isDragging?"#a16207":"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",padding:"6px 6px"}}>⠿</span>
                 <div onClick={()=>{ if(!movedRef.current) onOpenLead(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
-                  <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
+                  <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage} · Assist - {(()=>{ const a=l.assist_id?((profiles||[]).find(p=>p.id===l.assist_id)||{}):null; return (a&&(a.name||a.email))||"None"; })()}</div>
                   {l.followup_appointment && <div style={{fontSize:12,color:"#9333ea",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>🔁 {l.followup_appointment}</div>}
                 </div>
                 <button onClick={async()=>{
@@ -7991,9 +7993,12 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         };
         return (
           <PriorityComebackList
+            profiles={profiles}
             starred={starred} dark={dark}
             onClose={()=>setPriorityOpen(false)}
-            onOpenLead={(id)=>{ setPriorityOpen(false); setDetailId(id); }}
+            // Keep the Priority Comeback sheet open underneath — closing the lead
+            // returns you to the list instead of dumping you back on the board.
+            onOpenLead={(id)=>{ setDetailId(id); }}
             onReorder={persistOrder}
             onRemove={removePriority}
             onBooked={(updated)=>onLeadView(updated,"update")}
