@@ -7104,6 +7104,17 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
   const [copiedId, setCopiedId] = React.useState(null); // lead id showing the "copied" checkmark
 
   const indexOfId = (id, arr) => arr.findIndex(l=>l.id===id);
+  // Scroll container — used for edge auto-scroll while dragging a card past the
+  // top/bottom of the visible list (lists are longer than one screen on phones).
+  const scrollRef = React.useRef(null);
+  const autoScroll = (y) => {
+    const el = scrollRef.current;
+    if(!el) return;
+    const r = el.getBoundingClientRect();
+    const EDGE = 60; // px from an edge where auto-scroll kicks in
+    if(y < r.top + EDGE) el.scrollTop -= Math.max(4, (r.top + EDGE - y) / 3);
+    else if(y > r.bottom - EDGE) el.scrollTop += Math.max(4, (y - (r.bottom - EDGE)) / 3);
+  };
 
   const onPointerDown = (e, id) => {
     // Only start from the handle (this is wired on the handle element).
@@ -7111,12 +7122,26 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
     setDragId(id);
     movedRef.current = false;
     dragIndexRef.current = indexOfId(id, order);
+    // Touch devices otherwise "smear" a text selection across the list while the
+    // finger moves. Block selection + the iOS callout for the life of the drag.
+    try{
+      document.body.style.userSelect = "none";
+      document.body.style.webkitUserSelect = "none";
+      document.body.style.webkitTouchCallout = "none";
+      const sel = window.getSelection && window.getSelection();
+      if(sel && sel.removeAllRanges) sel.removeAllRanges();
+    }catch(_){}
     try{ e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId); }catch(_){}
   };
+  // Clean up the selection lock if the component unmounts mid-drag.
+  React.useEffect(()=>()=>{ try{ document.body.style.userSelect=""; document.body.style.webkitUserSelect=""; document.body.style.webkitTouchCallout=""; }catch(_){} },[]);
   const onPointerMove = (e) => {
     if(dragId==null) return;
+    // Stop the browser from turning the drag into a text selection / scroll gesture.
+    if(e.cancelable) e.preventDefault();
     movedRef.current = true;
     const y = e.clientY;
+    autoScroll(y);
     // Find which row the pointer is over and reorder live.
     const cur = order;
     let targetIdx = indexOfId(dragId, cur);
@@ -7141,6 +7166,11 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
     if(dragId==null) return;
     setDragId(null);
     dragIndexRef.current = -1;
+    try{
+      document.body.style.userSelect = "";
+      document.body.style.webkitUserSelect = "";
+      document.body.style.webkitTouchCallout = "";
+    }catch(_){}
     if(movedRef.current) onReorder(order); // persist only if something actually moved
   };
 
@@ -7151,8 +7181,11 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
           <div style={{fontWeight:800,fontSize:17,color:"#a16207",display:"flex",alignItems:"center",gap:8}}>⭐ Priority Comeback <span style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>({order.length})</span></div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
         </div>
-        {order.length>0 && <div style={{fontSize:11,color:"#94a3b8",padding:"8px 20px 0"}}>Drag the ⠿ handle to reorder · tap a lead to open</div>}
-        <div style={{overflowY:"auto",padding:"12px 16px 28px"}}
+        {order.length>0 && <div style={{fontSize:11,color:"#94a3b8",padding:"8px 20px 0",flexShrink:0}}>Drag the ⠿ handle to reorder · tap a lead to open</div>}
+        {/* flex:1 + minHeight:0 lets this actually scroll inside the flex column;
+            touchAction "pan-y" keeps finger-scrolling alive everywhere EXCEPT the
+            ⠿ handle (which sets touchAction:"none" so a drag isn't stolen by scroll). */}
+        <div ref={scrollRef} style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain",touchAction:dragId==null?"pan-y":"none",padding:"12px 16px 28px"}}
           onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
           {order.length===0 ? (
             <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No priority leads yet. Star a lead's ⭐ Priority button to add it here.</div>
@@ -7160,10 +7193,10 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
             const isDragging = dragId===l.id;
             return (
               <div key={l.id} ref={el=>{ if(el) rowRefs.current[l.id]=el; }}
-                style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${isDragging?"#a16207":(dark?"#334155":"#f0e6d6")}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8,boxShadow:isDragging?"0 8px 24px rgba(0,0,0,0.25)":"none",opacity:isDragging?0.95:1,transform:isDragging?"scale(1.02)":"none",transition:isDragging?"none":"transform 0.18s ease, box-shadow 0.18s ease",touchAction:"none"}}>
+                style={{background:dark?"#1e293b":"#fff",border:`1.5px solid ${isDragging?"#a16207":(dark?"#334155":"#f0e6d6")}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8,boxShadow:isDragging?"0 8px 24px rgba(0,0,0,0.25)":"none",opacity:isDragging?0.95:1,transform:isDragging?"scale(1.02)":"none",transition:isDragging?"none":"transform 0.18s ease, box-shadow 0.18s ease",touchAction:"pan-y",userSelect:isDragging?"none":"auto",WebkitUserSelect:isDragging?"none":"auto"}}>
                 <span title="Drag to reorder"
                   onPointerDown={e=>onPointerDown(e,l.id)}
-                  style={{fontSize:20,color:isDragging?"#a16207":"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none",padding:"4px 2px"}}>⠿</span>
+                  style={{fontSize:20,color:isDragging?"#a16207":"#cbd5e1",cursor:"grab",flexShrink:0,touchAction:"none",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",padding:"6px 6px"}}>⠿</span>
                 <div onClick={()=>{ if(!movedRef.current) onOpenLead(l.id); }} style={{minWidth:0,flex:1,cursor:"pointer"}}>
                   <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.name||"(no name)"}</div>
                   <div style={{fontSize:12,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.stage}{l.address?` · ${l.address}`:""}</div>
