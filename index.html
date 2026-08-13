@@ -10260,11 +10260,20 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   // stop Google Maps' own pan/zoom — those run from its JS handlers, which fire
   // regardless of preventDefault. Must be non-passive for preventDefault to work.
   React.useEffect(()=>{
-    const el = mapRef.current;
-    if(!el) return;
-    const block = (e)=>{ if(e.cancelable) e.preventDefault(); };
-    el.addEventListener("touchmove", block, {passive:false});
-    return ()=>{ el.removeEventListener("touchmove", block, {passive:false}); };
+    // Listen in CAPTURE phase on the document: capture runs top-down BEFORE the
+    // event reaches Google Maps' own handlers, so it works even though Maps stops
+    // propagation on its internal touch events (which is why a listener attached
+    // directly to the map div never fired). Non-passive so preventDefault applies.
+    const block = (e)=>{
+      const el = mapRef.current;
+      if(!el || !e.target) return;
+      // Only cancel the browser's default over the MAP — overlay panels (Filter
+      // Pins, areas list, house sheet) must keep scrolling normally.
+      if(!el.contains(e.target)) return;
+      if(e.cancelable) e.preventDefault();
+    };
+    document.addEventListener("touchmove", block, {passive:false, capture:true});
+    return ()=>{ document.removeEventListener("touchmove", block, {passive:false, capture:true}); };
   },[mapLoaded]);
 
   React.useEffect(()=>{
