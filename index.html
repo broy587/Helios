@@ -2799,6 +2799,8 @@ function InviteCodesSection({currentUser, onRefresh, isOwner, teams, teamMembers
   const [draft,setDraft]=useState("");
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
+  // Owner sees every team's code, so keep the list collapsed behind a dropdown.
+  const [teamsOpen,setTeamsOpen]=useState(false);
 
   useEffect(()=>{ loadCodes(); },[]);
 
@@ -2874,10 +2876,17 @@ function InviteCodesSection({currentUser, onRefresh, isOwner, teams, teamMembers
     <>
       {err && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginBottom:8}}>{err}</div>}
 
-      {/* ── Team codes (reusable, auto-join) ── */}
-      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>
-        Team Codes <span style={{fontWeight:600,textTransform:"none",letterSpacing:0,color:dark?"#64748b":"#94a3b8"}}>· reusable — new reps auto-join the team</span>
-      </div>
+      {/* ── Team codes (reusable, auto-join) — collapsed behind a dropdown ── */}
+      <button onClick={()=>setTeamsOpen(o=>!o)}
+        style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"11px 14px",marginBottom:8,borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#faf6f0",cursor:"pointer"}}>
+        <span style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+          <span style={{fontSize:12,fontWeight:800,color:dark?"#e2e8f0":"#334155",textTransform:"uppercase",letterSpacing:"0.05em"}}>Team Codes</span>
+          <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"#1a2456",borderRadius:10,padding:"1px 8px",flexShrink:0}}>{myTeams.filter(t=>teamCodeFor(t.id)).length}/{myTeams.length}</span>
+        </span>
+        <span style={{fontSize:12,color:"#94a3b8",transform:teamsOpen?"rotate(180deg)":"none",transition:"transform 0.15s"}}>▼</span>
+      </button>
+      {teamsOpen && (<>
+      <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:8}}>Reusable — new reps auto-join the team</div>
       {myTeams.length===0 && <div style={{fontSize:12,color:"#94a3b8",marginBottom:12}}>You're not on a team yet.</div>}
       {myTeams.map(t=>{
         const tc = teamCodeFor(t.id);
@@ -2914,6 +2923,7 @@ function InviteCodesSection({currentUser, onRefresh, isOwner, teams, teamMembers
           </div>
         );
       })}
+      </>)}
 
       {/* ── One-time codes ── */}
       <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"18px 0 8px"}}>
