@@ -730,13 +730,23 @@ function AuthScreen({ onAuth }) {
   const handleSignup = async () => {
     setLoading(true); setError("");
     if (!name.trim()){setError("Please enter your name.");setLoading(false);return;}
-    const {data:codeRow}=await sb.from("invite_codes").select("*").eq("code",inviteCode.trim().toUpperCase()).single();
+    const codeUp = inviteCode.trim().toUpperCase();
+    const {data:codeRow}=await sb.from("invite_codes").select("*").eq("code",codeUp).single();
     if (!codeRow){setError("Invalid invite code. Contact your manager.");setLoading(false);return;}
-    if (codeRow.used_by){setError("This invite code has already been used.");setLoading(false);return;}
+    // TEAM codes (team_id set) are reusable and never get consumed. Personal
+    // one-time codes still burn on first use.
+    const isTeamCode = !!codeRow.team_id;
+    if (!isTeamCode && codeRow.used_by){setError("This invite code has already been used.");setLoading(false);return;}
     const {data,error}=await sb.auth.signUp({email,password});
     if (error){setError(error.message);setLoading(false);return;}
-    await sb.from("profiles").insert({id:data.user.id,email,name:name.trim(),role:"rep",invite_code:inviteCode.trim().toUpperCase()});
-    await sb.from("invite_codes").update({used_by:data.user.id,used_at:new Date().toISOString()}).eq("code",inviteCode.trim().toUpperCase());
+    await sb.from("profiles").insert({id:data.user.id,email,name:name.trim(),role:"rep",invite_code:codeUp});
+    if (isTeamCode){
+      // Auto-join the team this code belongs to.
+      try{ await sb.from("team_members").insert({team_id:codeRow.team_id,user_id:data.user.id}); }
+      catch(e){ console.error("Team auto-join failed:",e); }
+    } else {
+      await sb.from("invite_codes").update({used_by:data.user.id,used_at:new Date().toISOString()}).eq("code",codeUp);
+    }
     setMsg("Account created! You can now log in.");
     setMode("login"); setLoading(false);
   };
@@ -2584,7 +2594,8 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
       {(isOwner || currentUser.role==="manager") && (
         <div style={{marginTop:28}}>
           <div style={{fontSize:13,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Invite Codes</div>
-          <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}/>
+          <InviteCodesSection currentUser={currentUser} onRefresh={onDataRefresh}
+            isOwner={isOwner} teams={teams} teamMembers={teamMembers} profiles={profiles}/>
         </div>
       )}
 
@@ -2772,10 +2783,22 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
 }
 
 // ── Invite codes section (used inside team management) ─────────────────
-function InviteCodesSection({currentUser, onRefresh}) {
+// Invite codes come in two flavours:
+//  • One-time codes  — burn on first use; the new rep joins with NO team.
+//  • TEAM codes      — tied to a team (team_id), NEVER consumed, and anyone who
+//                      signs up with one is auto-added to that team. Managers can
+//                      create and rename their team's code.
+// Managers only see codes THEY created (plus their teams' codes). The owner sees
+// everything, with the creator's name on each row.
+function InviteCodesSection({currentUser, onRefresh, isOwner, teams, teamMembers, profiles}) {
   const dark=useDark();
   const [codes,setCodes]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [copied,setCopied]=useState(null);
+  const [editing,setEditing]=useState(null);   // team id whose code is being edited
+  const [draft,setDraft]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
 
   useEffect(()=>{ loadCodes(); },[]);
 
@@ -2785,32 +2808,129 @@ function InviteCodesSection({currentUser, onRefresh}) {
     setCodes(data||[]); setLoading(false);
   };
 
+  const creatorName = (id)=>{ const p=(profiles||[]).find(x=>x.id===id); return (p&&(p.name||p.email))||"Unknown"; };
+  // Teams this user can make a team code for: owner → all; manager → their own.
+  const myTeams = isOwner ? (teams||[]) : (teams||[]).filter(t=>((teamMembers||{})[t.id]||[]).some(m=>m.user_id===currentUser.id));
+  const teamCodeFor = (teamId)=> codes.find(c=>c.team_id===teamId);
+  // One-time codes: owner sees all unused; managers see only their own.
+  const oneTimeCodes = codes.filter(c=>!c.team_id && !c.used_by && (isOwner || c.created_by===currentUser.id));
+
+  const copy = async (code) => {
+    try{ await navigator.clipboard.writeText(code); }
+    catch(e){ try{ const ta=document.createElement("textarea"); ta.value=code; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);}catch(_){} }
+    setCopied(code); setTimeout(()=>setCopied(c=>c===code?null:c),1400);
+  };
+
   const generate = async () => {
     const code="SUN-"+Math.random().toString(36).slice(2,6).toUpperCase();
-    await sb.from("invite_codes").insert({code,created_by:currentUser.id,created_at:new Date().toISOString()});
+    setErr("");
+    const {error}=await sb.from("invite_codes").insert({code,created_by:currentUser.id,created_at:new Date().toISOString()});
+    if(error){ setErr("Couldn't create code: "+(error.message||"unknown error")); return; }
     await loadCodes();
   };
 
   const deleteCode = async (code) => {
+    if(!window.confirm(`Delete invite code ${code}? Anyone who hasn't signed up with it yet won't be able to.`)) return;
     await sb.from("invite_codes").delete().eq("code",code);
     setCodes(cs=>cs.filter(c=>c.code!==code));
   };
 
+  // Create or rename a team's reusable code.
+  const saveTeamCode = async (team) => {
+    const val = draft.trim().toUpperCase().replace(/\s+/g,"-");
+    if(!val){ setErr("Enter a code."); return; }
+    setBusy(true); setErr("");
+    const existing = teamCodeFor(team.id);
+    try{
+      if(existing){
+        const {error}=await sb.from("invite_codes").update({code:val}).eq("code",existing.code);
+        if(error) throw error;
+      } else {
+        const {error}=await sb.from("invite_codes").insert({code:val,team_id:team.id,created_by:currentUser.id,created_at:new Date().toISOString()});
+        if(error) throw error;
+      }
+      await loadCodes();
+      setEditing(null); setDraft("");
+    }catch(e){
+      const m=(e&&(e.message||e.details))||"";
+      setErr(/duplicate|unique/i.test(m) ? "That code is already taken — pick another." : ("Couldn't save code: "+(m||"unknown error")));
+    }
+    setBusy(false);
+  };
+
+  const deleteTeamCode = async (team) => {
+    const existing = teamCodeFor(team.id);
+    if(!existing) return;
+    if(!window.confirm(`Delete ${team.name}'s team code (${existing.code})? New reps won't be able to auto-join with it.`)) return;
+    await sb.from("invite_codes").delete().eq("code",existing.code);
+    await loadCodes();
+  };
+
   if (loading) return <div style={{fontSize:13,color:"#94a3b8",padding:"10px 0"}}>Loading...</div>;
+
+  const codeInput = {flex:1,minWidth:0,padding:"8px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontWeight:700,letterSpacing:"0.06em",fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
 
   return (
     <>
-      <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #6b2d4e",background:dark?"#1e293b":"#faf6f0",color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
-      {codes.filter(c=>!c.used_by).map(code=>(
-        <div key={code.code} style={{background:dark?"#1e293b":"#faf6f0",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:15,color:dark?"#f1f5f9":"#1a2456",letterSpacing:"0.08em"}}>{code.code}</div>
-            <div style={{fontSize:11,color:"#94a3b8"}}>Unused</div>
+      {err && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginBottom:8}}>{err}</div>}
+
+      {/* ── Team codes (reusable, auto-join) ── */}
+      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>
+        Team Codes <span style={{fontWeight:600,textTransform:"none",letterSpacing:0,color:dark?"#64748b":"#94a3b8"}}>· reusable — new reps auto-join the team</span>
+      </div>
+      {myTeams.length===0 && <div style={{fontSize:12,color:"#94a3b8",marginBottom:12}}>You're not on a team yet.</div>}
+      {myTeams.map(t=>{
+        const tc = teamCodeFor(t.id);
+        const isEditing = editing===t.id;
+        return (
+          <div key={t.id} style={{background:dark?"#1e293b":"#faf6f0",borderRadius:10,padding:"12px 14px",marginBottom:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#6b2d4e",marginBottom:6}}>👥 {t.name}</div>
+            {isEditing ? (
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <input value={draft} onChange={e=>setDraft(e.target.value)} placeholder="TEAM-CODE" style={codeInput}/>
+                <button onClick={()=>saveTeamCode(t)} disabled={busy||!draft.trim()}
+                  style={{padding:"8px 14px",borderRadius:8,border:"none",background:(busy||!draft.trim())?(dark?"#334155":"#cbd5e1"):"#1a2456",color:"#fff",fontWeight:700,fontSize:12,cursor:(busy||!draft.trim())?"default":"pointer"}}>{busy?"Saving…":"Save"}</button>
+                <button onClick={()=>{setEditing(null);setDraft("");setErr("");}}
+                  style={{padding:"8px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:"#94a3b8",fontWeight:700,fontSize:12,cursor:"pointer"}}>Cancel</button>
+              </div>
+            ) : tc ? (
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:15,color:dark?"#f1f5f9":"#1a2456",letterSpacing:"0.08em"}}>{tc.code}</div>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>♾️ Reusable{isOwner?` · by ${creatorName(tc.created_by)}`:""}</div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>copy(tc.code)} style={{background:dark?"#334155":"#ede3d6",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:copied===tc.code?"#16a34a":(dark?"#e2e8f0":"#475569"),cursor:"pointer"}}>{copied===tc.code?"✓ Copied":"Copy"}</button>
+                  <button onClick={()=>{setEditing(t.id);setDraft(tc.code);setErr("");}} style={{background:"none",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569",cursor:"pointer"}}>Edit</button>
+                  <button onClick={()=>deleteTeamCode(t)} style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>✕</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={()=>{setEditing(t.id);setDraft((t.name||"TEAM").toUpperCase().replace(/[^A-Z0-9]+/g,"-").slice(0,14));setErr("");}}
+                style={{width:"100%",padding:"9px 0",borderRadius:8,border:`2px dashed ${dark?"#334155":"#c8b8a2"}`,background:"transparent",color:"#6b2d4e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                + Create team code
+              </button>
+            )}
           </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>navigator.clipboard.writeText(code.code)}
-              style={{background:dark?"#334155":"#ede3d6",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:dark?"#e2e8f0":"#475569",cursor:"pointer"}}>
-              Copy
+        );
+      })}
+
+      {/* ── One-time codes ── */}
+      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"18px 0 8px"}}>
+        One-Time Codes <span style={{fontWeight:600,textTransform:"none",letterSpacing:0,color:dark?"#64748b":"#94a3b8"}}>· used once — no team</span>
+      </div>
+      <button onClick={generate} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed #6b2d4e",background:dark?"#1e293b":"#faf6f0",color:"#6b2d4e",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:12}}>+ Generate New Invite Code</button>
+      {oneTimeCodes.length===0 && <div style={{fontSize:12,color:"#94a3b8"}}>No unused one-time codes.</div>}
+      {oneTimeCodes.map(code=>(
+        <div key={code.code} style={{background:dark?"#1e293b":"#faf6f0",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:15,color:dark?"#f1f5f9":"#1a2456",letterSpacing:"0.08em"}}>{code.code}</div>
+            <div style={{fontSize:11,color:"#94a3b8"}}>Unused{isOwner?` · by ${creatorName(code.created_by)}`:""}</div>
+          </div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <button onClick={()=>copy(code.code)}
+              style={{background:dark?"#334155":"#ede3d6",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,color:copied===code.code?"#16a34a":(dark?"#e2e8f0":"#475569"),cursor:"pointer"}}>
+              {copied===code.code?"✓ Copied":"Copy"}
             </button>
             <button onClick={()=>deleteCode(code.code)}
               style={{background:"none",border:"1.5px solid #fee2e2",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>
