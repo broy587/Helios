@@ -6932,6 +6932,31 @@ function matchesPipelineFilters(lead, filters){
     const t = leadLatestApptType(lead);
     if(!t || !apptTypes.includes(t)) return false;
   }
+  // ── Stage / pile selection ──
+  // Mirrors exactly what the board renders, so Conversions, the Audit and the
+  // Priority Comeback list all operate on the same set the user is looking at.
+  // A flagged lead (ARC / On Hold / Needs Cancel Save) lives in its own column,
+  // NOT its stage column — so it matches only when that pile is selected.
+  const flagged = lead.is_arc ? "pile:arc" : lead.on_hold ? "pile:on_hold" : lead.needs_cancel_save ? "pile:ncs" : null;
+  const picked = Array.isArray(filters.stages) ? filters.stages : [];
+  if(picked.length){
+    if(flagged){ if(!picked.includes(flagged)) return false; }
+    else if(!picked.includes(lead.stage)) return false;
+  }
+  // "Leads / ACs" vs "VC and after" quick views.
+  if(filters.stageView){
+    const idx = STAGE_PROGRESSION.indexOf(lead.stage);
+    const dqIdx = STAGE_PROGRESSION.indexOf("Failed Credit / Disqualified");
+    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
+    if(filters.stageView==="leads_acs"){
+      // The board hides the flagged piles entirely in this view.
+      if(flagged) return false;
+      if(idx<0 || idx>dqIdx) return false;
+    } else if(filters.stageView==="vc_after"){
+      // Flagged piles still render here, so they stay in scope.
+      if(!flagged && (idx<0 || idx<vcIdx)) return false;
+    }
+  }
   return true;
 }
 // Day of week (0=Sun … 6=Sat) of the lead's most-recently-booked appointment.
@@ -7956,18 +7981,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const AUDIT_STAGES = AUDIT_ALL_STAGES;
         // Uses `leads` = the exact set currently showing in the pipeline (team/rep
         // selector + all active pipeline filters already applied), narrowed to the
-        // stages the owner has selected in the audit's stage picker.
+        // stages the owner has selected in the audit's own stage picker.
+        // NOTE: archived accounts are NOT added back — the audit mirrors the board.
+        // To include them, turn on "All accounts" in the filter's Archive section.
         const activeStages = Array.isArray(auditStages) ? auditStages : AUDIT_ALL_STAGES;
-        // Start from `leads` (team/rep + filters applied) but add back archived accounts
-        // from the same scope so the audit still counts them even though they're hidden
-        // from the pipeline board. Merge + de-dupe by id.
-        const auditBase = (()=>{
-          const base = (leads||[]);
-          const archived = (scopedAllLeads||[]).filter(l=>l.archived && matchesPipelineFilters(l, pipeFilters));
-          const seen = new Set(base.map(l=>l.id));
-          return [...base, ...archived.filter(l=>!seen.has(l.id))];
-        })();
-        const pool = auditBase.filter(l=>activeStages.includes(l.stage));
+        const pool = (leads||[]).filter(l=>activeStages.includes(l.stage));
         const repName = (id)=>((profiles||[]).find(p=>p.id===id)||{}).name || "—";
         const fmtDate = (d)=>{ if(!d) return "—"; try{ return new Date(d).toLocaleDateString(); }catch(e){ return String(d); } };
         const val = (v)=>{
@@ -8136,9 +8154,10 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         );
       })()}
       {convOpen && (()=>{
-        // Count archived accounts too — Conversions reflects every lead in the current
-        // team/rep scope (allLeads), whether or not it's hidden from the pipeline board.
-        const c = analyzeConversions(scopedAllLeads||allLeads||leadsAll||leads||[], {
+        // Conversions reflect EXACTLY what's on the board right now: the current
+        // team/rep scope with every active pipeline filter (stages, appointment
+        // type, dates, archive mode…) already applied.
+        const c = analyzeConversions(leads||[], {
           viewerId: commUser?.id,
           splitAssist: (commPipelineFilter==="mine" && commShowAssisted)
         });
