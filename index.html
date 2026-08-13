@@ -10339,6 +10339,19 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     }catch(e){console.error("Canvass load error:",e);}
   };
 
+  // Belt-and-braces pull-to-refresh guard. Some mobile browsers still run the
+  // native refresh gesture even with touch-action/overscroll-behavior set, so we
+  // also cancel the browser's default on touchmove over the map. This does NOT
+  // stop Google Maps' own pan/zoom — those run from its JS handlers, which fire
+  // regardless of preventDefault. Must be non-passive for preventDefault to work.
+  React.useEffect(()=>{
+    const el = mapRef.current;
+    if(!el) return;
+    const block = (e)=>{ if(e.cancelable) e.preventDefault(); };
+    el.addEventListener("touchmove", block, {passive:false});
+    return ()=>{ el.removeEventListener("touchmove", block, {passive:false}); };
+  },[mapLoaded]);
+
   React.useEffect(()=>{
     if(!mapLoaded||!mapRef.current||mapInstanceRef.current)return;
     try{
@@ -10843,7 +10856,10 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           </div>
         </div>
       ):(
-        <div ref={mapRef} style={{width:"100%",height:"100%"}}/>
+        // touchAction:"none" => the browser performs NO native gesture over the map
+        // (no pull-to-refresh, no page scroll). Google Maps pans/zooms from its own
+        // JS handlers, which still fire. Scoped to the map div so overlay panels scroll.
+        <div ref={mapRef} style={{width:"100%",height:"100%",touchAction:"none",overscrollBehavior:"none"}}/>
       )}
 
       {/* Left side controls — like the reference image */}
