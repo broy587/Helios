@@ -26,6 +26,12 @@
        refresh spinner when a swipe-down reaches the top (e.g. panning the
        canvass map). "none" also blocks the swipe-back/forward glow. */
     html { overscroll-behavior: none; height: 100%; }
+    /* iOS 16+ added pull-to-refresh to HOME-SCREEN web apps, and it ignores both
+       overscroll-behavior and touchmove preventDefault. The only reliable defeat
+       is removing the document scroll entirely. We apply this ONLY while the
+       canvass map is open (body.canvass-lock) so the rest of the app scrolls
+       normally. The map is full-screen, so nothing is lost while locked. */
+    body.canvass-lock { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
     body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; overscroll-behavior: none; }
     input, select, textarea, button { font-family: inherit; }
     ::-webkit-scrollbar { display: none; }
@@ -14266,6 +14272,14 @@ function App() {
       return ()=>window.removeEventListener("beforeunload", warn);
     }
   }, [modal.open, detailId, drawerOpen]);
+  // iOS home-screen apps run their own pull-to-refresh that ignores CSS and
+  // JS event guards. Removing the document scroll is the only thing that stops
+  // it — so lock the body while the full-screen canvass map is open.
+  React.useEffect(()=>{
+    const lock = tab==="canvass";
+    document.body.classList.toggle("canvass-lock", lock);
+    return ()=>document.body.classList.remove("canvass-lock");
+  }, [tab]);
   const [pipelineFilter,setPipelineFilter]=useState("mine");
   const [showAssisted,setShowAssisted]=useState(false);
   const [assistMode,setAssistMode]=useState("just"); // "just" = only assisted, "mine" = mine + assisted
