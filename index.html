@@ -21,6 +21,11 @@
   <link rel="dns-prefetch" href="https://hnjsezlfefduyihoiqbb.supabase.co"/>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    /* Kill the browser's native pull-to-refresh. It has to be set on <html> —
+       setting it on <body> alone doesn't stop Chrome/Android from firing the
+       refresh spinner when a swipe-down reaches the top (e.g. panning the
+       canvass map). "none" also blocks the swipe-back/forward glow. */
+    html { overscroll-behavior: none; height: 100%; }
     body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; overscroll-behavior: none; }
     input, select, textarea, button { font-family: inherit; }
     ::-webkit-scrollbar { display: none; }
@@ -10827,7 +10832,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[showFilter]);
 
   return(
-    <div ref={containerRef} style={{position:"relative",height:isFs?"100dvh":"100%",overflow:"hidden"}}>
+    <div ref={containerRef} style={{position:"relative",height:isFs?"100dvh":"100%",overflow:"hidden",overscrollBehavior:"none"}}>
 
       {/* Map fills everything */}
       {!mapLoaded?(
