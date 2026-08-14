@@ -2964,7 +2964,13 @@ function InviteCodesSection({currentUser, onRefresh, isOwner, teams, teamMembers
   );
 }
 
-const RECRUIT_STAGES = ["Wishlist","In Contact / Ball Rolling","Scheduled Meeting","No Show / No Contact","No Show / In Contact","Show / In Contact","Not Interested","Filled Out Link","Lost In The Process","Recently Onboarded","Gone But Not Forgotten"];
+// "Filled Out Link" was removed from the recruiting pipeline (Aug 2026); any
+// recruit still sitting in it is remapped to "Lost In The Process" on load so
+// they never vanish from the board. "Lost In The Process" now sits between
+// "Show / In Contact" and "Not Interested".
+const RECRUIT_STAGES = ["Wishlist","In Contact / Ball Rolling","Scheduled Meeting","No Show / No Contact","No Show / In Contact","Show / In Contact","Lost In The Process","Not Interested","Recently Onboarded","Gone But Not Forgotten"];
+const RECRUIT_STAGE_ALIASES = { "Filled Out Link": "Lost In The Process" };
+function normalizeRecruitStage(stage){ return RECRUIT_STAGE_ALIASES[stage] || stage; }
 const RECRUIT_STAGE_COLORS = {
   "Wishlist":              {bg:"#fef3c7",border:"#f59e0b",badge:"#92400e"},
   "In Contact / Ball Rolling":{bg:"#ccfbf1",border:"#14b8a6",badge:"#0f766e"},
@@ -3565,7 +3571,9 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
       <div ref={boardRef} style={{display:"flex",gap:14,padding:"14px 16px 40px",overflowX:"auto",alignItems:"flex-start",flex:1,background:dark?"#0f172a":"#f1f5f9"}}>
         {RECRUIT_STAGES.map(stage=>{
           const colors=getRecruitStageColor(stage);
-          let stageRecruits=filteredRecruits.filter(r=>r.stage===stage);
+          // normalizeRecruitStage keeps recruits saved under retired stage names
+          // (e.g. "Filled Out Link") visible in their remapped column.
+          let stageRecruits=filteredRecruits.filter(r=>normalizeRecruitStage(r.stage)===stage);
           if(stage==="Scheduled Meeting"){
             // Appointment start time as ms; no/unparseable appointment sorts last.
             const apptMs=(r)=>{
