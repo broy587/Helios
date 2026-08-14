@@ -12697,6 +12697,23 @@ const TeamCalendars = {
     } else {
       this.myTeams = withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId));
     }
+    // Remember the resolved calendars on this device. On a bad connection the
+    // teams/team_members rows may not have loaded yet, which used to leave a rep
+    // staring at "No calendar for your team" mid-street. The calendar IDs are
+    // static app config, so a cached copy stays valid and lets them book anyway.
+    try{
+      if(this.myTeams.length>0 && currentUserId){
+        localStorage.setItem("pp_cal_cache_"+currentUserId, JSON.stringify(this.myTeams));
+      }
+    }catch(e){}
+  },
+  // Last-known calendars for this user, used only when live data hasn't loaded.
+  cachedTeams() {
+    try{
+      const raw = localStorage.getItem("pp_cal_cache_"+this.currentUserId);
+      const arr = raw ? JSON.parse(raw) : null;
+      return Array.isArray(arr) ? arr.filter(t=>t&&t.calendarId) : [];
+    }catch(e){ return []; }
   },
   // Returns one of:
   //  { status:"ok", calendarId, teamName }              → use this calendar
@@ -12711,10 +12728,12 @@ const TeamCalendars = {
       }
       return { status:"choose", options:this.teams };
     }
-    // rep / manager
-    if(this.myTeams.length===0) return { status:"none" };
-    if(this.myTeams.length===1) return { status:"ok", calendarId:this.myTeams[0].calendarId, teamName:this.myTeams[0].name };
-    return { status:"choose", options:this.myTeams };
+    // rep / manager — fall back to this device's cached calendars when the live
+    // team data hasn't arrived (weak signal in the field).
+    const mine = this.myTeams.length>0 ? this.myTeams : this.cachedTeams();
+    if(mine.length===0) return { status:"none" };
+    if(mine.length===1) return { status:"ok", calendarId:mine[0].calendarId, teamName:mine[0].name };
+    return { status:"choose", options:mine };
   },
 };
 
@@ -13273,13 +13292,15 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
         {!done&&view==="nocal"&&(
           <div style={{textAlign:"center",padding:"10px 4px 8px"}}>
             <div style={{fontSize:40,marginBottom:12}}>📅</div>
-            <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>No calendar set for your team</div>
+            <div style={{fontSize:15,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>Can't reach your team calendar</div>
             <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.5,marginBottom:20}}>
               {TeamCalendars.isOwner
-                ? "No teams have a calendar configured yet. Add a calendar ID to a team in Supabase, then you can book slots here."
-                : "Booking isn't available until an owner connects a calendar to your team. You can still set a personal comeback from the lead instead."}
+                ? "No teams have a calendar configured yet. Add the team's calendar ID to the app's TEAM_CALENDARS list, then you can book slots here."
+                : "This usually means a weak signal — your team info hasn't loaded yet. Move to better service and tap Try again. If it keeps happening, ask an owner to connect a calendar to your team. You can still set a personal comeback from the lead."}
             </div>
-            <button onClick={onClose} style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>Got it</button>
+            <button onClick={()=>{ const r=TeamCalendars.resolve(); if(r.status==="ok"){ setCalChoice({calendarId:r.calendarId, teamName:r.teamName}); setView("calendar"); } else if(r.status==="choose"){ setView("pickcal"); } }}
+              style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:8}}>🔄 Try again</button>
+            <button onClick={onClose} style={{width:"100%",padding:"12px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Close</button>
           </div>
         )}
 
