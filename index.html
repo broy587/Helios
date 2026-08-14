@@ -4361,11 +4361,17 @@ const RAPPORT_YESNO_FIELDS = [
   {key:"retired",     label:"Retired"},
   {key:"fixed_income",label:"Fixed income / social security"},
 ];
+// Multi-select chip rows shown below the Yes/No fields.
+const RAPPORT_MULTI_FIELDS = [
+  {key:"best_way",  label:"Best way to reach",  options:["Phone","Text","Email"]},
+  {key:"best_time", label:"Best time to reach", options:["Morning","Afternoon","Evening","Anytime"]},
+];
 function rapportIsEmpty(r){
   if(!r || typeof r!=="object") return true;
   if(RAPPORT_TEXT_FIELDS.some(f=>String(r[f.key]||"").trim())) return false;
   if(String(r.years_in_home||"").trim()) return false;
   if(RAPPORT_YESNO_FIELDS.some(f=>r[f.key]==="Yes"||r[f.key]==="No")) return false;
+  if(RAPPORT_MULTI_FIELDS.some(f=>Array.isArray(r[f.key])&&r[f.key].length>0)) return false;
   if(String(r.notes||"").trim()) return false;
   return true;
 }
@@ -4395,8 +4401,9 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
   const filledText = RAPPORT_TEXT_FIELDS.filter(f=>String(val[f.key]||"").trim());
   const yearsVal = String(val.years_in_home||"").trim();
   const filledYesNo = RAPPORT_YESNO_FIELDS.filter(f=>val[f.key]==="Yes"||val[f.key]==="No");
+  const filledMulti = RAPPORT_MULTI_FIELDS.filter(f=>Array.isArray(val[f.key])&&val[f.key].length>0);
   const hasNotes = !!String(val.notes||"").trim();
-  const filledCount = filledText.length + (yearsVal?1:0) + filledYesNo.length + (hasNotes?1:0);
+  const filledCount = filledText.length + (yearsVal?1:0) + filledYesNo.length + filledMulti.length + (hasNotes?1:0);
   // View mode with nothing recorded → render nothing at all.
   if(readOnly && filledCount===0) return null;
 
@@ -4438,6 +4445,16 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
               ))}
             </div>
           )}
+          {filledMulti.map(f=>(
+            <div key={f.key}>
+              <div style={lbl}>{f.label}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {val[f.key].map(o=>(
+                  <span key={o} style={{fontSize:12,fontWeight:700,padding:"4px 12px",borderRadius:20,background:dark?"#2e1065":"#ede9fe",color:dark?"#c4b5fd":"#5b21b6"}}>{o}</span>
+                ))}
+              </div>
+            </div>
+          ))}
           {hasNotes && (
             <div>
               <div style={lbl}>Anything discussed to build rapport</div>
@@ -4477,6 +4494,26 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
               </div>
             </div>
           ))}
+          {RAPPORT_MULTI_FIELDS.map(f=>{
+            const sel = Array.isArray(val[f.key])?val[f.key]:[];
+            return (
+              <div key={f.key}>
+                <label style={lbl}>{f.label}</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {f.options.map(o=>{
+                    const on = sel.includes(o);
+                    return (
+                      <button key={o} type="button"
+                        onClick={()=>setField(f.key, on ? sel.filter(x=>x!==o) : [...sel, o], false)}
+                        style={{padding:"7px 14px",borderRadius:20,border:`1.5px solid ${on?"#7c3aed":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"#2e1065":"#ede9fe"):(dark?"#0f172a":"#fff"),color:on?(dark?"#c4b5fd":"#5b21b6"):(dark?"#94a3b8":"#64748b"),fontSize:13,fontWeight:on?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                        {on && <span style={{fontSize:11}}>✓</span>}{o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
           <div>
             <label style={lbl}>Anything discussed to build rapport</label>
             <textarea value={val.notes||""} onChange={e=>setField("notes", e.target.value, true)} rows={3} style={{...inp,resize:"vertical"}}/>
@@ -4497,7 +4534,7 @@ const OBJECTION_ITEMS = [
   "Reviews",
   "Aesthetics",
   "Concerned about roof",
-  "Doesn't want another payment",
+  "Doesn't want an extra payment",
   "Wants spouse to decide",
   "Had bad experience with solar before",
   "Family / personal concerns",
