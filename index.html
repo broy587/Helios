@@ -13093,6 +13093,13 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
 
   const handleBookSlot = async() => {
     if(!selectedSlot) return;
+    // An unsaved lead has no id, so nothing could be written to it — the old code
+    // skipped the write silently and the booking vanished. Stop before touching
+    // the calendar so no slot gets consumed for a lead that doesn't exist yet.
+    if(!lead || !lead.id){
+      alert("Save this lead first, then book the appointment.\n\nNothing was booked — the lead has to exist before an appointment can be attached to it.");
+      return;
+    }
     setBooking(true);
     try {
       const calId = calendarId||GCAL_CALENDAR_ID;
@@ -13180,10 +13187,23 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       // Record the booking time so the lead card can show the most-recently-booked one.
       const newTsMap = tsKey ? {...curTs, [tsKey]:nowTs} : curTs;
       if(tsKey) local.appt_ts = newTsMap;
-      if(lead.id){ await sb.from("leads").update(update).eq("id",lead.id); }
+      // Write the booking to the LEAD — and verify it actually landed.
+      // Supabase updates do NOT throw on failure (they return {error}), and an
+      // update blocked by row-level security silently matches ZERO rows. Both
+      // used to slip through here, leaving the calendar booked while the lead
+      // showed no appointment at all. Now we check both and surface it.
+      const {data:updRows, error:updErr} = await sb.from("leads").update(update).eq("id",lead.id).select("id");
+      if(updErr){
+        throw new Error("The calendar slot was booked, but saving it to the lead failed: "
+          + (updErr.message||"unknown error")
+          + "\n\nThe slot is held on the calendar — reopen the lead and book again, or tell an admin.");
+      }
+      if(!updRows || updRows.length===0){
+        throw new Error("The calendar slot was booked, but this lead could not be updated — you may not have permission to edit it (it may belong to another rep).\n\nAsk the lead's owner or an admin to book it.");
+      }
       // Stamp the booking time separately & non-blocking — never let a missing
       // appt_ts column block the actual booking.
-      if(lead.id && tsKey){ try{ sb.from("leads").update({appt_ts:newTsMap}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){} }
+      if(tsKey){ try{ sb.from("leads").update({appt_ts:newTsMap}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){} }
       if(onUpdate) onUpdate(local);
       setDoneMsg("booked");
       setDone(true);
