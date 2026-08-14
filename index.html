@@ -4350,10 +4350,12 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
 // section when nothing has).
 const RAPPORT_TEXT_FIELDS = [
   {key:"occupation",   label:"Occupation"},
-  {key:"years_in_home",label:"Years in home"},
   {key:"hobbies",      label:"Hobbies"},
   {key:"family_pets",  label:"Family/Pets"},
 ];
+// Years in home is its own picker (renders as a wheel/dial on phones):
+// <6 months, 1 year, 2 years … 30 years, >30 years.
+const YEARS_IN_HOME_OPTIONS = ["<6 months", ...Array.from({length:30},(_,i)=>`${i+1} year${i===0?"":"s"}`), ">30 years"];
 const RAPPORT_YESNO_FIELDS = [
   {key:"military",    label:"Military/Veteran"},
   {key:"retired",     label:"Retired"},
@@ -4362,6 +4364,7 @@ const RAPPORT_YESNO_FIELDS = [
 function rapportIsEmpty(r){
   if(!r || typeof r!=="object") return true;
   if(RAPPORT_TEXT_FIELDS.some(f=>String(r[f.key]||"").trim())) return false;
+  if(String(r.years_in_home||"").trim()) return false;
   if(RAPPORT_YESNO_FIELDS.some(f=>r[f.key]==="Yes"||r[f.key]==="No")) return false;
   if(String(r.notes||"").trim()) return false;
   return true;
@@ -4390,9 +4393,10 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
   React.useEffect(()=>()=>clearTimeout(saveTimer.current),[]);
 
   const filledText = RAPPORT_TEXT_FIELDS.filter(f=>String(val[f.key]||"").trim());
+  const yearsVal = String(val.years_in_home||"").trim();
   const filledYesNo = RAPPORT_YESNO_FIELDS.filter(f=>val[f.key]==="Yes"||val[f.key]==="No");
   const hasNotes = !!String(val.notes||"").trim();
-  const filledCount = filledText.length + filledYesNo.length + (hasNotes?1:0);
+  const filledCount = filledText.length + (yearsVal?1:0) + filledYesNo.length + (hasNotes?1:0);
   // View mode with nothing recorded → render nothing at all.
   if(readOnly && filledCount===0) return null;
 
@@ -4419,6 +4423,12 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
               <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{val[f.key]}</div>
             </div>
           ))}
+          {yearsVal && (
+            <div>
+              <div style={lbl}>Years in home</div>
+              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{yearsVal}</div>
+            </div>
+          )}
           {filledYesNo.length>0 && (
             <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
               {filledYesNo.map(f=>(
@@ -4443,6 +4453,16 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
               <input type="text" value={val[f.key]||""} onChange={e=>setField(f.key, e.target.value, true)} style={inp}/>
             </div>
           ))}
+          <div>
+            <label style={lbl}>Years in home</label>
+            <select value={yearsVal} onChange={e=>setField("years_in_home", e.target.value, false)}
+              style={{...inp,cursor:"pointer"}}>
+              <option value="">—</option>
+              {/* Keep a legacy free-typed value visible/selectable if it predates the picker */}
+              {yearsVal && !YEARS_IN_HOME_OPTIONS.includes(yearsVal) && <option value={yearsVal}>{yearsVal}</option>}
+              {YEARS_IN_HOME_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
           {RAPPORT_YESNO_FIELDS.map(f=>(
             <div key={f.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{f.label}</span>
