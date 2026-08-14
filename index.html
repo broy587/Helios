@@ -11539,17 +11539,19 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     return !!me && who===me;
   };
   // Who can REMOVE an event:
-  //  • booked appointment → closers/managers/owners (any) + self-gen (their own)
+  //  • booked appointment → closers/managers/owners (any) + ANY rep who created it
+  //    (reps and self-gen are functionally the same role, so both can undo their
+  //    own booking — it releases the slot back to open and clears the lead).
   //  • open slot          → closers/managers/owners
   //  • meeting / other    → managers & owners only
   const canRemoveEvent = (ev)=>{
     const isBooked = (ev.description||"").includes("BOOKED:");
     const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
     if(isOpen) return canManageEvents;
-    if(isBooked) return canManageEvents || (isSelfGen && createdByMe(ev));
+    if(isBooked) return canManageEvents || createdByMe(ev);
     return canManageMeetings; // meetings & standalone events: manager/owner only
   };
-  const canRemoveAny = canManageEvents || isSelfGen; // shows the removal hint in the header
+  const canRemoveAny = true; // everyone can remove at least their own bookings
   const canTagEvent = (ev)=>{
     if(canManageEvents) return true; // closers/managers/owners can tag anything
     const by = (ev.description||"").match(/Created by:\s*(.*)/i);
