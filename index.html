@@ -134,12 +134,43 @@ const PendingSaves = {
   },
   remove(viewId){ this.write(this.all().filter(x=>x.viewId!==viewId)); },
   count(){ return this.all().length; },
+  // Queue a PARTIAL update (e.g. just {rapport} or {objections}) for a lead whose
+  // field-level auto-save failed. Patches for the same lead merge together and
+  // never collide with a queued full-lead save (different key). They ride the
+  // same retry loop: online / focus / every 30s.
+  patch(leadId, fields){
+    if(!leadId || !fields) return false;
+    const key = leadId + "::patch";
+    const existing = this.all().find(x=>x.viewId===key);
+    return this.put({
+      viewId:key, isPatch:true, isUpdate:true, leadId,
+      payload: {...(existing?existing.payload:{}), ...fields, updated_at:new Date().toISOString()},
+    });
+  },
   // Try to flush everything that's waiting. Returns how many saved.
   async flush(){
-    const list = this.all();
+    // Full saves first, then patches — so a patch for a brand-new lead runs
+    // AFTER the insert that creates its row.
+    const list = this.all().sort((a,b)=>(a.isPatch?1:0)-(b.isPatch?1:0));
     if(!list.length) return 0;
     let saved = 0;
     for(const item of list){
+      if(item.isPatch){
+        try {
+          const {data:rows, error} = await sb.from("leads").update(item.payload).eq("id", item.leadId).select("id");
+          if(error) throw error;
+          if(!rows || rows.length===0){
+            // Lead row doesn't exist (yet). If its insert is still queued, keep the
+            // patch for the next round; if not, the lead is gone — drop the patch.
+            const insertQueued = this.all().some(x=>!x.isPatch && x.viewId===item.leadId);
+            if(!insertQueued){ this.remove(item.viewId); }
+            continue;
+          }
+          this.remove(item.viewId);
+          saved++;
+        } catch(e){ console.warn("Pending patch still failing for", item.leadId, e); }
+        continue;
+      }
       try {
         if(item.isUpdate){
           const {error} = await sb.from("leads").update(item.payload).eq("id", item.viewId);
@@ -4382,17 +4413,30 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
   const [val, setVal] = React.useState(value && typeof value==="object" ? value : {});
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [saveErr, setSaveErr] = React.useState("");
   const saveTimer = React.useRef(null);
   React.useEffect(()=>{ setVal(value && typeof value==="object" ? value : {}); },[JSON.stringify(value)]);
   // Persist to the lead. Text fields debounce so we're not writing per keystroke.
+  // Failures show IN the section — a silent failure here cost typed data once.
   const persist = (next, debounce) => {
     if(onChange) onChange(next);
     if(!leadId) return;
     clearTimeout(saveTimer.current);
     const write = async()=>{
       setSaving(true);
-      try{ await sb.from("leads").update({rapport:next, updated_at:new Date().toISOString()}).eq("id",leadId); }
-      catch(e){ console.error("rapport save failed:",e); }
+      let error=null;
+      try{ ({error} = await sb.from("leads").update({rapport:next, updated_at:new Date().toISOString()}).eq("id",leadId)); }
+      catch(e){ error=e; } // network failures reject instead of returning {error}
+      if(error){
+        console.error("rapport save failed:",error);
+        // Stash on the device — same safety net as lead saves. It retries when
+        // the connection returns / app refocuses / every 30s.
+        const queued = PendingSaves.patch(leadId, {rapport:next});
+        setSaveErr(queued
+          ? "📱 Saved on this device — will upload automatically when the connection is back."
+          : "⚠️ Not saving: "+(error.message||"unknown error"));
+      }
+      else setSaveErr("");
       setSaving(false);
     };
     if(debounce) saveTimer.current = setTimeout(write, 600); else write();
@@ -4424,6 +4468,7 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
           {collapsible && <span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{open?"▲":"▼"}</span>}
         </div>
       </div>
+      {saveErr && <div style={{fontSize:12,fontWeight:700,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fee2e2",borderRadius:8,padding:"7px 10px",marginBottom:10}}>{saveErr}</div>}
       {showItems && (readOnly ? (
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filledText.map(f=>(
@@ -4555,14 +4600,24 @@ function ObjectionsSection({value, onChange, readOnly, leadId, collapsible=true}
   const [saving, setSaving] = React.useState(false);
   const saveTimer = React.useRef(null);
   React.useEffect(()=>{ setVal(value && typeof value==="object" ? value : {items:[],other:""}); },[JSON.stringify(value)]);
+  const [saveErr, setSaveErr] = React.useState("");
   const persist = (next, debounce) => {
     if(onChange) onChange(next);
     if(!leadId) return;
     clearTimeout(saveTimer.current);
     const write = async()=>{
       setSaving(true);
-      try{ await sb.from("leads").update({objections:next, updated_at:new Date().toISOString()}).eq("id",leadId); }
-      catch(e){ console.error("objections save failed:",e); }
+      let error=null;
+      try{ ({error} = await sb.from("leads").update({objections:next, updated_at:new Date().toISOString()}).eq("id",leadId)); }
+      catch(e){ error=e; }
+      if(error){
+        console.error("objections save failed:",error);
+        const queued = PendingSaves.patch(leadId, {objections:next});
+        setSaveErr(queued
+          ? "📱 Saved on this device — will upload automatically when the connection is back."
+          : "⚠️ Not saving: "+(error.message||"unknown error"));
+      }
+      else setSaveErr("");
       setSaving(false);
     };
     if(debounce) saveTimer.current = setTimeout(write, 600); else write();
@@ -4590,6 +4645,7 @@ function ObjectionsSection({value, onChange, readOnly, leadId, collapsible=true}
           {collapsible && <span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{open?"▲":"▼"}</span>}
         </div>
       </div>
+      {saveErr && <div style={{fontSize:12,fontWeight:700,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fee2e2",borderRadius:8,padding:"7px 10px",marginBottom:10}}>{saveErr}</div>}
       {showItems && (readOnly ? (
         <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           {items.map(it=>(
@@ -15103,8 +15159,15 @@ function App() {
       };
       const attempt = async()=>{
         if(isUpdate){
-          const {error}=await sb.from("leads").update(payload).eq("id",viewId);
+          // .select("id") verifies a row actually changed — an update blocked by
+          // permissions matches ZERO rows with NO error, which used to pass as
+          // success while nothing saved (the "vanishing lead" bug).
+          const {data:updRows, error}=await sb.from("leads").update(payload).eq("id",viewId).select("id");
           if(error) throw error;
+          if(!updRows || updRows.length===0){
+            const e=new Error("The database accepted the request but no lead was updated — it may have been deleted, or you may not have permission to edit this lead.");
+            e._zeroRows=true; throw e;
+          }
           if(photosChanged){const {error:pe}=await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);if(pe) throw pe;}
         } else {
           const {error}=await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
