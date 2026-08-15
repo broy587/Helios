@@ -11024,8 +11024,17 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           clickable:true,
         });
         marker.addListener("click",()=>{
-          // Always check current homes (via ref to avoid stale closure)
-          const savedHome=homesRef.current.find(h=>h.lat&&h.lng&&Math.abs(parseFloat(h.lat)-lat)<0.0003&&Math.abs(parseFloat(h.lng)-lng)<0.0003);
+          // Match a saved home only if it's essentially AT this building. The old
+          // tolerance (0.0003° ≈ 33m) reached into the neighbors' lots, so tapping
+          // nearby houses kept opening the first home you'd saved — wrong address.
+          // 0.00012° ≈ 13m, and we take the NEAREST match, not the first.
+          const TOL=0.00012;
+          let savedHome=null, bestD=Infinity;
+          for(const h of homesRef.current){
+            if(!(h.lat&&h.lng)) continue;
+            const dLat=Math.abs(parseFloat(h.lat)-lat), dLng=Math.abs(parseFloat(h.lng)-lng);
+            if(dLat<TOL&&dLng<TOL){ const d=dLat*dLat+dLng*dLng; if(d<bestD){bestD=d; savedHome=h;} }
+          }
           if(savedHome){setSelectedHome(savedHome);return;}
           // Reverse geocode then show popup for new home
           const geocoder=new window.google.maps.Geocoder();
@@ -11057,6 +11066,8 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
       },
       title: "Your Location",
       zIndex: 999,
+      // Click-transparent: taps pass straight through to house pins underneath.
+      clickable: false,
     });
   };
 
