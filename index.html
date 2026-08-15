@@ -204,6 +204,23 @@ if(typeof window!=="undefined"){
   setInterval(()=>{ if(navigator.onLine!==false && PendingSaves.count()) PendingSaves.flush(); }, 30000);
 }
 
+// ── Safe partial lead update ──────────────────────────────────────────
+// THE standard way to write lead fields outside the full-lead save. Tries the
+// write; on ANY failure (dead service, timeout, server hiccup) the fields are
+// stashed on this device via PendingSaves.patch and upload automatically when
+// the connection returns / the app refocuses / every 30s. Never throws.
+// Returns {ok, queued, error}: ok=false+queued=true means "safe on device".
+async function leadPatch(leadId, fields){
+  if(!leadId || !fields) return {ok:false, queued:false, error:new Error("missing leadId/fields")};
+  let error=null;
+  try{ ({error} = await sb.from("leads").update({...fields, updated_at:new Date().toISOString()}).eq("id",leadId)); }
+  catch(e){ error=e; } // network failures reject instead of returning {error}
+  if(!error) return {ok:true, queued:false, error:null};
+  console.warn("leadPatch failed — queueing on device:", leadId, (error&&(error.message||error))+"");
+  const queued = PendingSaves.patch(leadId, fields);
+  return {ok:false, queued, error};
+}
+
 
 // ── Calendar backend ───────────────────────────────────────────────────────
 // Routes calendar work through our Supabase Edge Function, which uses a Google
@@ -3022,7 +3039,7 @@ const RECRUIT_STAGE_COLORS = {
 };
 function getRecruitStageColor(stage){ return RECRUIT_STAGE_COLORS[stage]||{bg:"#f1f5f9",border:"#94a3b8",badge:"#334155"}; }
 
-const emptyRecruit = { firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0],photos:[],appointment:"",appt_event_id:"" };
+const emptyRecruit = { fullName:"",firstName:"",lastName:"",phone:"",email:"",socialMedia:"",notes:"",stage:RECRUIT_STAGES[0],photos:[],appointment:"",appt_event_id:"" };
 
 function RecruitModal({open,onClose,onSave,initial}) {
   const dark=useDark();
@@ -3041,7 +3058,7 @@ function RecruitModal({open,onClose,onSave,initial}) {
     if(photoRef.current) photoRef.current.value="";
   };
   const removePhoto=(idx)=>setForm(f=>({...f,photos:(f.photos||[]).filter((_,i)=>i!==idx)}));
-  const fullName=`${form.firstName||""} ${form.lastName||""}`.trim()||"New Recruit";
+  const fullName=((form.fullName!==undefined&&form.fullName!==null)?form.fullName:`${form.firstName||""} ${form.lastName||""}`).trim()||"New Recruit";
   // Schedule during creation/edit: the calendar event is built from what's typed
   // in the form right now (name/phone/notes). Stored on the form so it saves with
   // the recruit. Replacing an appointment removes the old calendar event first.
@@ -3063,15 +3080,10 @@ function RecruitModal({open,onClose,onSave,initial}) {
           <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Recruit":"Add Recruit"}</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>X</button>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          <div>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>First Name</label>
-            <input placeholder="First" value={form.firstName} onChange={set("firstName")} style={inputStyle}/>
-          </div>
-          <div>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Last Name</label>
-            <input placeholder="Last" value={form.lastName} onChange={set("lastName")} style={inputStyle}/>
-          </div>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Name</label>
+          <input placeholder="Full name" value={(form.fullName!==undefined&&form.fullName!==null)?form.fullName:`${form.firstName||""} ${form.lastName||""}`.trim()}
+            onChange={e=>setForm(f=>({...f,fullName:e.target.value}))} style={inputStyle}/>
         </div>
         {[["phone","Phone","tel","(555) 000-0000"],["email","Email","email","email@example.com"],["socialMedia","Social Media","text","@handle or profile URL"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
@@ -3463,13 +3475,18 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
     let ownerId=currentUser.id;
     if(recruitsFilter.startsWith("rep:"))ownerId=recruitsFilter.replace("rep:","");
     const changes=[];
+    // Single Name box → split into the existing first/last columns (no DB change):
+    // first word = first name, everything after = last name.
+    const nmRaw=((form.fullName!==undefined&&form.fullName!==null)?form.fullName:`${form.firstName||""} ${form.lastName||""}`).trim();
+    const nmParts=nmRaw.split(/\s+/).filter(Boolean);
+    const nmFirst=nmParts[0]||"", nmLast=nmParts.slice(1).join(" ");
     if(existing){
       const fields={first_name:"First Name",last_name:"Last Name",phone:"Phone",email:"Email",social_media:"Social Media",notes:"Notes",stage:"Stage"};
-      const formMap={first_name:form.firstName,last_name:form.lastName,phone:form.phone,email:form.email,social_media:form.socialMedia,notes:form.notes,stage:form.stage};
+      const formMap={first_name:nmFirst,last_name:nmLast,phone:form.phone,email:form.email,social_media:form.socialMedia,notes:form.notes,stage:form.stage};
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(formMap[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${formMap[key]||"-"}"`);}
     }
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),changes:["Recruit created"]}];
-    const payload={first_name:form.firstName||"",last_name:form.lastName||"",phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],photos:Array.isArray(form.photos)?form.photos:[],appointment:form.appointment||null,appt_event_id:form.appt_event_id||null,history:newHistory,updated_at:new Date().toISOString()};
+    const payload={first_name:nmFirst,last_name:nmLast,phone:form.phone||"",email:form.email||"",social_media:form.socialMedia||"",notes:form.notes||"",stage:form.stage||RECRUIT_STAGES[0],photos:Array.isArray(form.photos)?form.photos:[],appointment:form.appointment||null,appt_event_id:form.appt_event_id||null,history:newHistory,updated_at:new Date().toISOString()};
     if(existing){await sb.from("recruits").update(payload).eq("id",existing.id);}
     else{await sb.from("recruits").insert({...payload,id:generateId(),owner_id:ownerId,created_at:new Date().toISOString()});}
     setModal({open:false,recruit:null});
@@ -3656,7 +3673,7 @@ function RecruitsDashboard({currentUser, profiles, teams, teamMembers, allLeads,
         </div>
       )}
       <RecruitModal open={modal.open} onClose={()=>setModal({open:false,recruit:null})} onSave={saveRecruit}
-        initial={modal.recruit?{firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id,history:Array.isArray(modal.recruit.history)?modal.recruit.history:[],appointment:modal.recruit.appointment||"",appt_event_id:modal.recruit.appt_event_id||""}:null}/>
+        initial={modal.recruit?{fullName:[modal.recruit.first_name,modal.recruit.last_name].filter(Boolean).join(" "),firstName:modal.recruit.first_name||"",lastName:modal.recruit.last_name||"",phone:modal.recruit.phone||"",email:modal.recruit.email||"",socialMedia:modal.recruit.social_media||"",notes:modal.recruit.notes||"",stage:modal.recruit.stage||RECRUIT_STAGES[0],photos:Array.isArray(modal.recruit.photos)?modal.recruit.photos:[],id:modal.recruit.id,history:Array.isArray(modal.recruit.history)?modal.recruit.history:[],appointment:modal.recruit.appointment||"",appt_event_id:modal.recruit.appt_event_id||""}:null}/>
       {detailId&&(
         <RecruitDetailModal recruit={detailRecruit} onClose={()=>setDetailId(null)} profiles={profiles}
           onUpdate={updated=>setRecruits(rs=>rs.map(r=>r.id===updated.id?{...r,...updated}:r))}
@@ -4013,7 +4030,7 @@ function UsagePulledToggle({leadId, initialValue, onUpdate}) {
   const toggle = async () => {
     const next = val==="Yes" ? "No" : "Yes";
     setVal(next);
-    await sb.from("leads").update({usage_input:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+    await leadPatch(leadId, {usage_input:next});
     if (onUpdate) onUpdate(next);
   };
   const isYes = val==="Yes";
@@ -4332,7 +4349,7 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
     // exists, also persist the change to the database immediately.
     if (leadId) {
       setSaving(true);
-      await sb.from("leads").update({ac_checklist:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+      await leadPatch(leadId, {ac_checklist:next});
       setSaving(false);
     }
     if (onUpdate) onUpdate(next);
@@ -4914,7 +4931,7 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
     setChecked(next);
     if (leadId) {
       setSaving(true);
-      await sb.from("leads").update({closer_checklist:next, updated_at:new Date().toISOString()}).eq("id",leadId);
+      await leadPatch(leadId, {closer_checklist:next});
       setSaving(false);
       if (onUpdate) onUpdate(next);
     } else if (onUpdate) {
@@ -5246,7 +5263,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     const nextStacks = apptStackPush(workingLead, key, val, evId);
     const fields = {[apptField]:val, [evField]:evId||null, appt_ts:nts, appt_stacks:nextStacks, history:nextHist, ...(extra||{})};
     handleUpdate(fields);
-    try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error(kind+" save failed:",e); }
+    await leadPatch(lead.id, fields);
   };
   // Appointment history: each booking adds an entry (kind + when booked + the appt
   // date/time); removing an appointment strips its matching entry. So two un-removed
@@ -5259,7 +5276,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     const merged = {...lead, history:nextHist, _localTs:ts};
     setLead(merged);
     if(onUpdate) onUpdate(merged);
-    try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history push failed:",e); }
+    await leadPatch(lead.id, {history:nextHist});
   };
   const apptHistRemove = async (kind, eventId) => {
     const base = Array.isArray(lead.history)?lead.history:[];
@@ -5275,7 +5292,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     const merged = {...lead, history:nextHist, _localTs:ts};
     setLead(merged);
     if(onUpdate) onUpdate(merged);
-    try{ await sb.from("leads").update({history:nextHist,updated_at:new Date().toISOString()}).eq("id",lead.id); }catch(e){ console.error("appt history remove failed:",e); }
+    await leadPatch(lead.id, {history:nextHist});
   };
   const lastIdRef = React.useRef(leadProp?.id);
   React.useEffect(()=>{
@@ -5324,7 +5341,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
         } catch(e){ console.error("Couldn't restore slot:",e); }
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
-      await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",lead.id);
+      await leadPatch(lead.id, {extra_appointments:next});
       handleUpdate({...lead,extra_appointments:next});
     } catch(e){ console.error("Cancel appointment failed:",e); alert("Couldn't cancel: "+((e&&e.message)||"error")); }
   };
@@ -5335,12 +5352,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     const next = !lead.gift_card_dropped;
     setGiftMsg("saving");
     handleUpdate({gift_card_dropped: next});
-    try {
-      const { error } = await sb.from("leads").update({gift_card_dropped: next}).eq("id", lead.id);
-      if(error) throw error;
-      setGiftMsg("");
-    } catch(e) {
-      console.error("Gift card save failed:", e);
+    {
+      const r = await leadPatch(lead.id, {gift_card_dropped: next});
+      if(r.ok || r.queued){ setGiftMsg(""); return; }
+      console.error("Gift card save failed:", r.error);
       handleUpdate({gift_card_dropped: !next}); // revert
       setGiftMsg("error");
     }
@@ -5482,8 +5497,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                             const v=e.target.value||null;
                             handleUpdate({...lead,assist_id:v});
                             setAssistEditing(false);
-                            try{ await sb.from("leads").update({assist_id:v,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                            catch(err){ console.error("Couldn't set assist:",err); }
+                            await leadPatch(lead.id, {assist_id:v});
                           }}
                           onBlur={()=>setAssistEditing(false)}
                           style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:160}}>
@@ -5551,7 +5565,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           }
                           const entry={ts:formatTs(),changes:[`Appointment removed (was: ${lead.appointment})`]};
                           const nextHistory=[entry,...(lead.history||[])];
-                          await sb.from("leads").update({appointment:"",cb_event_id:null,updated_at:new Date().toISOString(),history:nextHistory}).eq("id",lead.id);
+                          await leadPatch(lead.id, {appointment:"",cb_event_id:null,history:nextHistory});
                           handleUpdate({...lead,appointment:"",cb_event_id:null,history:nextHistory});
                         }}
                         style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,borderRadius:8,background:dark?"#3f1d2b":"#fee2e2",border:"none",fontSize:15,cursor:"pointer",color:dark?"#fca5a5":"#b91c1c"}}>✕</button>
@@ -5773,8 +5787,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       const merged = {...fields, history:nextHist};
                       handleUpdate({...lead,...merged});
                       if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (cleared on lead anyway):",e); } }
-                      try{ await sb.from("leads").update({...merged,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                      catch(e){ console.error("Couldn't clear on lead:",e); alert("Couldn't clear it — check your connection and try again."); }
+                      const r = await leadPatch(lead.id, merged);
+                      if(!r.ok && !r.queued) alert("Couldn't clear it — check your connection and try again.");
                     };
                     // Stacked removal: pop the top booking, delete ONLY its calendar event,
                     // and revert the flat fields to the previous booking (or clear if empty).
@@ -5784,8 +5798,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       const fields = {[apptField]: next ? next.when : "", [evField]: next ? (next.event_id||null) : null, appt_stacks:stacks};
                       handleUpdate(fields);
                       if(top && top.event_id){ try{ await GCal.deletePersonalCB(top.event_id); }catch(e){ console.error("Couldn't delete popped event from calendar:",e); } }
-                      try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",lead.id); }
-                      catch(e){ console.error("Couldn't update lead after pop:",e); alert("Couldn't update it — check your connection and try again."); }
+                      const r = await leadPatch(lead.id, fields);
+                      if(!r.ok && !r.queued) alert("Couldn't update it — check your connection and try again.");
                     };
                     const cards = [
                       lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"close").length,clear:()=>popAppt("close","close_appointment","close_event_id")},
@@ -5849,7 +5863,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             onChange={(field,val)=>{
               const dbField = field==="softSolid"?"soft_solid":"confirmed";
               handleUpdate({...lead,[dbField]:val});
-              sb.from("leads").update({[dbField]:val,updated_at:new Date().toISOString()}).eq("id",lead.id);
+              leadPatch(lead.id, {[dbField]:val});
             }} dark={dark}/>
           {(() => {
             // Setter notes pile: the classic first note (with its "First taken" stamp)
@@ -6475,7 +6489,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                         if(form.close_event_id && form.close_event_id!==evId){ try{ await GCal.deletePersonalCB(form.close_event_id); }catch(e){ console.error(e); } }
                         const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),close:new Date().toISOString()};
                         setForm(f=>({...f,close_appointment:val,close_event_id:evId||null,appt_ts:nts}));
-                        if(form.id){ try{ await sb.from("leads").update({close_appointment:val,close_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                        if(form.id){ await leadPatch(form.id, {close_appointment:val,close_event_id:evId||null,appt_ts:nts}); }
                         setCloseChoice(false);
                       }}/>
                   </div>
@@ -6486,7 +6500,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     if(form.cb_event_id && form.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error(e); } }
                     const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),main:new Date().toISOString()};
                     setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:nts}));
-                    if(form.id){ try{ await sb.from("leads").update({appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error("comeback save failed:",e); } }
+                    if(form.id){ await leadPatch(form.id, {appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts}); }
                   }}/>
                 {/* Follow Up (personal) */}
                 <PersonalApptButton lead={{...form}}
@@ -6497,7 +6511,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     if(form.followup_event_id && form.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(form.followup_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),followup:new Date().toISOString()};
                     setForm(f=>({...f,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts}));
-                    if(form.id){ try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                    if(form.id){ await leadPatch(form.id, {followup_appointment:val,followup_event_id:evId||null,appt_ts:nts}); }
                   }}/>
                 {/* CAP (Closer or Personal) */}
                 {canBookCap ? (
@@ -6515,7 +6529,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                         onSelect={async(val,evId)=>{
                           if(form.cap_event_id && form.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cap_event_id); }catch(e){ console.error(e); } }
                           setForm(f=>({...f,cap_appointment:val,cap_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),cap:new Date().toISOString()}}));
-                          if(form.id){ try{ const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cap:new Date().toISOString()}; await sb.from("leads").update({cap_appointment:val,cap_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                          if(form.id){ const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cap:new Date().toISOString()}; await leadPatch(form.id, {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts}); }
                           setCapChoice(false);
                         }}/>
                     </div>
@@ -6539,7 +6553,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                         if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
                         const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cs:new Date().toISOString()};
                         setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}));
-                        if(form.id){ try{ await sb.from("leads").update({cs_appointment:val,cs_event_id:evId||null,updated_at:new Date().toISOString()}).eq("id",form.id); sb.from("leads").update({appt_ts:nts}).eq("id",form.id).then(()=>{},()=>{}); }catch(e){ console.error(e); } }
+                        if(form.id){ await leadPatch(form.id, {cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}); }
                         setCsChoice(false);
                       }}/>
                   </div>
@@ -6561,7 +6575,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                   const evId = form[evField];
                   if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
                   setForm(f=>({...f,...fields}));
-                  if(form.id){ try{ await sb.from("leads").update({...fields,updated_at:new Date().toISOString()}).eq("id",form.id); }catch(e){ console.error(e); } }
+                  if(form.id){ await leadPatch(form.id, fields); }
                 };
                 const cards = [
                   form.close_appointment && {key:"close",label:"📅 Close",val:form.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id")},
@@ -6619,7 +6633,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                           }
                           if(a.id && !released){ try{ const token = await GCal.signIn(); await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
                           const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
-                          await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",form.id);
+                          await leadPatch(form.id, {extra_appointments:next});
                           setForm(f=>({...f,extra_appointments:next}));
                         } catch(e){ console.error("Cancel appointment failed:",e); alert("Couldn't cancel: "+((e&&e.message)||"error")); }
                       }} style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:700,fontSize:12,cursor:"pointer"}}>✕ Cancel</button>
@@ -7756,7 +7770,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                       const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
                       const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
                       const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
-                      try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("follow up booking failed:",e); }
+                      await leadPatch(l.id, {followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
                       if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
                     }}/>
                 )}
@@ -7771,7 +7785,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                       const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
                       const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
                       const nextHist = [entry, ...(Array.isArray(l.history)?l.history:[])];
-                      try{ await sb.from("leads").update({followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error(e); }
+                      await leadPatch(l.id, {followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
                       if(onBooked) onBooked({...l,followup_appointment:val,followup_event_id:evId||null,appt_ts:nts,history:nextHist});
                       setFuRebookId(null);
                     }}/>
@@ -7791,7 +7805,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
             const base = Array.isArray(l.history)?l.history:[];
             let removed=false;
             const nextHist = base.filter(h=>{ if(removed||!h||!h.appt||h.appt.kind!=="Follow Up") return true; if(l.followup_event_id&&h.appt.id){ if(h.appt.id===l.followup_event_id){ removed=true; return false; } return true; } removed=true; return false; });
-            try{ await sb.from("leads").update({followup_appointment:"",followup_event_id:null,history:nextHist,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error(e); }
+            await leadPatch(l.id, {followup_appointment:"",followup_event_id:null,history:nextHist});
             if(onBooked) onBooked({...l,followup_appointment:"",followup_event_id:null,history:nextHist});
             setFuMenu(null);
           };
@@ -8108,14 +8122,12 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with the Archive section in the filters.")) return;
             onLeadView({...l,archived:next},"update");
             setDetailId(null); setAcWarnMsg("");
-            try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
-            catch(e){ console.error("Couldn't archive lead:",e); }
+            await leadPatch(l.id, {archived:next});
           }}
           onTogglePriority={async(l)=>{
             const next = !l.priority;
             onLeadView({...l,priority:next},"update");
-            try{ await sb.from("leads").update({priority:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
-            catch(e){ console.error("Couldn't set priority:",e); }
+            await leadPatch(l.id, {priority:next});
           }}
           repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap} acReq={acReq}
           onUpdate={updated=>onLeadView(updated,"update")}
@@ -8503,14 +8515,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             const l=ordered[i];
             if(l.priority_order!==i){
               onLeadView({...l,priority_order:i},"update");
-              try{ await sb.from("leads").update({priority_order:i,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("order save failed",e); }
+              await leadPatch(l.id, {priority_order:i});
             }
           }
         };
         const removePriority = async (l) => {
           if(!window.confirm(`Remove "${l.name||"this lead"}" from Priority Comeback? This will also unstar it on the lead.`)) return;
           onLeadView({...l,priority:false},"update");
-          try{ await sb.from("leads").update({priority:false,updated_at:new Date().toISOString()}).eq("id",l.id); }catch(e){ console.error("remove priority failed",e); }
+          await leadPatch(l.id, {priority:false});
         };
         return (
           <PriorityComebackList
@@ -10063,7 +10075,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 }
               }
               const entry={ts:formatTs(),by:(currentUser&&(currentUser.name||currentUser.email))||"Unknown",changes:[`Stage: "${linkedLead.stage}" to "${newStage}"`]};
-              await sb.from("leads").update({stage:newStage,history:[entry,...(linkedLead.history||[])],updated_at:new Date().toISOString()}).eq("id",linkedLead.id);
+              await leadPatch(linkedLead.id, {stage:newStage,history:[entry,...(linkedLead.history||[])]});
               if(onStageChange) onStageChange(linkedLead.id, newStage, entry);
             }}
               style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1.5px solid rgba(255,255,255,0.15)",background:"rgba(30,30,50,0.8)",color:"#fff",fontSize:13,fontFamily:"inherit",outline:"none",marginBottom:8}}>
@@ -13214,7 +13226,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
         if(revertStage) update.stage = "Lead: Need Bill/Appointment";
         local = revertStage ? {gcal_event_id:null,appointment:null,stage:"Lead: Need Bill/Appointment"} : {gcal_event_id:null,appointment:null};
       }
-      if(lead.id){ await sb.from("leads").update(update).eq("id",lead.id); }
+      if(lead.id){ await leadPatch(lead.id, update); }
       if(onUpdate) onUpdate(local);
       setDoneMsg("removed");
       setDone(true);
@@ -13235,7 +13247,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
         }
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
-      if(lead.id){ await sb.from("leads").update({extra_appointments:next,updated_at:new Date().toISOString()}).eq("id",lead.id); }
+      if(lead.id){ await leadPatch(lead.id, {extra_appointments:next}); }
       if(onUpdate) onUpdate({extra_appointments:next});
       setDoneMsg("removed");
       setDone(true);
@@ -13343,8 +13355,20 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       // update blocked by row-level security silently matches ZERO rows. Both
       // used to slip through here, leaving the calendar booked while the lead
       // showed no appointment at all. Now we check both and surface it.
-      const {data:updRows, error:updErr} = await sb.from("leads").update(update).eq("id",lead.id).select("id");
+      let updRows=null, updErr=null;
+      try{ ({data:updRows, error:updErr} = await sb.from("leads").update(update).eq("id",lead.id).select("id")); }
+      catch(e){ updErr=e; }
       if(updErr){
+        // The calendar slot IS booked. If the lead write failed from bad service,
+        // queue it on the device — it uploads automatically — and finish as booked.
+        const queued = PendingSaves.patch(lead.id, update);
+        if(queued){
+          if(onUpdate) onUpdate(local);
+          setDoneMsg("booked");
+          setDone(true);
+          setBooking(false);
+          return;
+        }
         throw new Error("The calendar slot was booked, but saving it to the lead failed: "
           + (updErr.message||"unknown error")
           + "\n\nThe slot is held on the calendar — reopen the lead and book again, or tell an admin.");
@@ -13354,7 +13378,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       }
       // Stamp the booking time separately & non-blocking — never let a missing
       // appt_ts column block the actual booking.
-      if(tsKey){ try{ sb.from("leads").update({appt_ts:newTsMap}).eq("id",lead.id).then(()=>{},()=>{}); }catch(e){} }
+      if(tsKey){ leadPatch(lead.id, {appt_ts:newTsMap}); }
       if(onUpdate) onUpdate(local);
       setDoneMsg("booked");
       setDone(true);
@@ -15329,10 +15353,13 @@ function App() {
     const prevStage = lead.stage;
     const prevHistory = lead.history || [];
     setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:newStage,history:[entry,...(l.history||[])]}:l));
-    const {error:stageErr} = await sb.from("leads").update({stage:newStage,history:[entry,...prevHistory],updated_at:new Date().toISOString()}).eq("id",id);
-    if(stageErr){
+    // leadPatch queues the move on the device if service is bad — the optimistic
+    // board position stays and the write uploads when the connection returns.
+    // Only a REAL rejection (e.g. permissions) rolls back and alerts.
+    const r = await leadPatch(id, {stage:newStage, history:[entry,...prevHistory]});
+    if(!r.ok && !r.queued){
       setLeads(ls=>ls.map(l=>l.id===id?{...l,stage:prevStage,history:prevHistory}:l));
-      window.alert("Couldn't move lead: "+(stageErr.message||"unknown error"));
+      window.alert("Couldn't move lead: "+((r.error&&r.error.message)||"unknown error"));
     }
   };
 
@@ -15341,11 +15368,11 @@ function App() {
     const entry={ts:formatTs(),by:(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown",changes:[`Transferred to ${toRep?toRep.name:"rep"}`]};
     // Optimistically update the owner locally (no full reload — keeps it fast).
     setLeads(ls=>ls.map(l=>l.id===leadId?{...l,owner_id:toRepId,history:[entry,...(l.history||[])]}:l));
-    const {error}=await sb.from("leads").update({owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])],updated_at:new Date().toISOString()}).eq("id",leadId);
-    if(error){
+    const r = await leadPatch(leadId, {owner_id:toRepId,history:[entry,...(lead?lead.history||[]:[])]});
+    if(!r.ok && !r.queued){
       // Roll back on failure.
       setLeads(ls=>ls.map(l=>l.id===leadId?{...l,owner_id:lead?lead.owner_id:l.owner_id}:l));
-      window.alert("Couldn't transfer lead: "+(error.message||"unknown error"));
+      window.alert("Couldn't transfer lead: "+((r.error&&r.error.message)||"unknown error"));
     }
   };
 
@@ -15883,14 +15910,12 @@ function App() {
             if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with the Archive section in the filters.")) return;
             setLeads(ls=>ls.map(x=>x.id===l.id?{...x,archived:next}:x));
             setDetailId(null);
-            try{ await sb.from("leads").update({archived:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
-            catch(e){ console.error("Couldn't archive lead:",e); }
+            await leadPatch(l.id, {archived:next});
           }}
           onTogglePriority={async(l)=>{
             const next = !l.priority;
             setLeads(ls=>ls.map(x=>x.id===l.id?{...x,priority:next}:x));
-            try{ await sb.from("leads").update({priority:next,updated_at:new Date().toISOString()}).eq("id",l.id); }
-            catch(e){ console.error("Couldn't set priority:",e); }
+            await leadPatch(l.id, {priority:next});
           }}
           repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles} canBookCap={canBookCap} acReq={myAcReq}
           onUpdate={updated=>{
