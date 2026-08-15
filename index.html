@@ -4376,9 +4376,13 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
         return (
           <div key={item} onClick={()=>toggle(item)}
             style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px",cursor:readOnly?"default":"pointer",borderBottom:i<AC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#f5e8b0"}`:"none"}}>
+            {readOnly ? (
+              <span style={{width:20,flexShrink:0,textAlign:"center",fontSize:15,fontWeight:900,lineHeight:1,color:isChecked?"#10b981":"#ef4444"}}>{isChecked?"✓":"✗"}</span>
+            ) : (
             <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#c8b8a2"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
               {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
             </div>
+            )}
             <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400,textDecoration:isChecked?"none":"none",transition:"all 0.15s"}}>
               {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
             </span>
@@ -4962,9 +4966,13 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
           <div key={item} style={{borderBottom:i<VC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#d6e2f5"}`:"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px"}}>
               <div onClick={()=>toggle(item)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:readOnly?"default":"pointer",minWidth:0}}>
+                {readOnly ? (
+                  <span style={{width:20,flexShrink:0,textAlign:"center",fontSize:15,fontWeight:900,lineHeight:1,color:isChecked?"#10b981":"#ef4444"}}>{isChecked?"✓":"✗"}</span>
+                ) : (
                 <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#a8bce0"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
                   {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
                 </div>
+                )}
                 <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400}}>
                   {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
                 </span>
