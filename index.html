@@ -3066,7 +3066,8 @@ function RecruitModal({open,onClose,onSave,initial}) {
     if(form.appt_event_id && form.appt_event_id !== eventId){
       try{ await GCal.deletePersonalCB(form.appt_event_id); }catch(e){ console.error("Couldn't remove old recruit appt:",e); }
     }
-    setForm(f=>({...f, appointment:apptStr, appt_event_id:eventId||null, ...(f.stage==="Wishlist"?{stage:"Scheduled Meeting"}:{})}));
+    // Scheduling no longer auto-moves the recruit — it stays in its current list.
+    setForm(f=>({...f, appointment:apptStr, appt_event_id:eventId||null}));
   };
   const clearAppt = async () => {
     if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
@@ -3206,18 +3207,14 @@ function RecruitDetailModal({recruit,onClose,onEdit,onDelete,profiles,onUpdate})
     if(recruit.appt_event_id && recruit.appt_event_id !== eventId){
       try { await GCal.deletePersonalCB(recruit.appt_event_id); } catch(e){ console.error("Couldn't remove old recruit appt:",e); }
     }
-    // Scheduling an appointment auto-advances a Wishlist recruit to Scheduled Meeting.
-    const autoStage = recruit.stage==="Wishlist";
-    const upd = {appointment:apptStr, appt_event_id:eventId||null, updated_at:new Date().toISOString()};
-    let nextHistory = recruit.history;
-    if(autoStage){
-      const entry={ts:formatTs(),changes:[`Stage: "Wishlist" to "Scheduled Meeting"`,`Appointment scheduled`]};
-      nextHistory=[entry,...(Array.isArray(recruit.history)?recruit.history:[])];
-      upd.stage="Scheduled Meeting"; upd.history=nextHistory;
-    }
+    // Scheduling records the appointment in history but NEVER moves the recruit —
+    // it stays in whatever list it's in until someone drags it.
+    const entry={ts:formatTs(),changes:[`Appointment scheduled: ${apptStr}`]};
+    const nextHistory=[entry,...(Array.isArray(recruit.history)?recruit.history:[])];
+    const upd = {appointment:apptStr, appt_event_id:eventId||null, history:nextHistory, updated_at:new Date().toISOString()};
     try { await sb.from("recruits").update(upd).eq("id",recruit.id); }
     catch(e){ console.error("Save recruit appointment failed:",e); }
-    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null, ...(autoStage?{stage:"Scheduled Meeting", history:nextHistory}:{})});
+    if(onUpdate) onUpdate({...recruit, appointment:apptStr, appt_event_id:eventId||null, history:nextHistory});
   };
   const cancelAppt = async () => {
     if(!window.confirm("Cancel this appointment? It will be removed from your Google Calendar.")) return;
