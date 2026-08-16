@@ -15,6 +15,16 @@
        click ate the user's click gesture (script load takes ~0.5-1s), so the
        browser blocked the sign-in popup: "Failed to open pop-up window". -->
   <script src="https://accounts.google.com/gsi/client" id="gsi-script" async defer></script>
+  <!-- Service worker: caches the app shell + core scripts so the home-screen app
+       still OPENS with zero service (downloaded areas need the app to boot).
+       Requires sw.js deployed next to this file. Safe no-op if sw.js is missing. -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function(){
+        navigator.serviceWorker.register("sw.js").catch(function(){});
+      });
+    }
+  </script>
   <!-- Preconnect to CDNs so connections start before scripts download -->
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
@@ -199,9 +209,9 @@ const PendingSaves = {
 // Retry queued saves when the connection returns, when the app regains focus,
 // and periodically while it's open.
 if(typeof window!=="undefined"){
-  window.addEventListener("online", ()=>{ PendingSaves.flush(); });
-  window.addEventListener("focus", ()=>{ PendingSaves.flush(); });
-  setInterval(()=>{ if(navigator.onLine!==false && PendingSaves.count()) PendingSaves.flush(); }, 30000);
+  window.addEventListener("online", ()=>{ PendingSaves.flush(); CanvassPending.flush(); });
+  window.addEventListener("focus", ()=>{ PendingSaves.flush(); CanvassPending.flush(); });
+  setInterval(()=>{ if(navigator.onLine!==false && (PendingSaves.count()||CanvassPending.count())){ PendingSaves.flush(); CanvassPending.flush(); } }, 30000);
 }
 
 // ── Safe partial lead update ──────────────────────────────────────────
@@ -218,6 +228,103 @@ async function leadPatch(leadId, fields){
   if(!error) return {ok:true, queued:false, error:null};
   console.warn("leadPatch failed — queueing on device:", leadId, (error&&(error.message||error))+"");
   const queued = PendingSaves.patch(leadId, fields);
+  return {ok:false, queued, error};
+}
+
+// ── Offline canvass areas ─────────────────────────────────────────────
+// A rep can DOWNLOAD an area: its boundary, every house pin & disposition in it,
+// and the lead pins showing at download time — snapshotted to this device. With
+// no service, canvass falls back to these snapshots so the rep keeps prospecting.
+function pointInPolygon(pt, path){
+  if(!Array.isArray(path)||path.length<3) return false;
+  let inside=false;
+  for(let i=0,j=path.length-1;i<path.length;j=i++){
+    const xi=+path[i].lng, yi=+path[i].lat, xj=+path[j].lng, yj=+path[j].lat;
+    const intersect=((yi>pt.lat)!==(yj>pt.lat)) && (pt.lng < (xj-xi)*(pt.lat-yi)/(yj-yi)+xi);
+    if(intersect) inside=!inside;
+  }
+  return inside;
+}
+const OfflineAreas = {
+  KEY:"pp_offline_areas_v1",
+  all(){ try{ const v=JSON.parse(localStorage.getItem(this.KEY)||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } },
+  write(map){ try{ localStorage.setItem(this.KEY, JSON.stringify(map)); return true; }catch(e){ console.error("Offline area store failed:",e); return false; } },
+  get(id){ return this.all()[id]||null; },
+  save(area, homes, leads, mapData){
+    const map=this.all();
+    const entry={ area:{id:area.id,name:area.name,color:area.color,path:area.path,team_id:area.team_id,rep_ids:area.rep_ids},
+      homes:homes||[], leads:leads||[], map:mapData||null, savedAt:new Date().toISOString() };
+    map[area.id]=entry;
+    if(this.write(map)) return true;
+    // Storage full — the PINS matter most. Shed the street map progressively.
+    if(mapData){
+      map[area.id]={...entry, map:{roads:mapData.roads||[], buildings:[]}};
+      if(this.write(map)) return true;
+      map[area.id]={...entry, map:null};
+      if(this.write(map)) return true;
+    }
+    return false;
+  },
+  remove(id){ const m=this.all(); delete m[id]; this.write(m); },
+  // Every downloaded home / lead across all areas (deduped) — the offline dataset.
+  allHomes(){ const out=[],seen=new Set(); for(const e of Object.values(this.all())){ for(const h of (e.homes||[])){ if(h&&h.id&&!seen.has(h.id)){ seen.add(h.id); out.push(h); } } } return out; },
+  allLeads(){ const out=[],seen=new Set(); for(const e of Object.values(this.all())){ for(const l of (e.leads||[])){ if(l&&l.id&&!seen.has(l.id)){ seen.add(l.id); out.push(l); } } } return out; },
+  // Keep snapshots current: apply a local home edit to any downloaded area it
+  // belongs to (by id, or by position for brand-new pins).
+  applyHome(home){
+    if(!home||!home.id) return false;
+    const m=this.all(); let hit=false;
+    for(const k of Object.keys(m)){
+      const e=m[k]; e.homes=Array.isArray(e.homes)?e.homes:[];
+      const i=e.homes.findIndex(h=>h&&h.id===home.id);
+      if(i>=0){ e.homes[i]={...e.homes[i],...home}; hit=true; }
+      else if(home.lat&&home.lng&&pointInPolygon({lat:+home.lat,lng:+home.lng},(e.area&&e.area.path)||[])){ e.homes.push({...home}); hit=true; }
+    }
+    if(hit) this.write(m);
+    return hit;
+  },
+};
+// Queue for canvass-home writes made with no service — flushes like PendingSaves.
+const CanvassPending = {
+  KEY:"pp_pending_homes",
+  all(){ try{ const v=JSON.parse(localStorage.getItem(this.KEY)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } },
+  write(list){ try{ localStorage.setItem(this.KEY, JSON.stringify(list)); return true; }catch(e){ console.error("Couldn't store pending home:",e); return false; } },
+  put(row){ if(!row||!row.id) return false; const list=this.all().filter(x=>x.id!==row.id); const prev=this.all().find(x=>x.id===row.id); list.push({...(prev||{}),...row}); return this.write(list); },
+  remove(id){ this.write(this.all().filter(x=>x.id!==id)); },
+  count(){ return this.all().length; },
+  async flush(){
+    const list=this.all(); if(!list.length) return 0;
+    let saved=0;
+    for(let row of list){
+      try{
+        // Pins dropped offline carry raw coordinates as their address — swap in
+        // the real street address now that we have service (best-effort).
+        if(row.address && /^-?\d{1,3}\.\d{3,},\s*-?\d{1,3}\.\d{3,}$/.test(String(row.address).trim()) && row.lat && row.lng){
+          try{
+            const addr=await gmapsReverseGeocode(+row.lat,+row.lng);
+            if(addr){ row={...row, address:addr}; try{ OfflineAreas.applyHome(row); }catch(e2){} }
+          }catch(e1){}
+        }
+        const {error}=await sb.from("canvass_homes").upsert(row,{onConflict:"id"});
+        if(error) throw error;
+        this.remove(row.id); saved++;
+      }catch(e){ console.warn("Pending home still failing:",row.id,e); }
+    }
+    return saved;
+  },
+};
+// Save (insert or patch) one canvass home, offline-safe. Row MUST carry an id —
+// generate one client-side for new pins so they exist even with zero service.
+// Also keeps any downloaded-area snapshot in sync so offline reopens show it.
+async function canvassHomeSave(row){
+  const full={...row, updated_at:new Date().toISOString()};
+  let error=null;
+  try{ ({error}=await sb.from("canvass_homes").upsert(full,{onConflict:"id"})); }
+  catch(e){ error=e; }
+  try{ OfflineAreas.applyHome(full); }catch(e){}
+  if(!error) return {ok:true, queued:false, error:null};
+  console.warn("canvass home save failed — queueing on device:", full.id, (error&&(error.message||error))+"");
+  const queued=CanvassPending.put(full);
   return {ok:false, queued, error};
 }
 
@@ -9684,12 +9791,14 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
   const saveToMap = async() => {
     if(!home._isTemp) return;
     setSaving(true);
-    const {data} = await sb.from("canvass_homes").insert({
+    const row = {
+      id:makeNoteId(),
       address:home.address, lat:home.lat, lng:home.lng,
       prescreen:home.prescreen||null, notes:note||null,
-      updated_at:new Date().toISOString()
-    }).select().single();
-    if(data) { onClose(); }
+      added_by:currentUser?.id||null,
+    };
+    const r = await canvassHomeSave(row); // queues on device if service is out
+    if(r.ok||r.queued){ onClose(); }
     setSaving(false);
   };
 
@@ -9714,7 +9823,8 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     setNoteSaved(false);
     try {
       if(!home.id||home._isTemp||home._isPipelineLead){
-        const {data,error} = await sb.from("canvass_homes").insert({
+        const row = {
+          id:makeNoteId(),
           address:home.address,
           lat:home.lat||null,
           lng:home.lng||null,
@@ -9723,10 +9833,10 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           notes:note.trim(),
           prescreen:home.prescreen||null,
           added_by:currentUser?.id||null,
-          updated_at:new Date().toISOString()
-        }).select().single();
-        if(error) throw error;
-        if(data&&onSaveNote) await onSaveNote(data, note.trim());
+        };
+        const r = await canvassHomeSave(row);
+        if(!r.ok && !r.queued) throw (r.error||new Error("save failed"));
+        if(onSaveNote) await onSaveNote(row, note.trim());
       } else {
         await onSaveNote(home, note.trim());
       }
@@ -9759,6 +9869,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     const doWrite = async(includeEmail) => {
       if(!home.id||home._isTemp||home._isPipelineLead){
         const row = {
+          id:makeNoteId(),
           address:home.address,
           lat:home.lat||null,
           lng:home.lng||null,
@@ -9767,17 +9878,16 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           notes:home.notes||null,
           prescreen:home.prescreen||null,
           added_by:currentUser?.id||null,
-          updated_at:new Date().toISOString()
         };
         if(includeEmail) row.email = em||null;
-        const {data,error} = await sb.from("canvass_homes").insert(row).select().single();
-        if(error) throw error;
-        if(data&&onSaveOwner) await onSaveOwner(includeEmail?data:{...data,email:em||null});
+        const r = await canvassHomeSave(row);
+        if(!r.ok && !r.queued) throw (r.error||new Error("save failed"));
+        if(onSaveOwner) await onSaveOwner(includeEmail?row:{...row,email:em||null});
       } else {
-        const upd = {phone:ph||null,updated_at:new Date().toISOString()};
+        const upd = {id:home.id, phone:ph||null};
         if(includeEmail) upd.email = em||null;
-        const {error} = await sb.from("canvass_homes").update(upd).eq("id",home.id);
-        if(error) throw error;
+        const r = await canvassHomeSave(upd);
+        if(!r.ok && !r.queued) throw (r.error||new Error("save failed"));
         if(onSaveOwner) await onSaveOwner({...home,phone:ph||null,email:em||null});
       }
     };
@@ -9812,7 +9922,8 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
     setOwnerSaved(false);
     try {
       if(!home.id||home._isTemp||home._isPipelineLead){
-        const {data,error} = await sb.from("canvass_homes").insert({
+        const row = {
+          id:makeNoteId(),
           address:home.address,
           lat:home.lat||null,
           lng:home.lng||null,
@@ -9821,13 +9932,13 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
           notes:home.notes||null,
           prescreen:home.prescreen||null,
           added_by:currentUser?.id||null,
-          updated_at:new Date().toISOString()
-        }).select().single();
-        if(error) throw error;
-        if(data&&onSaveOwner) await onSaveOwner(data);
+        };
+        const r = await canvassHomeSave(row);
+        if(!r.ok && !r.queued) throw (r.error||new Error("save failed"));
+        if(onSaveOwner) await onSaveOwner(row);
       } else {
-        const {error} = await sb.from("canvass_homes").update({owner_name:val||null,updated_at:new Date().toISOString()}).eq("id",home.id);
-        if(error) throw error;
+        const r = await canvassHomeSave({id:home.id, owner_name:val||null});
+        if(!r.ok && !r.queued) throw (r.error||new Error("save failed"));
         if(onSaveOwner) await onSaveOwner({...home,owner_name:val||null});
       }
       setErrMsg("");
@@ -10001,7 +10112,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
               <button onMouseDown={async e=>{
                 e.preventDefault();
                 if(!window.confirm("Are you sure you want to delete this note?")) return;
-                if(home.id) await sb.from("canvass_homes").update({notes:null,updated_at:new Date().toISOString()}).eq("id",home.id);
+                if(home.id) await canvassHomeSave({id:home.id, notes:null});
                 home.notes=null;
                 setNote("");
                 setIsEditingNote(false);
@@ -10208,6 +10319,18 @@ async function gmapsGeocode(address){
   if(out){ cache[key]=out; geoCacheSave(); }
   return out;
 }
+// Reverse geocode (lat/lng → street address). Used to upgrade pins that were
+// dropped offline with coordinate placeholders once service returns.
+async function gmapsReverseGeocode(lat, lng){
+  if(!(window.google && window.google.maps)) return null;
+  return await new Promise((resolve)=>{
+    try{
+      new window.google.maps.Geocoder().geocode({location:{lat,lng}}, (results, status)=>{
+        resolve(status==="OK" && results && results[0] ? results[0].formatted_address : null);
+      });
+    }catch(e){ resolve(null); }
+  });
+}
 
 // ── Canvass View Picker ───────────────────────────────────────────────
 function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, myTeamMemberIds, canvassLeadFilter, setCanvassLeadFilter}) {
@@ -10339,8 +10462,473 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
   );
 }
 
+// ── Offline Street Map ────────────────────────────────────────────────
+// A self-drawn "default map" used when there's no service: renders the roads +
+// building outlines bundled into downloaded areas (OpenStreetMap data — Google's
+// tiles can't be saved offline), plus every pin, the area boundaries, and a live
+// GPS blue dot (GPS comes from satellites, so it works with zero bars).
+// Pan with one finger, pinch or double-tap to zoom.
+const OSM_MERC = {
+  x(lng){ return (lng+180)/360; },
+  y(lat){ const s=Math.sin(Math.max(-85,Math.min(85,lat))*Math.PI/180); return 0.5 - Math.log((1+s)/(1-s))/(4*Math.PI); },
+};
+function hexFade(hex,a){
+  const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||""));
+  if(!m) return "rgba(107,45,78,"+a+")";
+  const n=parseInt(m[1],16);
+  return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")";
+}
+function OfflineStreetMap({entries, pins, onTapPin, onTapBuilding}){
+  const wrapRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+  const viewRef = React.useRef(null);   // {cx, cy, zoom} in world (mercator 0..1) coords
+  const [myLoc, setMyLoc] = React.useState(null);
+  const myLocRef = React.useRef(null); myLocRef.current = myLoc;
+  const pinsRef = React.useRef(pins); pinsRef.current = pins;
+
+  // Pre-project everything to world coords once per data change — much faster
+  // than trig per frame while panning.
+  const data = React.useMemo(()=>{
+    const roads=[],buildings=[],bounds=[];
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    const seen=new Set();
+    (entries||[]).forEach(e=>{
+      if(!e) return;
+      const bpath=((e.area&&e.area.path)||[]).map(p=>[OSM_MERC.x(+p.lng),OSM_MERC.y(+p.lat)]);
+      bpath.forEach(pt=>{ if(pt[0]<minX)minX=pt[0]; if(pt[0]>maxX)maxX=pt[0]; if(pt[1]<minY)minY=pt[1]; if(pt[1]>maxY)maxY=pt[1]; });
+      if(bpath.length>=3) bounds.push({p:bpath,color:(e.area&&e.area.color)||"#6b2d4e",name:(e.area&&e.area.name)||""});
+      const m=e.map||{};
+      (m.roads||[]).forEach(r=>{
+        if(!(r&&Array.isArray(r.p)&&r.p.length>1)) return;
+        const key=r.t+"|"+r.n+"|"+r.p[0].join(",")+"|"+r.p[r.p.length-1].join(",");
+        if(seen.has(key)) return; seen.add(key);
+        roads.push({t:r.t,n:r.n,p:r.p.map(pt=>[OSM_MERC.x(pt[1]),OSM_MERC.y(pt[0])])});
+      });
+      (m.buildings||[]).forEach(b=>{
+        if(!(b&&Array.isArray(b.p)&&b.p.length>2)) return;
+        buildings.push({a:b.a||"", ll:b.p, p:b.p.map(pt=>[OSM_MERC.x(pt[1]),OSM_MERC.y(pt[0])])});
+      });
+    });
+    // Bigger roads draw on top of smaller ones
+    const order={service:0,unclassified:1,living_street:1,residential:2,tertiary_link:3,tertiary:3,secondary_link:4,secondary:4,primary_link:5,primary:5,trunk_link:6,trunk:6,motorway_link:7,motorway:7};
+    roads.sort((a,b)=>(order[a.t]||0)-(order[b.t]||0));
+    return {roads,buildings,bounds,minX,minY,maxX,maxY};
+  },[entries]);
+
+  if(!viewRef.current){
+    // Provisional center; the first real fit happens once we know the canvas size.
+    if(isFinite(data.minX)) viewRef.current={cx:(data.minX+data.maxX)/2, cy:(data.minY+data.maxY)/2, zoom:15};
+    else viewRef.current={cx:OSM_MERC.x(-96.797), cy:OSM_MERC.y(32.7767), zoom:15};
+  }
+
+  const draw = React.useCallback(()=>{
+    const canvas=canvasRef.current, wrap=wrapRef.current, v=viewRef.current;
+    if(!canvas||!wrap||!v) return;
+    const dpr=window.devicePixelRatio||1;
+    const w=wrap.clientWidth, h=wrap.clientHeight;
+    if(!w||!h) return;
+    if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){
+      canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr);
+      canvas.style.width=w+"px"; canvas.style.height=h+"px";
+    }
+    const ctx=canvas.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const scale=256*Math.pow(2,v.zoom);
+    const sx=(x)=>(x-v.cx)*scale+w/2;
+    const sy=(y)=>(y-v.cy)*scale+h/2;
+    // Land
+    ctx.fillStyle="#eef0f3"; ctx.fillRect(0,0,w,h);
+    // Area boundaries — soft fill, dashed edge, name at the middle
+    data.bounds.forEach(b=>{
+      ctx.beginPath();
+      b.p.forEach((pt,i)=>{ const X=sx(pt[0]),Y=sy(pt[1]); if(i)ctx.lineTo(X,Y); else ctx.moveTo(X,Y); });
+      ctx.closePath();
+      ctx.fillStyle=hexFade(b.color,0.07); ctx.fill();
+      ctx.setLineDash([7,5]); ctx.strokeStyle=b.color; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]);
+    });
+    // Buildings
+    if(v.zoom>=15.2 && data.buildings.length){
+      ctx.fillStyle="#dfe2e7"; ctx.strokeStyle="#c9cdd4"; ctx.lineWidth=1;
+      data.buildings.forEach(b=>{
+        const X0=sx(b.p[0][0]), Y0=sy(b.p[0][1]);
+        if(X0<-400||Y0<-400||X0>w+400||Y0>h+400) return;
+        ctx.beginPath();
+        b.p.forEach((pt,i)=>{ const X=sx(pt[0]),Y=sy(pt[1]); if(i)ctx.lineTo(X,Y); else ctx.moveTo(X,Y); });
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      });
+    }
+    // Roads — casing pass then fill pass, Google-default-ish styling
+    const px=(base)=>Math.max(1.5, base*Math.pow(2, v.zoom-18));
+    const styleFor=(t)=>{
+      if(t==="motorway"||t==="motorway_link"||t==="trunk"||t==="trunk_link") return {wpx:px(20),fill:"#fcd66a",edge:"#e3b53e"};
+      if(t==="primary"||t==="primary_link") return {wpx:px(16),fill:"#ffe9a8",edge:"#dfc276"};
+      if(t==="secondary"||t==="secondary_link") return {wpx:px(13),fill:"#ffffff",edge:"#c3c8cf"};
+      if(t==="tertiary"||t==="tertiary_link") return {wpx:px(11),fill:"#ffffff",edge:"#c3c8cf"};
+      if(t==="service") return {wpx:px(4.5),fill:"#ffffff",edge:"#d4d8de"};
+      return {wpx:px(8),fill:"#ffffff",edge:"#c9cdd4"};
+    };
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    [0,1].forEach(pass=>{
+      data.roads.forEach(r=>{
+        const st=styleFor(r.t);
+        ctx.beginPath();
+        r.p.forEach((pt,i)=>{ const X=sx(pt[0]),Y=sy(pt[1]); if(i)ctx.lineTo(X,Y); else ctx.moveTo(X,Y); });
+        if(pass===0){ ctx.strokeStyle=st.edge; ctx.lineWidth=st.wpx+2; }
+        else { ctx.strokeStyle=st.fill; ctx.lineWidth=st.wpx; }
+        ctx.stroke();
+      });
+    });
+    // Street names
+    if(v.zoom>=15.8){
+      ctx.font="600 11px -apple-system, system-ui, sans-serif";
+      const placed=[];
+      data.roads.forEach(r=>{
+        if(!r.n) return;
+        let best=null,bestLen=0;
+        for(let i=1;i<r.p.length;i++){
+          const x1=sx(r.p[i-1][0]),y1=sy(r.p[i-1][1]),x2=sx(r.p[i][0]),y2=sy(r.p[i][1]);
+          const mx=(x1+x2)/2,my=(y1+y2)/2;
+          if(mx<0||my<0||mx>w||my>h) continue;
+          const len=Math.hypot(x2-x1,y2-y1);
+          if(len>bestLen){bestLen=len;best=[x1,y1,x2,y2,mx,my];}
+        }
+        if(!best||bestLen<60) return;
+        const mx=best[4],my=best[5];
+        if(placed.some(p=>(Math.abs(p[0]-mx)<110&&Math.abs(p[1]-my)<26&&p[2]===r.n) || (Math.abs(p[0]-mx)<70&&Math.abs(p[1]-my)<14))) return;
+        placed.push([mx,my,r.n]);
+        let ang=Math.atan2(best[3]-best[1],best[2]-best[0]);
+        if(ang>Math.PI/2) ang-=Math.PI;
+        if(ang<-Math.PI/2) ang+=Math.PI;
+        ctx.save(); ctx.translate(mx,my); ctx.rotate(ang);
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.strokeStyle="rgba(255,255,255,0.9)"; ctx.lineWidth=3; ctx.strokeText(r.n,0,0);
+        ctx.fillStyle="#5b6470"; ctx.fillText(r.n,0,0);
+        ctx.restore();
+      });
+    }
+    // Area names (over roads so they stay readable)
+    data.bounds.forEach(b=>{
+      if(!b.name) return;
+      let cx2=0,cy2=0; b.p.forEach(pt=>{cx2+=pt[0];cy2+=pt[1];}); cx2/=b.p.length; cy2/=b.p.length;
+      const X=sx(cx2),Y=sy(cy2);
+      if(X<-50||Y<-50||X>w+50||Y>h+50) return;
+      ctx.font="800 12px -apple-system, system-ui, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=3; ctx.strokeText(b.name,X,Y);
+      ctx.fillStyle="#6b7280"; ctx.fillText(b.name,X,Y);
+    });
+    // No street data yet (downloaded before this feature / Overpass hiccup)
+    if(!data.roads.length && !data.buildings.length){
+      ctx.font="600 13px -apple-system, system-ui, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle="#8a919c";
+      ctx.fillText("Re-download your areas (while you have service)", w/2, h/2-10);
+      ctx.fillText("to add the street map here.", w/2, h/2+10);
+    }
+    // Pins
+    (pinsRef.current||[]).forEach(p=>{
+      const X=sx(OSM_MERC.x(p.lng)), Y=sy(OSM_MERC.y(p.lat));
+      if(X<-30||Y<-30||X>w+30||Y>h+30) return;
+      if(p.plain){
+        ctx.beginPath(); ctx.arc(X,Y,9,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,255,255,0.9)"; ctx.fill();
+        ctx.strokeStyle="#1a2456"; ctx.lineWidth=2; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(X,Y,13,0,Math.PI*2);
+        ctx.fillStyle=p.color||"#10b981"; ctx.fill();
+        ctx.strokeStyle="#ffffff"; ctx.lineWidth=2.5; ctx.stroke();
+        if(p.emoji){ ctx.font="13px -apple-system, system-ui, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(p.emoji,X,Y+0.5); }
+      }
+    });
+    // My location — blue dot + accuracy halo
+    const loc=myLocRef.current;
+    if(loc){
+      const X=sx(OSM_MERC.x(loc.lng)), Y=sy(OSM_MERC.y(loc.lat));
+      if(loc.acc){
+        const mpp=156543.03392*Math.cos(loc.lat*Math.PI/180)/Math.pow(2,v.zoom);
+        const rPx=loc.acc/Math.max(mpp,0.0001);
+        if(rPx>14&&rPx<240){ ctx.beginPath(); ctx.arc(X,Y,rPx,0,Math.PI*2); ctx.fillStyle="rgba(66,133,244,0.12)"; ctx.fill(); }
+      }
+      ctx.beginPath(); ctx.arc(X,Y,8,0,Math.PI*2);
+      ctx.fillStyle="#4285F4"; ctx.fill();
+      ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; ctx.stroke();
+    }
+    // OpenStreetMap attribution (required for OSM data)
+    ctx.font="10px -apple-system, system-ui, sans-serif"; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=3; ctx.strokeText("© OpenStreetMap contributors",8,h-8);
+    ctx.fillStyle="#7a828d"; ctx.fillText("© OpenStreetMap contributors",8,h-8);
+  },[data]);
+
+  const rafRef=React.useRef(0);
+  const requestDraw=React.useCallback(()=>{
+    if(rafRef.current) return;
+    rafRef.current=requestAnimationFrame(()=>{ rafRef.current=0; draw(); });
+  },[draw]);
+  React.useEffect(()=>{ requestDraw(); }); // pins / myLoc / anything → repaint (rAF-deduped)
+
+  // First fit + resize
+  const fitRef=React.useRef(false);
+  React.useEffect(()=>{
+    const wrap=wrapRef.current; if(!wrap) return;
+    const fit=()=>{
+      const w=wrap.clientWidth,h=wrap.clientHeight;
+      if(!w||!h) return;
+      if(!fitRef.current && isFinite(data.minX)){
+        fitRef.current=true;
+        const spanX=Math.max(data.maxX-data.minX,1e-9), spanY=Math.max(data.maxY-data.minY,1e-9);
+        const z=Math.min(Math.log2(w*0.85/(spanX*256)), Math.log2(h*0.85/(spanY*256)));
+        viewRef.current={cx:(data.minX+data.maxX)/2, cy:(data.minY+data.maxY)/2, zoom:Math.max(13,Math.min(19,z))};
+      }
+      requestDraw();
+    };
+    fit();
+    let ro=null;
+    if(window.ResizeObserver){ ro=new ResizeObserver(fit); ro.observe(wrap); }
+    else window.addEventListener("resize",fit);
+    return ()=>{ if(ro) ro.disconnect(); else window.removeEventListener("resize",fit); };
+  },[data,requestDraw]);
+
+  // Live GPS — satellites, not cell towers, so this works with zero service.
+  React.useEffect(()=>{
+    if(!navigator.geolocation) return;
+    const id=navigator.geolocation.watchPosition(
+      pos=>{ setMyLoc({lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy}); },
+      ()=>{}, {enableHighAccuracy:true, maximumAge:3000, timeout:20000});
+    return ()=>navigator.geolocation.clearWatch(id);
+  },[]);
+
+  const screenToWorld=(pxx,pyy)=>{
+    const wrap=wrapRef.current,v=viewRef.current;
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    const scale=256*Math.pow(2,v.zoom);
+    return [ (pxx-w/2)/scale+v.cx, (pyy-h/2)/scale+v.cy ];
+  };
+  const zoomAround=(x,y,dz)=>{
+    const v=viewRef.current, wrap=wrapRef.current;
+    if(!wrap) return;
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    const wpt=screenToWorld(x,y);
+    v.zoom=Math.max(12.5,Math.min(20,v.zoom+dz));
+    const scale=256*Math.pow(2,v.zoom);
+    v.cx=wpt[0]-(x-w/2)/scale; v.cy=wpt[1]-(y-h/2)/scale;
+    requestDraw();
+  };
+  const zoomAroundRef=React.useRef(zoomAround); zoomAroundRef.current=zoomAround;
+  const zoomCenter=(dz)=>{
+    const wrap=wrapRef.current; if(!wrap) return;
+    zoomAround(wrap.clientWidth/2, wrap.clientHeight/2, dz);
+  };
+  const centerOnMe=()=>{
+    const go=(lat,lng)=>{ const v=viewRef.current; v.cx=OSM_MERC.x(lng); v.cy=OSM_MERC.y(lat); if(v.zoom<17) v.zoom=17.5; requestDraw(); };
+    if(myLocRef.current){ go(myLocRef.current.lat,myLocRef.current.lng); return; }
+    if(navigator.geolocation) navigator.geolocation.getCurrentPosition(
+      p=>{ setMyLoc({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}); go(p.coords.latitude,p.coords.longitude); },
+      ()=>{}, {enableHighAccuracy:true,timeout:8000});
+  };
+
+  const handleTap=(x,y)=>{
+    const v=viewRef.current, wrap=wrapRef.current;
+    if(!wrap) return;
+    const scale=256*Math.pow(2,v.zoom);
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    // Nearest pin within 24px wins
+    let best=null,bestD=1e9;
+    (pinsRef.current||[]).forEach(p=>{
+      const X=(OSM_MERC.x(p.lng)-v.cx)*scale+w/2, Y=(OSM_MERC.y(p.lat)-v.cy)*scale+h/2;
+      const d=Math.hypot(X-x,Y-y);
+      if(d<24&&d<bestD){bestD=d;best=p;}
+    });
+    if(best){ if(onTapPin) onTapPin(best); return; }
+    // Otherwise: a tap inside a building outline = tap that house (like the
+    // building bubbles on the live map).
+    if(v.zoom<15.2) return;
+    const wpt=screenToWorld(x,y);
+    for(const b of data.buildings){
+      let inside=false; const P=b.p;
+      for(let i=0,j=P.length-1;i<P.length;j=i++){
+        const xi=P[i][0],yi=P[i][1],xj=P[j][0],yj=P[j][1];
+        const inter=((yi>wpt[1])!==(yj>wpt[1])) && (wpt[0]<(xj-xi)*(wpt[1]-yi)/(yj-yi)+xi);
+        if(inter) inside=!inside;
+      }
+      if(inside){
+        let la=0,ln=0; b.ll.forEach(pt=>{la+=pt[0];ln+=pt[1];}); la/=b.ll.length; ln/=b.ll.length;
+        if(onTapBuilding) onTapBuilding({lat:la,lng:ln,addr:b.a||""});
+        return;
+      }
+    }
+  };
+
+  // Gestures: 1 finger pans, 2 fingers pinch-zoom, quick tap selects, double-tap zooms.
+  const ptrs=React.useRef(new Map());
+  const gestRef=React.useRef(null);
+  const tapRef=React.useRef(null);
+  const lastTapRef=React.useRef(0);
+  const onDown=(e)=>{
+    e.preventDefault();
+    const r=canvasRef.current.getBoundingClientRect();
+    const x=e.clientX-r.left,y=e.clientY-r.top;
+    try{ canvasRef.current.setPointerCapture(e.pointerId); }catch(err){}
+    ptrs.current.set(e.pointerId,{x,y});
+    const v=viewRef.current;
+    if(ptrs.current.size===1){
+      gestRef.current={mode:"pan",sx:x,sy:y,cx:v.cx,cy:v.cy,zoom:v.zoom};
+      tapRef.current={x,y,t:Date.now(),moved:false};
+    } else if(ptrs.current.size===2){
+      const pts=[...ptrs.current.values()];
+      const mx=(pts[0].x+pts[1].x)/2, my=(pts[0].y+pts[1].y)/2;
+      gestRef.current={mode:"pinch",d0:Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y),z0:v.zoom,world:screenToWorld(mx,my)};
+      tapRef.current=null;
+    }
+  };
+  const onMove=(e)=>{
+    if(!ptrs.current.has(e.pointerId)) return;
+    const r=canvasRef.current.getBoundingClientRect();
+    const x=e.clientX-r.left,y=e.clientY-r.top;
+    ptrs.current.set(e.pointerId,{x,y});
+    const g=gestRef.current,v=viewRef.current;
+    if(!g) return;
+    if(g.mode==="pan"&&ptrs.current.size===1){
+      const dx=x-g.sx, dy=y-g.sy;
+      if(tapRef.current&&Math.hypot(dx,dy)>8) tapRef.current.moved=true;
+      const scale=256*Math.pow(2,g.zoom);
+      v.cx=g.cx-dx/scale; v.cy=g.cy-dy/scale;
+      requestDraw();
+    } else if(g.mode==="pinch"&&ptrs.current.size>=2){
+      const pts=[...ptrs.current.values()];
+      const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+      let z=g.z0+Math.log2(Math.max(d,10)/Math.max(g.d0,10));
+      z=Math.max(12.5,Math.min(20,z));
+      const wrap=wrapRef.current,w=wrap.clientWidth,h=wrap.clientHeight;
+      const mx=(pts[0].x+pts[1].x)/2,my=(pts[0].y+pts[1].y)/2;
+      const scale=256*Math.pow(2,z);
+      v.zoom=z;
+      v.cx=g.world[0]-(mx-w/2)/scale;
+      v.cy=g.world[1]-(my-h/2)/scale;
+      requestDraw();
+    }
+  };
+  const onUp=(e)=>{
+    ptrs.current.delete(e.pointerId);
+    if(ptrs.current.size===0){
+      const t=tapRef.current; gestRef.current=null;
+      if(t&&!t.moved&&Date.now()-t.t<600){
+        const now=Date.now();
+        if(now-lastTapRef.current<320){ lastTapRef.current=0; zoomAround(t.x,t.y,1); }
+        else { lastTapRef.current=now; handleTap(t.x,t.y); }
+      }
+      tapRef.current=null;
+    } else if(ptrs.current.size===1){
+      const pts=[...ptrs.current.values()];
+      const v=viewRef.current;
+      gestRef.current={mode:"pan",sx:pts[0].x,sy:pts[0].y,cx:v.cx,cy:v.cy,zoom:v.zoom};
+    }
+  };
+  // Desktop scroll-wheel zoom (native listener — React's onWheel is passive)
+  React.useEffect(()=>{
+    const c=canvasRef.current; if(!c) return;
+    const onWheel=(e)=>{ e.preventDefault(); const r=c.getBoundingClientRect(); zoomAroundRef.current(e.clientX-r.left, e.clientY-r.top, e.deltaY<0?0.5:-0.5); };
+    c.addEventListener("wheel", onWheel, {passive:false});
+    return ()=>c.removeEventListener("wheel", onWheel);
+  },[]);
+
+  return (
+    <div ref={wrapRef} style={{position:"absolute",inset:0,zIndex:150,background:"#eef0f3",overflow:"hidden",touchAction:"none",overscrollBehavior:"none"}}>
+      <canvas ref={canvasRef}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        style={{display:"block",width:"100%",height:"100%",touchAction:"none",cursor:"grab"}}/>
+      <div style={{position:"absolute",right:12,bottom:96,display:"flex",flexDirection:"column",gap:8,zIndex:10}}>
+        <button onClick={()=>zoomCenter(1)} style={{width:46,height:46,borderRadius:12,border:"none",background:"rgba(20,20,30,0.85)",color:"#fff",fontSize:22,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.35)"}}>＋</button>
+        <button onClick={()=>zoomCenter(-1)} style={{width:46,height:46,borderRadius:12,border:"none",background:"rgba(20,20,30,0.85)",color:"#fff",fontSize:22,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.35)"}}>－</button>
+        <button onClick={centerOnMe} style={{width:46,height:46,borderRadius:12,border:"none",background:"rgba(20,20,30,0.85)",color:"#fff",fontSize:18,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.35)"}}>➤</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Canvass Tab ───────────────────────────────────────────────────────
-function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds, onPitchRecorded}) {
+function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, canvassLeadFilter, setCanvassLeadFilter, currentUser, isOwner, teams, teamMembers, profiles, allowedOwnerIds, onPitchRecorded}) {
+  // Offline fallback: when the app booted with no service the live leads never
+  // loaded — use the lead pins snapshotted inside downloaded areas instead.
+  const [offlineMode, setOfflineMode] = React.useState(false);
+  const leads = React.useMemo(()=>{
+    if(Array.isArray(leadsProp)&&leadsProp.length) return leadsProp;
+    if(offlineMode || navigator.onLine===false){ const c=OfflineAreas.allLeads(); if(c.length) return c; }
+    return leadsProp||[];
+  },[leadsProp, offlineMode]);
+  // Offline lead pins still need coordinates — seed the geocode cache from the
+  // snapshot so the pin-placement effect finds every address without network.
+  React.useEffect(()=>{
+    if(!offlineMode) return;
+    try{
+      const cache=geoCacheLoad(); let dirty=false;
+      for(const l of OfflineAreas.allLeads()){
+        const k=(l.address||"").trim().toLowerCase();
+        if(k&&l.lat&&l.lng&&!cache[k]){ cache[k]={lat:+l.lat,lng:+l.lng}; dirty=true; }
+      }
+      if(dirty) geoCacheSave();
+    }catch(e){}
+  },[offlineMode]);
+  // Re-render tick so download/remove buttons refresh their badges instantly.
+  const [dlTick, setDlTick] = React.useState(0);
+  const [dlBusy, setDlBusy] = React.useState(null); // area id while its download runs
+  // Google Maps script never loaded (opened with no service) — offline map takes over.
+  const [mapsFailed, setMapsFailed] = React.useState(false);
+  const [netDown, setNetDown] = React.useState(typeof navigator!=="undefined" && navigator.onLine===false);
+  // Downloaded snapshots on this phone. When there's no service (or Maps can't
+  // load), canvass switches to the self-drawn offline street map built from them.
+  const offlineEntries = React.useMemo(()=>Object.values(OfflineAreas.all()), [dlTick, offlineMode, mapsFailed, netDown]);
+  const offlineMapOn = (offlineMode || mapsFailed || netDown) && offlineEntries.length>0;
+  // Snapshot an area to this device: boundary + every home pin & disposition
+  // inside it + the lead pins currently showing (with their coordinates).
+  const downloadArea = async (a) => {
+    try{
+      const path = a.path||[];
+      if(path.length<3){ alert("This area has no boundary drawn."); return; }
+      setDlBusy(a.id);
+      const hs = (homesRef.current||[]).filter(h=>h&&h.lat&&h.lng&&pointInPolygon({lat:+h.lat,lng:+h.lng}, path));
+      const cache = geoCacheLoad();
+      const ls = [];
+      for(const l of (leads||[])){
+        if(!l||!l.address) continue;
+        const g = cache[(l.address||"").trim().toLowerCase()];
+        if(g && pointInPolygon({lat:+g.lat,lng:+g.lng}, path)){
+          ls.push({id:l.id,name:l.name,address:l.address,phone:l.phone,email:l.email,stage:l.stage,notes:l.notes,owner_id:l.owner_id,temperature:l.temperature,appointment:l.appointment,cb_event_id:l.cb_event_id,gcal_event_id:l.gcal_event_id,is_arc:l.is_arc,on_hold:l.on_hold,needs_cancel_save:l.needs_cancel_save,lat:g.lat,lng:g.lng});
+        }
+      }
+      // Street map for offline: roads + building outlines from OpenStreetMap.
+      // (Google's own tiles can't legally be downloaded — OSM data can.) Drawn
+      // by OfflineStreetMap whenever there's no service.
+      let mapData = null;
+      try{
+        const lats=path.map(p=>+p.lat), lngs=path.map(p=>+p.lng);
+        const pad=0.0018; // ~180m of context past the boundary
+        const bbox=`${Math.min(...lats)-pad},${Math.min(...lngs)-pad},${Math.max(...lats)+pad},${Math.max(...lngs)+pad}`;
+        const q=`[out:json][timeout:30];(way["highway"](${bbox});way["building"](${bbox}););out geom 6000;`;
+        const res=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:`data=${encodeURIComponent(q)}`,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+        if(!res.ok) throw new Error("Overpass HTTP "+res.status);
+        const data=await res.json();
+        const ROAD_KEEP={motorway:1,trunk:1,primary:1,secondary:1,tertiary:1,residential:1,unclassified:1,living_street:1,service:1,motorway_link:1,trunk_link:1,primary_link:1,secondary_link:1,tertiary_link:1};
+        const r6=(x)=>Math.round(x*1e6)/1e6;
+        const roads=[],buildings=[];
+        (data.elements||[]).forEach(el=>{
+          if(!el.geometry||el.geometry.length<2||!el.tags) return;
+          const pts=el.geometry.map(g=>[r6(g.lat),r6(g.lon)]);
+          if(el.tags.building){
+            const t=el.tags;
+            const addr=[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ");
+            buildings.push(addr?{p:pts,a:addr}:{p:pts});
+          } else if(el.tags.highway && ROAD_KEEP[el.tags.highway]){
+            roads.push({t:el.tags.highway,n:el.tags.name||"",p:pts});
+          }
+        });
+        if(roads.length||buildings.length) mapData={roads,buildings};
+      }catch(me){ console.warn("Street-map download failed (pins still saved):", me); }
+      const ok = OfflineAreas.save(a, hs, ls, mapData);
+      setDlBusy(null);
+      setDlTick(t=>t+1);
+      alert(ok
+        ? `📴 "${a.name||"Area"}" saved to this phone:\n\n• ${hs.length} house pin${hs.length===1?"":"s"} & dispositions\n• ${ls.length} lead pin${ls.length===1?"":"s"}\n• ${mapData?`Street map (${mapData.roads.length} roads, ${mapData.buildings.length} buildings)`:"Street map didn't download — re-download to retry"}\n\nWith no service, canvass switches to the downloaded street map — pins show, dispositions and notes save on the phone, and everything uploads automatically when service returns.\n\nTip: re-download now and then so the offline copy stays current.`
+        : "Couldn't save this area to the phone — device storage may be full.");
+    }catch(e){ setDlBusy(null); console.error("Area download failed:",e); alert("Download failed: "+((e&&e.message)||"unknown error")); }
+  };
   const myProfile = profiles&&currentUser ? profiles.find(p=>p.id===currentUser.id) : null;
   const isManager = myProfile&&myProfile.role==="manager";
   const isCloser = myProfile&&myProfile.role==="closer";
@@ -10439,7 +11027,15 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
 
   const loadAreas = async () => {
     try { const {data}=await sb.from("canvass_areas").select("*"); if(Array.isArray(data)){ setAreas(data); } }
-    catch(e){ console.error("loadAreas:", e); }
+    catch(e){
+      console.error("loadAreas:", e);
+      // No service — show the areas snapshotted on this phone so their rows
+      // (and offline badges) still render.
+      try{
+        const cached=Object.values(OfflineAreas.all()).map(x=>x&&x.area).filter(Boolean);
+        if(cached.length) setAreas(cached);
+      }catch(e2){}
+    }
   };
   React.useEffect(()=>{ loadAreas(); },[]);
 
@@ -10578,8 +11174,39 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     script.src=`https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&libraries=places`;
     script.async=true;
     script.onload=()=>setMapLoaded(true);
-    script.onerror=()=>setMapError("Failed to load Google Maps. Check your API key.");
+    script.onerror=()=>{
+      // No service (or bad key). If this phone has downloaded areas, canvass
+      // still runs on the offline street map instead of an error screen.
+      setMapsFailed(true);
+      if(Object.keys(OfflineAreas.all()).length===0) setMapError("Failed to load Google Maps. Check your API key.");
+    };
     document.head.appendChild(script);
+  },[]);
+
+  // Track service coming and going: when it returns, reload homes (clears offline
+  // mode) and retry the Maps script if it never loaded at boot.
+  React.useEffect(()=>{
+    const up=()=>{
+      setNetDown(false);
+      loadHomes();
+      if(!(window.google && window.google.maps)){
+        const oldTag=document.getElementById("gmaps-script");
+        if(oldTag) oldTag.remove();
+        const sc=document.createElement("script");
+        sc.id="gmaps-script";
+        sc.src=`https://maps.googleapis.com/maps/api/js?key=${gmapsKey}&libraries=places`;
+        sc.async=true;
+        sc.onload=()=>{ setMapsFailed(false); setMapLoaded(true); };
+        sc.onerror=()=>setMapsFailed(true);
+        document.head.appendChild(sc);
+      } else {
+        setMapsFailed(false);
+      }
+    };
+    const down=()=>setNetDown(true);
+    window.addEventListener("online",up);
+    window.addEventListener("offline",down);
+    return ()=>{ window.removeEventListener("online",up); window.removeEventListener("offline",down); };
   },[]);
 
   React.useEffect(()=>{ loadHomes(); },[]);
@@ -10632,11 +11259,33 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   },[jumpLead,mapLoaded]);
 
   const loadHomes=async()=>{
+    // Merge helper: overlay any queued-but-unsynced offline edits so they never
+    // vanish from the map while waiting for service.
+    const withPending=(base)=>{
+      const pend=CanvassPending.all();
+      if(!pend.length) return base;
+      const by={}; base.forEach(h=>{ if(h&&h.id) by[h.id]=h; });
+      pend.forEach(p=>{ by[p.id]={...(by[p.id]||{}),...p}; });
+      return Object.values(by);
+    };
     try{
-      const {data}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
-      setHomes(data||[]);
-      homesRef.current=data||[];
-    }catch(e){console.error("Canvass load error:",e);}
+      const {data,error}=await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
+      if(error) throw error;
+      const merged=withPending(data||[]);
+      setHomes(merged);
+      homesRef.current=merged;
+      setOfflineMode(false);
+    }catch(e){
+      console.error("Canvass load error:",e);
+      // NO SERVICE → fall back to this device's downloaded areas.
+      const cached=OfflineAreas.allHomes();
+      if(cached.length){
+        const merged=withPending(cached);
+        setHomes(merged);
+        homesRef.current=merged;
+        setOfflineMode(true);
+      }
+    }
   };
 
   // Belt-and-braces pull-to-refresh guard. Some mobile browsers still run the
@@ -10952,6 +11601,67 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
     ? (leads||[]).map(l=>l.id+":"+l.stage+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")).join(",")
     : "";
 
+  // Pins for the offline street map. Unlike the live map's default (dispositions
+  // hidden until filtered), offline shows EVERY downloaded disposition — seeing
+  // what's already been knocked is the whole point of downloading the area.
+  const offlinePins = React.useMemo(()=>{
+    if(!offlineMapOn) return [];
+    const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
+    const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
+    const hasFilter=activeFilters&&activeFilters.length>0;
+    const out=[];
+    const pinnedKeys=[];
+    (homes||[]).forEach(home=>{
+      if(!home||!home.lat||!home.lng) return;
+      const la=parseFloat(home.lat), ln=parseFloat(home.lng);
+      if(isNaN(la)||isNaN(ln)) return;
+      if(allowedOwnerIds && (!home.added_by || !allowedOwnerIds.has(home.added_by))) return;
+      const disp=home.prescreen||"";
+      if(hasFilter && !(disp && activeFilters.includes("disp:"+disp))) return;
+      if(home.address) pinnedKeys.push(home.address.split(",")[0].toLowerCase().trim());
+      if(disp) out.push({lat:la,lng:ln,emoji:dispEmojis[disp]||"",color:dispColors[disp]||"rgba(255,255,255,0.7)",home});
+      else out.push({lat:la,lng:ln,plain:true,home});
+    });
+    (leads||[]).forEach(lead=>{
+      if(!lead) return;
+      let la=lead.lat, ln=lead.lng;
+      if(!(la&&ln) && lead.address){
+        const g=geoCacheLoad()[(lead.address||"").trim().toLowerCase()];
+        if(g){ la=g.lat; ln=g.lng; }
+      }
+      if(!(la&&ln)) return;
+      if(lead.address && pinnedKeys.some(k=>k && lead.address.toLowerCase().includes(k))) return;
+      if(hasFilter && !leadMatchesCanvassFilters(lead, activeFilters)) return;
+      const vis=leadPinVisual(lead, activeFilters||[]);
+      out.push({lat:+la,lng:+ln,emoji:vis.emoji,color:vis.color,lead});
+    });
+    return out;
+  },[offlineMapOn, homes, leads, activeFilters, scopeKey]);
+
+  const offlineTapPin=(p)=>{
+    if(p.home){ setSelectedHome(p.home); return; }
+    if(p.lead){
+      const l=p.lead;
+      setSelectedHome({id:null,_isPipelineLead:true,_leadId:l.id,address:l.address||"",owner_name:l.name||"",phone:l.phone||"",email:l.email||"",notes:l.notes||"",prescreen:"lead",lat:+p.lat,lng:+p.lng});
+    }
+  };
+  const offlineTapBuilding=(b)=>{
+    // Same nearest-match rule as the live map's building bubbles (≈13m).
+    const TOL=0.00012;
+    let savedHome=null,bestD=Infinity;
+    for(const h of (homesRef.current||[])){
+      if(!(h&&h.lat&&h.lng)) continue;
+      const dLat=Math.abs(parseFloat(h.lat)-b.lat), dLng=Math.abs(parseFloat(h.lng)-b.lng);
+      if(dLat<TOL&&dLng<TOL){ const d=dLat*dLat+dLng*dLng; if(d<bestD){bestD=d;savedHome=h;} }
+    }
+    if(savedHome){ setSelectedHome(savedHome); return; }
+    // No service → no geocoder. Use the building's own OSM address when it has
+    // one; otherwise store raw coordinates — they're swapped for the real street
+    // address automatically when the pin uploads.
+    const fallback=`${b.lat.toFixed(5)}, ${b.lng.toFixed(5)}`;
+    setSelectedHome({id:null,address:b.addr||fallback,owner_name:"",phone:"",notes:"",prescreen:"",lat:b.lat,lng:b.lng,_isTemp:true});
+  };
+
   // Draw pins whenever the data / filters / scope actually change or the map is ready.
   React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, warmLeadKey, leadLinkKey, mapReady]);
   // Safety redraw shortly after the map instance exists (covers slow mobile init).
@@ -11108,7 +11818,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         lng:coords?.lng||null,
         updated_at:new Date().toISOString(),
       };
-      await sb.from("canvass_homes").insert(payload);
+      await canvassHomeSave({...payload, id:makeNoteId()});
       setAddForm({address:"",ownerName:"",phone:"",prescreen:"",notes:""});
       setShowAddForm(false);
       await loadHomes();
@@ -11129,7 +11839,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
   const prescreenLabel=(p)=>({yes:"✓ Interested",maybe:"Maybe",no:"Not Interested",no_answer:"No Answer"})[p]||"";
   const prescreenColor=(p)=>({yes:"#10b981",maybe:"#f59e0b",no:"#ef4444",no_answer:"#94a3b8"})[p]||"#94a3b8";
 
-  if(mapError) return(
+  if(mapError && !offlineMapOn) return(
     <div style={{minHeight:400,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
       <div style={{fontSize:40,marginBottom:16}}>🗺️</div>
       <div style={{fontSize:16,fontWeight:700,color:"#ef4444",marginBottom:8}}>Map Error</div>
@@ -11182,9 +11892,18 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
         <div ref={mapRef} style={{width:"100%",height:"100%",touchAction:"none",overscrollBehavior:"none"}}/>
       )}
 
+      {/* Offline street map — drawn from downloaded OpenStreetMap data when there's
+          no service (Google's tiles can't be saved). Covers the live map while active;
+          the live map stays mounted underneath and takes over when service returns. */}
+      {offlineMapOn && (
+        <OfflineStreetMap entries={offlineEntries} pins={offlinePins}
+          onTapPin={offlineTapPin} onTapBuilding={offlineTapBuilding}/>
+      )}
+
       {/* Left side controls — like the reference image */}
-      {mapLoaded && (
+      {(mapLoaded||offlineMapOn) && (
         <div style={{position:"absolute",top:12,left:12,display:"flex",flexDirection:"column",gap:8,zIndex:200}}>
+          {!offlineMapOn && <>
           {/* Satellite toggle */}
           <button onClick={()=>{
             if(!mapInstanceRef.current)return;
@@ -11210,6 +11929,7 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           <button onClick={goToMyLocation} style={btnStyle} title="My Location">
             <span style={{fontSize:20}}>{locating?"⏳":"➤"}</span>
           </button>
+          </>}
 
           {/* Filter */}
           <button ref={filterBtnRef} onClick={()=>setShowFilter(f=>!f)}
@@ -11223,10 +11943,11 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             style={{...btnStyle,border:showAreaPanel?"2px solid #10b981":"none",background:showAreaPanel?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title="Area Management">
             <span style={{fontSize:20}}>🗺️</span>
           </button>
-          {/* Add home */}
-          <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
+          {/* Add home (needs the geocoder, so hidden while offline — tap a
+              building outline on the street map to pin a house instead) */}
+          {!offlineMapOn && <button onClick={()=>setShowAddForm(true)} style={{...btnStyle,background:"rgba(26,36,86,0.9)"}} title="Add Home">
             <span style={{fontSize:22,color:"#fff",fontWeight:700}}>+</span>
-          </button>
+          </button>}
         </div>
       )}
 
@@ -11318,15 +12039,34 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
                 <button onClick={startAreaDraw} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#1a2456",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12}}>＋ Add Area</button>
               )}
               <div style={{color:"#94a3b8",fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>Areas on your team{isOwner?"s":""}</div>
-              {(areas||[]).filter(a=>!a.team_id||areaVisibleTeamIds().has(a.team_id)).length===0 && (
+              {(areas||[]).filter(a=>offlineMapOn||!a.team_id||areaVisibleTeamIds().has(a.team_id)).length===0 && (
                 <div style={{color:"#94a3b8",fontSize:12}}>No areas yet.{canEditAreas?" Tap “Add Area” to draw one.":""}</div>
               )}
-              {(areas||[]).filter(a=>!a.team_id||areaVisibleTeamIds().has(a.team_id)).map(a=>(
+              {(areas||[]).filter(a=>offlineMapOn||!a.team_id||areaVisibleTeamIds().has(a.team_id)).map(a=>{
+                const dl = OfflineAreas.get(a.id);
+                return (
                 <div key={a.id} onClick={()=>onAreaClick(a)} style={{background:"rgba(255,255,255,0.05)",borderRadius:8,padding:"9px 10px",marginBottom:6,cursor:"pointer",borderLeft:`3px solid ${a.color||"#6b2d4e"}`}}>
-                  <div style={{color:"#fff",fontSize:13,fontWeight:600}}>{a.name||"Untitled area"}</div>
-                  <div style={{color:"#94a3b8",fontSize:11,marginTop:2}}>{isOwner?areaTeamName(a.team_id)+" · ":""}{(a.rep_ids||[]).map(areaRepName).join(", ")||"No reps"}</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{color:"#fff",fontSize:13,fontWeight:600}}>{a.name||"Untitled area"}</div>
+                      <div style={{color:"#94a3b8",fontSize:11,marginTop:2}}>{isOwner?areaTeamName(a.team_id)+" · ":""}{(a.rep_ids||[]).map(areaRepName).join(", ")||"No reps"}</div>
+                      {dl && <div style={{color:"#4ade80",fontSize:10,fontWeight:700,marginTop:3}}>📴 Saved to this phone · {(dl.homes||[]).length} pins · {(dl.leads||[]).length} leads{dl.map?" · 🗺️ street map":""} · {formatNoteTime(dl.savedAt).split(" · ")[0]}</div>}
+                    </div>
+                    <div style={{display:"flex",gap:5,flexShrink:0}} onClick={e=>e.stopPropagation()}>
+                      <button onClick={()=>downloadArea(a)} disabled={dlBusy===a.id} title={dl?"Re-download with the latest pins":"Download this area for offline use"}
+                        style={{background:dl?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.12)",border:`1px solid ${dl?"#4ade80":"rgba(255,255,255,0.25)"}`,borderRadius:8,padding:"6px 9px",fontSize:13,color:dl?"#4ade80":"#fff",cursor:"pointer",lineHeight:1,opacity:dlBusy===a.id?0.6:1}}>
+                        {dlBusy===a.id?"⏳":(dl?"🔄":"⬇️")}
+                      </button>
+                      {dl && (
+                        <button onClick={()=>{ if(window.confirm(`Remove "${a.name||"this area"}" from this phone's offline storage? (The area itself is untouched.)`)){ OfflineAreas.remove(a.id); setDlTick(t=>t+1); } }}
+                          title="Remove the offline copy from this phone"
+                          style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,padding:"6px 9px",fontSize:13,color:"#f87171",cursor:"pointer",lineHeight:1}}>✕</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -11342,6 +12082,12 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             <circle cx="21" cy="21" r="2" fill="#fff"/>
             <text x="21" y="13" textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">N</text>
           </svg>
+        </div>
+      )}
+      {/* Offline banner — the map is running from downloaded areas */}
+      {(offlineMode||offlineMapOn) && (
+        <div style={{position:"absolute",top:12,left:"50%",transform:"translateX(-50%)",zIndex:450,background:"rgba(180,83,9,0.96)",color:"#fff",borderRadius:20,padding:"7px 14px",fontSize:12,fontWeight:800,boxShadow:"0 2px 10px rgba(0,0,0,0.4)",whiteSpace:"nowrap",pointerEvents:"none"}}>
+          📴 Offline — {offlineMapOn?"street map from downloads":"downloaded areas"}{CanvassPending.count()>0?` · ${CanvassPending.count()} saved, waiting to upload`:""}
         </div>
       )}
       {/* Custom fullscreen button — left of eye */}
@@ -11494,22 +12240,23 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
             const isClearing = !disp; // toggling off
             if(home._isTemp||home._isPipelineLead||!home.id){
               if(!isClearing){
-                // Save new canvass pin first
-                const {data} = await sb.from("canvass_homes").insert({
+                // Save new canvass pin first (client id → works with zero service)
+                const row = {
+                  id:makeNoteId(),
                   address:home.address,lat:home.lat,lng:home.lng,
                   owner_name:home.owner_name||null,phone:home.phone||null,
                   notes:home.notes||null,prescreen:disp||null,
                   added_by:currentUser?.id||null,
-                  updated_at:new Date().toISOString()
-                }).select().single();
-                if(data){
-                  savedId=data.id;
-                  setHomes(hs=>[...hs,{...data}]);
-                  setSelectedHome(h=>({...h,id:data.id,_isTemp:false,_isPipelineLead:false,prescreen:disp}));
+                };
+                const r = await canvassHomeSave(row);
+                if(r.ok||r.queued){
+                  savedId=row.id;
+                  setHomes(hs=>[...hs,{...row}]);
+                  setSelectedHome(h=>({...h,id:row.id,_isTemp:false,_isPipelineLead:false,prescreen:disp}));
                 }
               }
             } else {
-              await sb.from("canvass_homes").update({prescreen:disp||null,updated_at:new Date().toISOString()}).eq("id",home.id);
+              await canvassHomeSave({id:home.id, prescreen:disp||null});
               setHomes(hs=>hs.map(h=>h.id===home.id?{...h,prescreen:disp}:h));
               setSelectedHome(h=>({...h,prescreen:disp}));
             }
@@ -11558,17 +12305,15 @@ function CanvassTab({gmapsKey, leads, onCreateLead, onStageChange, canvassLeadFi
           onSaveNote={async(home,note)=>{
             if(!home.id) return;
             const noteVal = note||null;
-            await sb.from("canvass_homes").update({notes:noteVal,updated_at:new Date().toISOString()}).eq("id",home.id);
-            // Reload homes fresh from DB
-            const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
-            if(data){setHomes(data);homesRef.current=data;}
+            await canvassHomeSave({id:home.id, notes:noteVal});
+            // Local refresh (works offline too — no network reload needed)
+            setHomes(hs=>{ const i=hs.findIndex(h=>h.id===home.id); const next=i>=0?hs.map(h=>h.id===home.id?{...h,notes:noteVal}:h):[{...home,notes:noteVal},...hs]; homesRef.current=next; return next; });
             setSelectedHome(h=>({...h,id:home.id,notes:noteVal,_isTemp:false,_isPipelineLead:false}));
           }}
           onSaveOwner={async(home)=>{
             if(!home.id) return;
-            // Reload homes fresh from DB (owner_name already written by HomePopup)
-            const {data} = await sb.from("canvass_homes").select("*").order("created_at",{ascending:false});
-            if(data){setHomes(data);homesRef.current=data;}
+            // Local merge (owner_name already written by HomePopup — works offline)
+            setHomes(hs=>{ const i=hs.findIndex(h=>h.id===home.id); const next=i>=0?hs.map(h=>h.id===home.id?{...h,...home}:h):[{...home},...hs]; homesRef.current=next; return next; });
             setSelectedHome(h=>({...h,id:home.id,owner_name:home.owner_name,phone:home.phone,email:home.email,_isTemp:false,_isPipelineLead:false}));
           }}
           onCreateLead={onCreateLead}
