@@ -8491,28 +8491,71 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           if(typeof v==="boolean") return v?"Yes":"No";
           return String(v);
         };
+        // Commission ALWAYS shows — "$X,XXX" when entered, "not input" when not.
+        const commissionVal = (l)=>{
+          if(!pfNonEmpty(l.commission)) return "not input";
+          const raw=String(l.commission).trim();
+          const parts=raw.split(".");
+          const withCommas=(parts[0]||"").replace(/\B(?=(\d{3})+(?!\d))/g,",");
+          return "$"+(parts[1]!==undefined?withCommas+"."+parts[1]:withCommas);
+        };
+        const extraAppts = (l)=>Array.isArray(l.extra_appointments)&&l.extra_appointments.length
+          ? l.extra_appointments.map(a=>[a&&a.label,a&&a.ts?new Date(a.ts).toLocaleString():""].filter(Boolean).join(" ")).join(" · ") : "";
+        const fileNames = (l)=>Array.isArray(l.lead_files)&&l.lead_files.length
+          ? l.lead_files.map(f=>(f&&f.name)||"File").join(", ") : "";
+        // Rapport / objections → readable label:value pairs (only what's filled).
+        const rapportEntries = (r)=>{
+          if(!r||typeof r!=="object") return [];
+          const out=[];
+          RAPPORT_TEXT_FIELDS.forEach(f=>{ if(String(r[f.key]||"").trim()) out.push([f.label, String(r[f.key]).trim()]); });
+          if(String(r.years_in_home||"").trim()) out.push(["Years in home", r.years_in_home]);
+          RAPPORT_YESNO_FIELDS.forEach(f=>{ if(r[f.key]==="Yes"||r[f.key]==="No") out.push([f.label, r[f.key]]); });
+          RAPPORT_MULTI_FIELDS.forEach(f=>{ if(Array.isArray(r[f.key])&&r[f.key].length) out.push([f.label, r[f.key].join(", ")]); });
+          if(String(r.notes||"").trim()) out.push(["Rapport notes", r.notes]);
+          return out;
+        };
+        const objectionEntries = (o)=>{
+          if(!o||typeof o!=="object") return [];
+          const out=[];
+          const items=Array.isArray(o.items)?o.items:[];
+          if(items.length) out.push(["Selected", items.join(" · ")]);
+          if(String(o.other||"").trim()) out.push(["Other", o.other]);
+          return out;
+        };
         // Field groups for readable display.
         const groups = (l)=>([
           ["Customer", [["Name",l.name],["Address",l.address],["Phone",l.phone],["Email",l.email],["Secondary name",l.secondary_name],["Secondary phone",l.secondary_phone],["Secondary email",l.secondary_email]]],
           ["Status", [["Stage",l.stage],["Temperature",l.temperature],["Soft/Solid",l.soft_solid],["Confirmed",l.confirmed],["Contact status",l.contact_status],["Priority",l.priority],["ARC/Cancel",l.is_arc],["ARC stage",l.arc_stage],["On hold",l.on_hold],["On hold stage",l.on_hold_stage],["Needs cancel save",l.needs_cancel_save],["Cancel-save stage",l.ncs_stage],["Gift card dropped",l.gift_card_dropped],["Bill retrieved",l.bill_retrieved]]],
           ["Utility", [["Utility",l.utility],["ESIID",l.esiid],["Meter #",l.meter],["Usage input",l.usage_input],["¢/kWh",l.cents_kwh],["Annual kWh",l.annual_kwh],["Average bill",l.average_bill],["Autopay",l.autopay_input],["Knew solar",l.knew_solar],["Closer inside",l.closer_inside]]],
-          ["Sold system", [["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
+          ["Sold system", [["Commission",commissionVal(l)],["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
           ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
-          ["Appointments", [["Closer/CB",l.appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
-          ["Meta", [["Owner",repName(l.owner_id)],["Assist (50% split)",l.assist_id?repName(l.assist_id):""],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
+          ["Appointments", [["Closer/CB",l.appointment],["Close",l.close_appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up appt",l.followup_appointment],["Extra",extraAppts(l)],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
+          ["Rapport", rapportEntries(l.rapport)],
+          ["Objections", objectionEntries(l.objections)],
+          ["Meta", [["Owner",repName(l.owner_id)],["Assist (50% split)",l.assist_id?repName(l.assist_id):""],["Files",fileNames(l)],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
         ]);
         const exportCsv = ()=>{
-          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","appointment","cap_appointment","install_appointment","cs_appointment","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
-          const esc = (s)=>`"${String(s===null||s===undefined?"":Array.isArray(s)?s.join("; "):s).replace(/"/g,'""')}"`;
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
+          const esc = (s)=>{
+            let v = (s===null||s===undefined) ? "" : s;
+            if(Array.isArray(v)) v = v.map(x=>(x&&typeof x==="object")?JSON.stringify(x):x).join("; ");
+            else if(typeof v==="object") v = JSON.stringify(v);
+            return `"${String(v).replace(/"/g,'""')}"`;
+          };
           const noteText = (l)=>{
             const slog = Array.isArray(l.setter_notes_log)?l.setter_notes_log.map(n=>`[${n.by||""} ${n.ts||""}] ${n.text||""}`).join(" | "):"";
             const log = Array.isArray(l.closer_notes_log)?l.closer_notes_log.map(n=>`[${n.by||""} ${n.ts||""}] ${n.text||""}`).join(" | "):"";
-            return [l.notes||"", slog, log].filter(Boolean).join("  ||  ");
+            const legacy = (!Array.isArray(l.closer_notes_log)||l.closer_notes_log.length===0) && l.closer_notes ? `[closer] ${l.closer_notes}` : "";
+            return [l.notes||"", slog, log, legacy].filter(Boolean).join("  ||  ");
           };
           const histText = (l)=>Array.isArray(l.history)?l.history.map(h=>`[${h.ts||""} ${h.by||""}] ${Array.isArray(h.changes)?h.changes.join("; "):(h.change||h.text||"")}`).join("  ||  "):"";
           const header = ["owner","assist",...keys,"closer_notes","history"].join(",");
-          const rows = pool.map(l=>[esc(repName(l.owner_id)),esc(l.assist_id?repName(l.assist_id):""),...keys.map(k=>esc(l[k])),esc(noteText(l)),esc(histText(l))].join(","));
+          const rows = pool.map(l=>[esc(repName(l.owner_id)),esc(l.assist_id?repName(l.assist_id):""),...keys.map(k=>{
+            let v = l[k];
+            if(k==="commission" && !pfNonEmpty(v)) v = "not input";
+            return esc(v);
+          }),esc(noteText(l)),esc(histText(l))].join(","));
           const csv = [header,...rows].join("\n");
           const blob = new Blob([csv],{type:"text/csv"});
           const url = URL.createObjectURL(blob);
@@ -8580,7 +8623,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       );
                     })}
                     {/* Notes — always show if present */}
-                    {(l.notes || (Array.isArray(l.setter_notes_log)&&l.setter_notes_log.length>0) || (Array.isArray(l.closer_notes_log)&&l.closer_notes_log.length>0)) && (
+                    {(l.notes || l.closer_notes || (Array.isArray(l.setter_notes_log)&&l.setter_notes_log.length>0) || (Array.isArray(l.closer_notes_log)&&l.closer_notes_log.length>0)) && (
                       <div style={{marginTop:6,borderTop:`1px solid ${dark?"#334155":"#f1f5f9"}`,paddingTop:8}}>
                         <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Notes</div>
                         {l.notes && <div style={{fontSize:12,color:dark?"#e2e8f0":"#1e293b",whiteSpace:"pre-wrap",marginBottom:6}}>{l.notes}</div>}
@@ -8594,6 +8637,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                             <span style={{color:"#94a3b8",fontSize:11}}>{n.by||"—"}{n.ts?` · ${n.ts}`:""}: </span>{n.text||""}
                           </div>
                         ))}
+                        {(!Array.isArray(l.closer_notes_log)||l.closer_notes_log.length===0) && l.closer_notes && (
+                          <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155",background:dark?"#0f172a":"#f8fafc",borderRadius:6,padding:"6px 8px",marginBottom:4}}>
+                            <span style={{color:"#94a3b8",fontSize:11}}>closer: </span>{l.closer_notes}
+                          </div>
+                        )}
                       </div>
                     )}
                     {/* History — full stage-change / edit log */}
