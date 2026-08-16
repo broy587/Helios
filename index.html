@@ -6498,7 +6498,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
-          <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={inputStyle}/>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={{...inputStyle,flex:1}}/>
+            {form.utility && <CopyIcon value={form.utility}/>}
+          </div>
         </div>
         {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
@@ -6512,7 +6515,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 </a>
               )}
             </div>
-            <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={inputStyle}/>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={{...inputStyle,flex:1}}/>
+              {form[k] && <CopyIcon value={form[k]}/>}
+            </div>
           </div>
         ))}
         <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -6525,35 +6531,44 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-            <input type="text" inputMode="decimal" placeholder=".16"
-              value={form.centsKwh||""}
-              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
-              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
-            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
+              <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+              <input type="text" inputMode="decimal" placeholder=".16"
+                value={form.centsKwh||""}
+                onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
+                style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
+              <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
+            </div>
+            {form.centsKwh && <CopyIcon value={form.centsKwh}/>}
           </div>
         </div>
         {/* Annual kWh — a plain kWh number */}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Annual kWh <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <input type="text" inputMode="decimal" placeholder="e.g. 14000"
-              value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
-              style={{...inputStyle,paddingRight:52}}/>
-            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
+              <input type="text" inputMode="decimal" placeholder="e.g. 14000"
+                value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
+                style={{...inputStyle,paddingRight:52}}/>
+              <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
+            </div>
+            {form.annualKwh && <CopyIcon value={form.annualKwh}/>}
           </div>
         </div>
         {/* Average Bill — a dollar amount */}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Average Bill <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-            <input type="text" inputMode="decimal" placeholder="0.00"
-              value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-              onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
-              style={{...inputStyle,paddingLeft:24}}/>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
+              <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+              <input type="text" inputMode="decimal" placeholder="0.00"
+                value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
+                style={{...inputStyle,paddingLeft:24}}/>
+            </div>
+            {form.averageBill && <CopyIcon value={form.averageBill}/>}
           </div>
         </div>
           </div>)}
