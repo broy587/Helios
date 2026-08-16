@@ -10959,36 +10959,69 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       // Street map for offline: roads + building outlines from OpenStreetMap.
       // (Google's own tiles can't legally be downloaded — OSM data can.) Drawn
       // by OfflineStreetMap whenever there's no service.
+      // Big areas failed as ONE giant request (timeout / rate limit), so the
+      // boundary is split into ~1.2km tiles fetched one at a time, each with a
+      // retry on a mirror server. Partial success still saves what it got.
       let mapData = null;
+      let tileNote = "";
       try{
         const lats=path.map(p=>+p.lat), lngs=path.map(p=>+p.lng);
         const pad=0.0018; // ~180m of context past the boundary
-        const bbox=`${Math.min(...lats)-pad},${Math.min(...lngs)-pad},${Math.max(...lats)+pad},${Math.max(...lngs)+pad}`;
-        const q=`[out:json][timeout:30];(way["highway"](${bbox});way["building"](${bbox}););out geom 6000;`;
-        const res=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:`data=${encodeURIComponent(q)}`,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
-        if(!res.ok) throw new Error("Overpass HTTP "+res.status);
-        const data=await res.json();
+        const s0=Math.min(...lats)-pad, w0=Math.min(...lngs)-pad;
+        const n0=Math.max(...lats)+pad, e0=Math.max(...lngs)+pad;
+        const MAXT=4; // grid cap per axis (≤16 tiles; tiles grow for huge areas)
+        const rows=Math.min(MAXT, Math.max(1, Math.ceil((n0-s0)/0.012)));
+        const cols=Math.min(MAXT, Math.max(1, Math.ceil((e0-w0)/0.012)));
+        const dLat=(n0-s0)/rows, dLng=(e0-w0)/cols;
+        const ENDPOINTS=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+        const fetchTile=async(bbox)=>{
+          const q=`[out:json][timeout:25];(way["highway"](${bbox});way["building"](${bbox}););out geom 6000;`;
+          let lastErr=null;
+          for(const ep of ENDPOINTS){
+            try{
+              const res=await fetch(ep,{method:"POST",body:`data=${encodeURIComponent(q)}`,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+              if(!res.ok) throw new Error("HTTP "+res.status);
+              return await res.json();
+            }catch(e){ lastErr=e; await new Promise(r=>setTimeout(r,1200)); }
+          }
+          throw lastErr||new Error("overpass failed");
+        };
         const ROAD_KEEP={motorway:1,trunk:1,primary:1,secondary:1,tertiary:1,residential:1,unclassified:1,living_street:1,service:1,motorway_link:1,trunk_link:1,primary_link:1,secondary_link:1,tertiary_link:1};
         const r6=(x)=>Math.round(x*1e6)/1e6;
-        const roads=[],buildings=[];
-        (data.elements||[]).forEach(el=>{
-          if(!el.geometry||el.geometry.length<2||!el.tags) return;
-          const pts=el.geometry.map(g=>[r6(g.lat),r6(g.lon)]);
-          if(el.tags.building){
-            const t=el.tags;
-            const addr=[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ");
-            buildings.push(addr?{p:pts,a:addr}:{p:pts});
-          } else if(el.tags.highway && ROAD_KEEP[el.tags.highway]){
-            roads.push({t:el.tags.highway,n:el.tags.name||"",p:pts});
+        const roads=[],buildings=[],seenIds=new Set();
+        let okTiles=0; const totTiles=rows*cols;
+        for(let ri=0;ri<rows;ri++){
+          for(let ci=0;ci<cols;ci++){
+            const bbox=`${s0+ri*dLat},${w0+ci*dLng},${s0+(ri+1)*dLat},${w0+(ci+1)*dLng}`;
+            try{
+              const data=await fetchTile(bbox);
+              (data.elements||[]).forEach(el=>{
+                if(!el.geometry||el.geometry.length<2||!el.tags) return;
+                if(el.id!=null){ if(seenIds.has(el.id)) return; seenIds.add(el.id); }
+                const pts=el.geometry.map(g=>[r6(g.lat),r6(g.lon)]);
+                if(el.tags.building){
+                  const t=el.tags;
+                  const addr=[t["addr:housenumber"],t["addr:street"]].filter(Boolean).join(" ");
+                  buildings.push(addr?{p:pts,a:addr}:{p:pts});
+                } else if(el.tags.highway && ROAD_KEEP[el.tags.highway]){
+                  roads.push({t:el.tags.highway,n:el.tags.name||"",p:pts});
+                }
+              });
+              okTiles++;
+            }catch(te){ console.warn("Street-map tile failed:", bbox, te); }
+            if(totTiles>1) await new Promise(r=>setTimeout(r,350)); // be gentle — sequential, spaced
           }
-        });
-        if(roads.length||buildings.length) mapData={roads,buildings};
+        }
+        if(roads.length||buildings.length){
+          mapData={roads,buildings};
+          if(okTiles<totTiles) tileNote=` — ${okTiles}/${totTiles} sections came through, re-download to fill the rest`;
+        }
       }catch(me){ console.warn("Street-map download failed (pins still saved):", me); }
       const ok = OfflineAreas.save(a, hs, ls, mapData);
       setDlBusy(null);
       setDlTick(t=>t+1);
       alert(ok
-        ? `📴 "${a.name||"Area"}" saved to this phone:\n\n• ${hs.length} house pin${hs.length===1?"":"s"} & dispositions\n• ${ls.length} lead pin${ls.length===1?"":"s"}\n• ${mapData?`Street map (${mapData.roads.length} roads, ${mapData.buildings.length} buildings)`:"Street map didn't download — re-download to retry"}\n\nWith no service, canvass switches to the downloaded street map — pins show, dispositions and notes save on the phone, and everything uploads automatically when service returns.\n\nTip: re-download now and then so the offline copy stays current.`
+        ? `📴 "${a.name||"Area"}" saved to this phone:\n\n• ${hs.length} house pin${hs.length===1?"":"s"} & dispositions\n• ${ls.length} lead pin${ls.length===1?"":"s"}\n• ${mapData?`Street map (${mapData.roads.length} roads, ${mapData.buildings.length} buildings)${tileNote}`:"Street map didn't download — re-download to retry"}\n\nWith no service, canvass switches to the downloaded street map — pins show, dispositions and notes save on the phone, and everything uploads automatically when service returns.\n\nTip: re-download now and then so the offline copy stays current.`
         : "Couldn't save this area to the phone — device storage may be full.");
     }catch(e){ setDlBusy(null); console.error("Area download failed:",e); alert("Download failed: "+((e&&e.message)||"unknown error")); }
   };
