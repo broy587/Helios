@@ -187,7 +187,18 @@ const PendingSaves = {
           if(error) throw error;
           if(item.photos && item.photos.length){
             // Photos are a bonus — never let them block the lead itself from saving.
-            try { await sb.from("leads").update({bill_photos:item.photos}).eq("id", item.viewId); }
+            try {
+              if(item.photosAppend){
+                // Added while the DB list was unknown (offline) — append to what's
+                // there NOW; replacing would wipe the lead's older photos.
+                const {data:cur}=await sb.from("leads").select("bill_photos").eq("id",item.viewId).maybeSingle();
+                const curList=(cur&&Array.isArray(cur.bill_photos))?cur.bill_photos:[];
+                const merged=[...curList, ...item.photos.filter(p=>!curList.includes(p))];
+                await sb.from("leads").update({bill_photos:merged}).eq("id", item.viewId);
+              } else {
+                await sb.from("leads").update({bill_photos:item.photos}).eq("id", item.viewId);
+              }
+            }
             catch(pe){ console.warn("Photos didn't upload for", item.viewId, pe); }
           }
         } else {
@@ -5180,6 +5191,42 @@ function FitText({children, max=14, min=9, style}) {
   );
 }
 
+// Shrink a photo before it's stored on the lead. Bill photos were being saved
+// as RAW multi-MB base64 (one iPhone shot is 4-11MB as base64), which bloated
+// rows, made photo saves fail on weak service, and overflowed the on-device
+// backup — which then dropped the photos. ~1600px JPEG keeps every bill fully
+// readable when zoomed, at a small fraction of the size.
+async function compressPhoto(file){
+  const rawFallback = () => new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=ev=>resolve(ev.target.result);
+    r.onerror=reject;
+    r.readAsDataURL(file);
+  });
+  try{
+    const url=URL.createObjectURL(file);
+    const img=await new Promise((resolve,reject)=>{
+      const i=new Image();
+      i.onload=()=>resolve(i);
+      i.onerror=reject;
+      i.src=url;
+    });
+    const MAX=1600;
+    let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    if(!w||!h){ URL.revokeObjectURL(url); return await rawFallback(); }
+    if(w>MAX||h>MAX){ const k=Math.min(MAX/w,MAX/h); w=Math.round(w*k); h=Math.round(h*k); }
+    const c=document.createElement("canvas");
+    c.width=w; c.height=h;
+    c.getContext("2d").drawImage(img,0,0,w,h);
+    URL.revokeObjectURL(url);
+    const out=c.toDataURL("image/jpeg",0.82);
+    if(out && out.length>50) return out;
+    return await rawFallback();
+  }catch(e){
+    try{ return await rawFallback(); }catch(e2){ throw e; }
+  }
+}
+
 function CopyIcon({value}) {
   const [copied, setCopied] = useState(false);
   if (!value) return null;
@@ -6356,14 +6403,21 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
     setConfirmDelete(false); // never open the form already showing a delete prompt
     setFileErr(""); setUploadingFile(false); setEditImgOpen(null);
     if(initial&&initial.id&&open){
-      // Lazy load photos when editing
-      setForm({...initial,billPhotos:[]});
+      // Lazy load photos when editing. _photosLoaded/_photosBase remember what
+      // the DB actually holds so the save can tell "changed" from "never loaded"
+      // (the lead object in state NEVER carries bill_photos — LEAD_SELECT skips it).
+      setForm({...initial,billPhotos:[],_photosLoaded:false,_photosBase:[]});
       setSaving(false);
       setShowSecondary(!!(initial.secondaryName||initial.secondaryPhone||initial.secondaryEmail));
       sb.from("leads").select("bill_photos").eq("id",initial.id).single()
-        .then(({data})=>{
-          setForm(f=>({...f,billPhotos:data?.bill_photos||[]}));
-        });
+        .then(({data,error})=>{
+          if(error){ console.error("bill_photos load failed:",error); return; }
+          const dbPhotos = Array.isArray(data&&data.bill_photos)?data.bill_photos:[];
+          // MERGE with anything the rep added while this was loading — the old
+          // overwrite silently threw away photos added in those first seconds.
+          setForm(f=>({...f, billPhotos:[...dbPhotos, ...(f.billPhotos||[])], _photosLoaded:true, _photosBase:dbPhotos}));
+        })
+        .catch(err=>{ console.error("bill_photos load threw:",err); });
     } else {
       setForm(initial||emptyForm);
       setSaving(false);
@@ -6374,10 +6428,11 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
   const handleSave=async(e)=>{if(e&&e.stopPropagation)e.stopPropagation();setSaving(true);await onSave(form);setSaving(false);};
   const handlePhoto=e=>{
-    Array.from(e.target.files).forEach(file=>{
-      const reader=new FileReader();
-      reader.onload=ev=>setForm(f=>({...f,billPhotos:[...(f.billPhotos||[]),ev.target.result]}));
-      reader.readAsDataURL(file);
+    Array.from(e.target.files).forEach(async(file)=>{
+      try{
+        const dataUrl=await compressPhoto(file);
+        setForm(f=>({...f,billPhotos:[...(f.billPhotos||[]),dataUrl]}));
+      }catch(err){ console.error("photo read failed:",err); }
     });
     if(fileInputRef.current)fileInputRef.current.value="";
   };
@@ -6531,16 +6586,13 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
-              <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-              <input type="text" inputMode="decimal" placeholder=".16"
-                value={form.centsKwh||""}
-                onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
-                style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
-              <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
-            </div>
-            {form.centsKwh && <CopyIcon value={form.centsKwh}/>}
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+            <input type="text" inputMode="decimal" placeholder=".16"
+              value={form.centsKwh||""}
+              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
+              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
+            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
           </div>
         </div>
         {/* Annual kWh — a plain kWh number */}
@@ -10964,6 +11016,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       // retry on a mirror server. Partial success still saves what it got.
       let mapData = null;
       let tileNote = "";
+      let mapErrMsg = "";
       try{
         const lats=path.map(p=>+p.lat), lngs=path.map(p=>+p.lng);
         const pad=0.0018; // ~180m of context past the boundary
@@ -10978,13 +11031,18 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           const q=`[out:json][timeout:25];(way["highway"](${bbox});way["building"](${bbox}););out geom 6000;`;
           let lastErr=null;
           for(const ep of ENDPOINTS){
-            try{
-              const res=await fetch(ep,{method:"POST",body:`data=${encodeURIComponent(q)}`,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
-              if(!res.ok) throw new Error("HTTP "+res.status);
-              return await res.json();
-            }catch(e){ lastErr=e; await new Promise(r=>setTimeout(r,1200)); }
+            for(const method of ["POST","GET"]){
+              try{
+                const res = method==="POST"
+                  ? await fetch(ep,{method:"POST",body:`data=${encodeURIComponent(q)}`,headers:{"Content-Type":"application/x-www-form-urlencoded"}})
+                  : await fetch(`${ep}?data=${encodeURIComponent(q)}`);
+                if(!res.ok) throw new Error("HTTP "+res.status);
+                return await res.json();
+              }catch(e){ lastErr=e; }
+            }
+            await new Promise(r=>setTimeout(r,1200));
           }
-          throw lastErr||new Error("overpass failed");
+          throw lastErr||new Error("no response");
         };
         const ROAD_KEEP={motorway:1,trunk:1,primary:1,secondary:1,tertiary:1,residential:1,unclassified:1,living_street:1,service:1,motorway_link:1,trunk_link:1,primary_link:1,secondary_link:1,tertiary_link:1};
         const r6=(x)=>Math.round(x*1e6)/1e6;
@@ -11008,7 +11066,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
                 }
               });
               okTiles++;
-            }catch(te){ console.warn("Street-map tile failed:", bbox, te); }
+            }catch(te){ mapErrMsg=(te&&te.message)||String(te); console.warn("Street-map tile failed:", bbox, te); }
             if(totTiles>1) await new Promise(r=>setTimeout(r,350)); // be gentle — sequential, spaced
           }
         }
@@ -11021,7 +11079,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       setDlBusy(null);
       setDlTick(t=>t+1);
       alert(ok
-        ? `📴 "${a.name||"Area"}" saved to this phone:\n\n• ${hs.length} house pin${hs.length===1?"":"s"} & dispositions\n• ${ls.length} lead pin${ls.length===1?"":"s"}\n• ${mapData?`Street map (${mapData.roads.length} roads, ${mapData.buildings.length} buildings)${tileNote}`:"Street map didn't download — re-download to retry"}\n\nWith no service, canvass switches to the downloaded street map — pins show, dispositions and notes save on the phone, and everything uploads automatically when service returns.\n\nTip: re-download now and then so the offline copy stays current.`
+        ? `📴 "${a.name||"Area"}" saved to this phone:\n\n• ${hs.length} house pin${hs.length===1?"":"s"} & dispositions\n• ${ls.length} lead pin${ls.length===1?"":"s"}\n• ${mapData?`Street map (${mapData.roads.length} roads, ${mapData.buildings.length} buildings)${tileNote}`:`Street map didn't download${mapErrMsg?` (${mapErrMsg})`:""} — re-download to retry`}\n\nWith no service, canvass switches to the downloaded street map — pins show, dispositions and notes save on the phone, and everything uploads automatically when service returns.\n\nTip: re-download now and then so the offline copy stays current.\n\n(offline map v2)`
         : "Couldn't save this area to the phone — device storage may be full.");
     }catch(e){ setDlBusy(null); console.error("Area download failed:",e); alert("Download failed: "+((e&&e.message)||"unknown error")); }
   };
@@ -15964,8 +16022,10 @@ function App() {
     if(existing){
       const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage",is_arc:"ARC Status"};
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(form[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${form[key]||"-"}"`);}
-      const pc=(existing.bill_photos||[]).length,nc=(form.billPhotos||[]).length;
-      if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
+      const pc=(form._photosLoaded?(form._photosBase||[]):[]).length,nc=(form.billPhotos||[]).length;
+      if(form._photosLoaded){
+        if(nc>pc)changes.push(`Photos: Added ${nc-pc}`);else if(nc<pc)changes.push(`Photos: Removed ${pc-nc}`);
+      } else if(nc>0){ changes.push(`Photos: Added ${nc}`); }
       // Note piles: record every added / edited / deleted setter follow-up and
       // closer note in the history, so the entry's "by" shows who did it.
       const trunc=(s)=>{ const t=String(s||"").trim().replace(/\s+/g," "); return t.length>60?t.slice(0,60)+"…":t; };
@@ -15991,10 +16051,21 @@ function App() {
     }
     const author=(profile&&(profile.name||profile.email))||(user&&user.email)||"Unknown";
     const newHistory=existing?(changes.length>0?[{ts:formatTs(),by:author,changes},...(existing.history||[])]:(existing.history||[])):[{ts:formatTs(),by:author,changes:["Lead created"]}];
-    // Split payload — save bill_photos separately only if changed (they're huge)
-    const existingPhotos = modal.lead?.bill_photos || [];
+    // Split payload — save bill_photos separately only if changed (they're huge).
+    // Compare against what the edit modal actually LOADED (_photosBase). The old
+    // compare used modal.lead, which never carries bill_photos (LEAD_SELECT skips
+    // it) — so "changed" was true on every save and every photo re-uploaded every
+    // time, a giant fragile write that failed on weak service and lost photos.
+    const photosLoaded = !!form._photosLoaded;
+    const existingPhotos = photosLoaded ? (form._photosBase || []) : [];
     const newPhotos = form.billPhotos || [];
-    const photosChanged = JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos);
+    const photosChanged = photosLoaded
+      ? JSON.stringify(existingPhotos) !== JSON.stringify(newPhotos)
+      : newPhotos.length > 0;
+    // Photos added before the DB list ever loaded (dead service at the door):
+    // the full list is UNKNOWN, so these must APPEND server-side — a plain
+    // replace would wipe the photos already on the lead.
+    const photosAppendOnly = !photosLoaded && newPhotos.length > 0;
 
     const payload={name:form.name||"",address:form.address||"",phone:form.phone||"",email:form.email||"",secondary_name:form.secondaryName||"",secondary_phone:form.secondaryPhone||"",secondary_email:form.secondaryEmail||"",appointment:form.appointment||"",gcal_event_id:form.gcal_event_id||null,utility:form.utility||"",usage_input:form.usageInput||"",cents_kwh:form.centsKwh||"",annual_kwh:form.annualKwh||"",average_bill:form.averageBill||"",esiid:form.esiid||"",meter:form.meter||"",notes:form.notes||"",closer_notes:"",closer_notes_log:Array.isArray(form.closerNotesLog)?form.closerNotesLog:[],setter_notes_log:Array.isArray(form.setterNotesLog)?form.setterNotesLog:[],rapport:(form.rapport&&typeof form.rapport==="object")?form.rapport:{},objections:(form.objections&&typeof form.objections==="object")?form.objections:{items:[],other:""},notes_created_at:(()=>{
       // Stamp "First taken" ONLY when this save is the one creating the first note.
@@ -16044,7 +16115,7 @@ function App() {
     // app is closed mid-save, or the page reloads, the lead is already safe on the
     // device and will retry automatically. It's only removed once the save succeeds.
     PendingSaves.put({
-      viewId, isUpdate, payload, photos:newPhotos, ownerId,
+      viewId, isUpdate, payload, photos:photosChanged?newPhotos:[], photosAppend:photosAppendOnly, ownerId,
       createdAt: isUpdate ? (existing&&existing.created_at) || new Date().toISOString() : new Date().toISOString(),
       name: payload.name || "(no name)",
     });
@@ -16066,7 +16137,19 @@ function App() {
             const e=new Error("The database accepted the request but no lead was updated — it may have been deleted, or you may not have permission to edit this lead.");
             e._zeroRows=true; throw e;
           }
-          if(photosChanged){const {error:pe}=await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);if(pe) throw pe;}
+          if(photosChanged){
+            if(photosAppendOnly){
+              const {data:cur,error:ce}=await sb.from("leads").select("bill_photos").eq("id",viewId).maybeSingle();
+              if(ce) throw ce;
+              const curList=(cur&&Array.isArray(cur.bill_photos))?cur.bill_photos:[];
+              const merged=[...curList, ...newPhotos.filter(p=>!curList.includes(p))];
+              const {error:pe}=await sb.from("leads").update({bill_photos:merged}).eq("id",viewId);
+              if(pe) throw pe;
+            } else {
+              const {error:pe}=await sb.from("leads").update({bill_photos:newPhotos}).eq("id",viewId);
+              if(pe) throw pe;
+            }
+          }
         } else {
           const {error}=await sb.from("leads").insert({...payload,bill_photos:newPhotos,id:viewId,owner_id:ownerId,created_at:new Date().toISOString()});
           if(error) throw error;
