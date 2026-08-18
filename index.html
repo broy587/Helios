@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b1";
+const APP_BUILD = "b2";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -7355,16 +7355,37 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label), when:(a.ts && !isNaN(Date.parse(a.ts)))?Date.parse(a.ts):null}); });
           if(!cands.length) return null;
           // SOONEST UPCOMING appointment wins the card (a CAP tomorrow beats a
-          // comeback on the 22nd even if the comeback was booked later). If
-          // nothing is upcoming, fall back to the most recent past appointment.
+          // comeback on the 22nd even if the comeback was booked later). An
+          // appointment holds the card until it ENDS ("to 7:00 PM"), then the
+          // next one takes over. If nothing is upcoming, fall back to the most
+          // recent past appointment.
           const schedOf = (c) => {
             if(c.when) return c.when;
             const d = parse(c.raw);
             return d ? d.getTime() : null;
           };
-          const cutoff = (()=>{ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
+          const endOf = (c) => {
+            try{
+              const raw=c.raw||"";
+              const dashIdx=raw.indexOf(" - ");
+              if(dashIdx>-1){
+                const datePart=raw.substring(0,dashIdx).trim();
+                const afterDash=raw.substring(dashIdx+3).trim();
+                const toIdx=afterDash.indexOf(" to ");
+                if(toIdx>-1){
+                  const d=new Date(`${datePart} ${afterDash.substring(toIdx+4).trim()}`);
+                  if(!isNaN(d.getTime())) return d.getTime();
+                }
+              }
+            }catch(e){}
+            if(c.s===null) return null;
+            const d=new Date(c.s);
+            const hasTime=d.getHours()!==0||d.getMinutes()!==0;
+            return c.s + (hasTime ? 2*3600*1000 : 24*3600*1000); // no end listed: 2h; date-only: all day
+          };
+          const nowMs = Date.now();
           const timed = cands.map(c=>({...c, s:schedOf(c)}));
-          const upcoming = timed.filter(c=>c.s!==null && c.s>=cutoff);
+          const upcoming = timed.filter(c=>c.s!==null && endOf(c)!==null && endOf(c)>=nowMs);
           let best;
           if(upcoming.length){
             best=upcoming[0];
