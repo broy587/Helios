@@ -7268,13 +7268,6 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
           if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
           if(lead.followup_appointment) cands.push({raw:lead.followup_appointment, label:"Follow-Up ", color:"#9333ea", k:bookedKey(at.followup, lead.followup_appointment)});
-          if(lead.on_hold && lead.on_hold_until){
-            // "On hold until" acts as an appointment on the card — never bookable,
-            // set only from the On Hold section. Shows when it's the latest one set.
-            let ohRaw=lead.on_hold_until;
-            try{ const d2=new Date(lead.on_hold_until+"T00:00:00"); ohRaw=`${String(d2.getMonth()+1).padStart(2,"0")}/${String(d2.getDate()).padStart(2,"0")}`; }catch(e){}
-            cands.push({raw:ohRaw, label:"On Hold Removed ", color:"#b45309", k: at.on_hold ? new Date(at.on_hold).getTime() : (Date.parse(lead.on_hold_until+"T09:00:00")||0)});
-          }
           (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label)}); });
           if(!cands.length) return null;
           let best=cands[0];
