@@ -7328,10 +7328,30 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
           if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
           if(lead.followup_appointment) cands.push({raw:lead.followup_appointment, label:"Follow-Up ", color:"#9333ea", k:bookedKey(at.followup, lead.followup_appointment)});
-          (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label)}); });
+          (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label), when:(a.ts && !isNaN(Date.parse(a.ts)))?Date.parse(a.ts):null}); });
           if(!cands.length) return null;
-          let best=cands[0];
-          for(const c of cands.slice(1)){ if(c.k >= best.k) best=c; } // latest booked wins
+          // SOONEST UPCOMING appointment wins the card (a CAP tomorrow beats a
+          // comeback on the 22nd even if the comeback was booked later). If
+          // nothing is upcoming, fall back to the most recent past appointment.
+          const schedOf = (c) => {
+            if(c.when) return c.when;
+            const d = parse(c.raw);
+            return d ? d.getTime() : null;
+          };
+          const cutoff = (()=>{ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
+          const timed = cands.map(c=>({...c, s:schedOf(c)}));
+          const upcoming = timed.filter(c=>c.s!==null && c.s>=cutoff);
+          let best;
+          if(upcoming.length){
+            best=upcoming[0];
+            for(const c of upcoming.slice(1)){ if(c.s < best.s) best=c; }
+          } else {
+            best=timed[0];
+            for(const c of timed.slice(1)){
+              const a=(c.s!==null?c.s:c.k), b=(best.s!==null?best.s:best.k);
+              if(a >= b) best=c;
+            }
+          }
           return <div style={{fontSize:10,color:best.color,fontWeight:700,marginBottom:2}}>{best.label}{fmt(best.raw)}</div>;
         })()}
         {lead.on_hold && lead.on_hold_until && (()=>{
