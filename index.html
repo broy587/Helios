@@ -3959,6 +3959,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         initialChecked={Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({
           autopay_input:form.autopayInput, knew_solar:form.knewSolar, closer_inside:form.closerInside, decision_makers:form.decisionMakers
         })}
+        lead={{email:form.email, secondary_email:form.secondaryEmail, name:form.name}}
         collapsible={true}
         onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
       />
