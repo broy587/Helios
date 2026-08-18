@@ -4227,7 +4227,7 @@ function acItemSatisfied(key, lead) {
       // Requires BOTH: "Bill Acquired" checked in the AC checklist AND at least one
       // uploaded photo or file on the lead (the utility bill photo).
       const billChecked = acHas("Bill Acquired") || !!(lead.bill_retrieved || lead.billRetrieved);
-      const hasPhoto = (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0) || (Array.isArray(lead.lead_files)&&lead.lead_files.length>0);
+      const hasPhoto = (Array.isArray(lead.bill_photos)&&lead.bill_photos.length>0) || (Array.isArray(lead.billPhotos)&&lead.billPhotos.length>0) || (Array.isArray(lead.lead_files)&&lead.lead_files.length>0) || lead.has_bill_photo===true;
       return billChecked && hasPhoto;
     }
     case "confirmation": return nonEmpty(lead.confirmed);
@@ -4290,7 +4290,7 @@ function acRequirementsMissing(lead, req) {
   const billReason = (l)=>{
     const cl = l.ac_checklist || l.acChecklist || [];
     const billChecked = (Array.isArray(cl) && cl.includes("Bill Acquired")) || !!(l.bill_retrieved || l.billRetrieved);
-    const hasPhoto = (Array.isArray(l.bill_photos)&&l.bill_photos.length>0) || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0) || (Array.isArray(l.lead_files)&&l.lead_files.length>0);
+    const hasPhoto = (Array.isArray(l.bill_photos)&&l.bill_photos.length>0) || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0) || (Array.isArray(l.lead_files)&&l.lead_files.length>0) || l.has_bill_photo===true;
     if(billChecked && !hasPhoto) return "Utility bill photo not uploaded";
     if(!billChecked && hasPhoto) return "Mark \"Bill Acquired\" in the Setters AC Checklist";
     return "Utility bill: check \"Bill Acquired\" and upload a photo of the bill";
@@ -13802,7 +13802,7 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
     setLocalLead(l=>({...l,...updated}));
     if(onUpdate) onUpdate(updated);
   };
-  const openBooking = (e) => {
+  const openBooking = async (e) => {
     e.stopPropagation();
     // Booking a closer slot moves the account to AC/Scheduled. So — for EVERYONE,
     // any role — require at least one Setters AC Checklist item first. (CAP, Cancel
@@ -13812,7 +13812,23 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
       const miss = [];
       if(checklist.length===0) miss.push("Mark at least one item in the Setters AC Checklist");
       // Plus any team-configured Rep Management requirements (reps/self-gen/closers).
-      if(acRequirementsActive(acReq)) miss.push(...acRequirementsMissing(localLead, acReq));
+      if(acRequirementsActive(acReq)){
+        let leadForCheck = localLead;
+        // bill_photos are NOT loaded with leads (they're huge, fetched on demand),
+        // so this check can't see photos uploaded in an earlier session. If photos
+        // LOOK missing, ask the DB whether any exist (tiny query — ids only)
+        // before telling the rep their uploaded bill isn't there.
+        const localHas = (Array.isArray(localLead.bill_photos)&&localLead.bill_photos.length>0)
+          || (Array.isArray(localLead.billPhotos)&&localLead.billPhotos.length>0)
+          || localLead.has_bill_photo===true;
+        if(!localHas && localLead.id){
+          try{
+            const {data:ph} = await sb.from("leads").select("id").eq("id", localLead.id).not("bill_photos->0","is",null).maybeSingle();
+            if(ph) leadForCheck = {...localLead, has_bill_photo:true};
+          }catch(e2){ console.warn("bill-photo presence check failed:", e2); }
+        }
+        miss.push(...acRequirementsMissing(leadForCheck, acReq));
+      }
       if(miss.length>0){
         window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
         return;
@@ -15779,11 +15795,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email|rapport|objections|setter_notes_log|notes_created_by/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email","").replace(",rapport","").replace(",objections","").replace(",setter_notes_log","").replace(",notes_created_by",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email|rapport|objections|setter_notes_log|notes_created_by|has_bill_photo/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email","").replace(",rapport","").replace(",objections","").replace(",setter_notes_log","").replace(",notes_created_by","").replace(",has_bill_photo",""));
         return res;
       };
       if (isPrivileged) {
