@@ -6318,7 +6318,7 @@ function CancelReasonModal({initialReason, initialTags, onSave, onClose}) {
     </div>
   );
 }
-function OnHoldModal({initialReason, initialUntil, onSave, onClose}) {
+function OnHoldModal({initialReason, initialUntil, onSave, onClose, leadName, booked, booking, onBook}) {
   const dark = useDark();
   const [reason,setReason] = React.useState(initialReason||"");
   const [until,setUntil] = React.useState(initialUntil||"");
@@ -6335,6 +6335,15 @@ function OnHoldModal({initialReason, initialUntil, onSave, onClose}) {
           <div style={{fontWeight:800,fontSize:14,color:dark?"#f1f5f9":"#0f172a",marginBottom:8}}>On hold until</div>
           <input type="date" value={until} onChange={e=>setUntil(e.target.value)}
             style={{width:"100%",padding:"11px 12px",borderRadius:10,border:`1.5px solid ${dark?"#b45309":"#fcd34d"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+          {until && onBook && (
+            <button onClick={async()=>{ await onBook(until); }} disabled={booking}
+              style={{width:"100%",marginTop:12,padding:"12px 0",borderRadius:10,border:"none",background:booked?"#d97706":"#f59e0b",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",opacity:booking?0.7:1}}>
+              {booking?"Booking…":(booked?"🔄 Rebook on hold date":"📅 Book on hold date")}
+            </button>
+          )}
+          {booked && (
+            <div style={{marginTop:8,fontSize:12,fontWeight:700,color:dark?"#fcd34d":"#b45309"}}>✓ On your calendar as "On Hold Removed - {leadName||"Lead"}"</div>
+          )}
         </div>
         <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,flexShrink:0}}>
           <button onClick={()=>onSave(reason,until)}
@@ -6397,6 +6406,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   })();
   const flagBlockMsg = "This lead can only be moved to ARC / Cancels, On Hold, or Cancel Save once it has reached VC / SRA or later.";
   const [holdModalOpen,setHoldModalOpen]=useState(false); // On Hold reason/date popup
+  const [holdBooking,setHoldBooking]=useState(false); // booking "On Hold Removed" to the rep's calendar
   const [ncsModalOpen,setNcsModalOpen]=useState(false); // Needs Cancel Save reasoning popup
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
@@ -6441,6 +6451,33 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
     if(fileInputRef.current)fileInputRef.current.value="";
   };
   const removePhoto=idx=>setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
+  // Book "On Hold Removed - {name}" on the rep's OWN Google Calendar as an
+  // all-day event on the hold-until date. Personal calendar only — never the
+  // team calendar, never an open slot.
+  const bookOnHoldDate = async (untilArg) => {
+    const date = untilArg || form.onHoldUntil;
+    if(!date){ window.alert("Pick the 'On hold until' date first."); return false; }
+    setHoldBooking(true);
+    try{
+      if(form.on_hold_event_id){ try{ await GCal.deletePersonalCB(form.on_hold_event_id); }catch(e){ console.error(e); } }
+      const ev = await GCal.createPersonalCB(
+        {name:form.name, address:form.address, phone:form.phone, notes:form.onHoldReason},
+        {allDayDate:date},
+        {summary:`On Hold Removed - ${form.name||"Lead"}`, colorId:"5"}
+      );
+      const evId=(ev&&ev.id)||"";
+      setForm(f=>({...f, on_hold_event_id:evId, onHoldUntil:date}));
+      if(form.id && evId){
+        try{ const {error}=await sb.from("leads").update({on_hold_event_id:evId, on_hold_until:date}).eq("id",form.id); if(error) console.warn("on-hold event link will save with the lead:",error); }catch(e){}
+      }
+      setHoldBooking(false);
+      return true;
+    }catch(e){
+      setHoldBooking(false);
+      window.alert("Couldn't add it to your calendar: "+((e&&e.message)||e));
+      return false;
+    }
+  };
   // Attached files (PDFs/docs) — uploaded to storage; only a small URL is stored on
   // the lead, so a file NEVER bloats the lead or slows loading no matter its size.
   const handleLeadFile=async(e)=>{
@@ -6987,12 +7024,20 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
               <div style={{fontSize:13,fontWeight:700,color:form.onHold?(dark?"#fcd34d":"#b45309"):(dark?"#f1f5f9":"#0f172a")}}>⏸️ On Hold</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Pause this lead. Stats will reflect the stage it was in when put on hold.</div>
             </div>
-            <div onClick={()=>{ const turningOn=!form.onHold; if(turningOn && !reachedVC){ window.alert(flagBlockMsg); return; } if(turningOn) setHoldModalOpen(true); setForm(f=>{
+            <div onClick={()=>{ const turningOn=!form.onHold; if(turningOn && !reachedVC){ window.alert(flagBlockMsg); return; } if(turningOn) setHoldModalOpen(true);
+            if(!turningOn && form.on_hold_event_id){
+              // Coming OFF hold — pull the "On Hold Removed" event from the rep's calendar.
+              const ev=form.on_hold_event_id;
+              GCal.deletePersonalCB(ev).catch(e=>console.error("Couldn't remove on-hold event:",e));
+              if(form.id){ sb.from("leads").update({on_hold_event_id:null}).eq("id",form.id).then(()=>{},()=>{}); }
+            }
+            setForm(f=>{
               const on = !f.onHold;
               return {
                 ...f,
                 onHold: on,
                 onHoldStage: on ? f.stage : "",
+                ...(on ? {} : {on_hold_event_id:""}),
                 // Only one of the three pile flags at a time — clear the others.
                 ...(on ? {needsCancelSave:false, ncsStage:"", isArc:false, arcStage:""} : {})
                 // stage does NOT change — On Hold is a flag, not a stage
@@ -7015,6 +7060,19 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
               <div style={{fontSize:12,fontWeight:800,color:form.onHold?(dark?"#fcd34d":"#b45309"):(dark?"#f1f5f9":"#0f172a"),marginBottom:6}}>On hold until</div>
               <input type="date" value={form.onHoldUntil||""} onChange={e=>setForm(f=>({...f,onHoldUntil:e.target.value}))}
                 style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#b45309":"#fcd34d"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              {form.onHoldUntil && (
+                <button type="button" disabled={holdBooking} onClick={()=>bookOnHoldDate()}
+                  style={{width:"100%",marginTop:10,padding:"11px 0",borderRadius:10,border:"none",background:form.on_hold_event_id?"#d97706":"#f59e0b",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",opacity:holdBooking?0.7:1}}>
+                  {holdBooking?"Booking…":(form.on_hold_event_id?"🔄 Rebook on hold date":"📅 Book on hold date")}
+                </button>
+              )}
+              {form.on_hold_event_id && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginTop:6}}>
+                  <span style={{fontSize:11,fontWeight:700,color:dark?"#fcd34d":"#b45309",minWidth:0}}>✓ On your calendar as "On Hold Removed - {form.name||"Lead"}"</span>
+                  <button type="button" onClick={async()=>{ const ev=form.on_hold_event_id; setForm(f=>({...f,on_hold_event_id:""})); if(form.id){ try{ await sb.from("leads").update({on_hold_event_id:null}).eq("id",form.id); }catch(e){} } if(ev){ try{ await GCal.deletePersonalCB(ev); }catch(e){ console.error(e); } } }}
+                    style={{background:"none",border:"none",color:"#94a3b8",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Remove ✕</button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7126,6 +7184,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
       {holdModalOpen && (
         <OnHoldModal
           initialReason={form.onHoldReason} initialUntil={form.onHoldUntil}
+          leadName={form.name} booked={!!form.on_hold_event_id} booking={holdBooking} onBook={bookOnHoldDate}
           onClose={()=>setHoldModalOpen(false)}
           onSave={(reason,until)=>{ setForm(f=>({...f,onHoldReason:reason,onHoldUntil:until})); setHoldModalOpen(false); }}
         />
@@ -15796,11 +15855,11 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo,on_hold_event_id";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email|rapport|objections|setter_notes_log|notes_created_by|has_bill_photo/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email","").replace(",rapport","").replace(",objections","").replace(",setter_notes_log","").replace(",notes_created_by","").replace(",has_bill_photo",""));
+        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email|rapport|objections|setter_notes_log|notes_created_by|has_bill_photo|on_hold_event_id/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email","").replace(",rapport","").replace(",objections","").replace(",setter_notes_log","").replace(",notes_created_by","").replace(",has_bill_photo","").replace(",on_hold_event_id",""));
         return res;
       };
       if (isPrivileged) {
@@ -16107,7 +16166,7 @@ function App() {
       if(existing && existing.notes_created_by) return existing.notes_created_by;
       const hadBefore = existing && (existing.notes||"").trim();
       return hadBefore ? null : ((profile&&(profile.name||profile.email))||(user&&user.email)||null);
-    })(),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,close_appointment:form.close_appointment||"",close_event_id:form.close_event_id||null,followup_appointment:form.followup_appointment||"",followup_event_id:form.followup_event_id||null,appt_ts:(()=>{ const m=(form.appt_ts&&typeof form.appt_ts==="object")?{...form.appt_ts}:{}; const prevUntil=(existing&&existing.on_hold_until)||""; if((form.onHoldUntil||"")!==prevUntil){ if(form.onHoldUntil){ m.on_hold=new Date().toISOString(); } else { delete m.on_hold; } } return m; })(),cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
+    })(),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,close_appointment:form.close_appointment||"",close_event_id:form.close_event_id||null,followup_appointment:form.followup_appointment||"",followup_event_id:form.followup_event_id||null,appt_ts:(()=>{ const m=(form.appt_ts&&typeof form.appt_ts==="object")?{...form.appt_ts}:{}; const prevUntil=(existing&&existing.on_hold_until)||""; if((form.onHoldUntil||"")!==prevUntil){ if(form.onHoldUntil){ m.on_hold=new Date().toISOString(); } else { delete m.on_hold; } } return m; })(),cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,on_hold_event_id:form.onHold?(form.on_hold_event_id||null):null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
@@ -16115,6 +16174,21 @@ function App() {
       viewId=modal.lead.id;
     } else {
       viewId=generateId();
+    }
+
+    // ── Stale-save protection ──────────────────────────────────────────
+    // Only send WORKFLOW fields (stage, bookings, pile flags) that the rep
+    // actually CHANGED in this form. An edit saved from an older snapshot —
+    // a form left open, or an offline save replaying later from the queue —
+    // used to carry its old stage/appointments along and kick the lead BACK
+    // (e.g. AC/Scheduled reverting to Lead: Need Bill/Appointment right after
+    // booking). Dropping unchanged fields means the newest server state wins
+    // for everything the rep didn't touch.
+    if(isUpdate && existing){
+      const norm=(v)=>{ if(v===null||v===undefined||v===""||v===false) return ""; if(typeof v==="object"){ try{ return JSON.stringify(v); }catch(e){ return String(v); } } return String(v); };
+      ["stage","appointment","gcal_event_id","cs_appointment","cs_event_id","close_appointment","close_event_id","followup_appointment","followup_event_id","appt_ts","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","on_hold_event_id"].forEach(k=>{
+        if(norm(payload[k])===norm(existing[k])) delete payload[k];
+      });
     }
 
     // Build the full lead object for local state so the view opens instantly
