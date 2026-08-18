@@ -5978,13 +5978,16 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",stackCount:getApptStack(lead,"cap").length,clear:()=>popAppt("cap","cap_appointment","cap_event_id")},
                       lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cs").length,clear:()=>popAppt("cs","cs_appointment","cs_event_id")},
                       lead.install_appointment && {key:"in",label:"💰 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"in").length,clear:()=>popAppt("in","install_appointment","install_event_id")},
+                      // On-hold reminder — NOT a booking. Lives at the bottom of the
+                      // scheduled list; set/changed only from the On Hold section.
+                      lead.on_hold && lead.on_hold_until && {key:"oh",label:`⏸️ On Hold Removed - ${lead.name||"Lead"}`,val:(()=>{ try{ return new Date(lead.on_hold_until+"T00:00:00").toLocaleDateString(); }catch(e){ return lead.on_hold_until; } })(),color:"#b45309",bg:dark?"rgba(245,158,11,0.12)":"#fffbeb",bd:"#fcd34d",stackCount:0,noClear:true,hint:"Set from the On Hold section — change or remove it there."},
                     ].filter(Boolean);
                     if(cards.length===0) return null;
                     return (
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                         {cards.map(c=>(
-                          <div key={c.key} title={c.noClear?"To change or remove: 🤝 Book Close → 🏢 Closer":undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                          <div key={c.key} title={c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                             <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}{c.stackCount>1 && <span style={{marginLeft:6,fontSize:10,fontWeight:800,color:c.color,background:"rgba(0,0,0,0.06)",borderRadius:8,padding:"1px 6px"}}>{c.stackCount} booked</span>}</span>
                             {!c.noClear && <button onClick={async()=>{
                               const typeName=c.label.replace(/^[^ ]+ /,"");
@@ -6642,6 +6645,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           {form.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {form.cap_appointment}</div>}
           {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>💰 Install: {form.install_appointment}</div>}
           {form.cs_appointment && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(220,38,38,0.14)":"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🛟 Cancel Save: {form.cs_appointment}</div>}
+          {/* On-hold reminder — not bookable, no booking button; comes from the On Hold section */}
+          {form.onHold && form.onHoldUntil && <div style={{fontSize:12,color:"#b45309",background:dark?"rgba(245,158,11,0.14)":"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>⏸️ On Hold Removed - {form.name||"Lead"}: {(()=>{ try{ return new Date(form.onHoldUntil+"T00:00:00").toLocaleDateString(); }catch(e){ return form.onHoldUntil; } })()}</div>}
           {/* Single entry point — reveals the four booking options. */}
           <button type="button" onClick={()=>setShowBookOpts(v=>!v)}
             style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -7263,6 +7268,13 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
           if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
           if(lead.followup_appointment) cands.push({raw:lead.followup_appointment, label:"Follow-Up ", color:"#9333ea", k:bookedKey(at.followup, lead.followup_appointment)});
+          if(lead.on_hold && lead.on_hold_until){
+            // "On hold until" acts as an appointment on the card — never bookable,
+            // set only from the On Hold section. Shows when it's the latest one set.
+            let ohRaw=lead.on_hold_until;
+            try{ const d2=new Date(lead.on_hold_until+"T00:00:00"); ohRaw=`${String(d2.getMonth()+1).padStart(2,"0")}/${String(d2.getDate()).padStart(2,"0")}`; }catch(e){}
+            cands.push({raw:ohRaw, label:"On Hold Removed ", color:"#b45309", k: at.on_hold ? new Date(at.on_hold).getTime() : (Date.parse(lead.on_hold_until+"T09:00:00")||0)});
+          }
           (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label)}); });
           if(!cands.length) return null;
           let best=cands[0];
@@ -16046,6 +16058,7 @@ function App() {
         }
         for(const x of o){ if(x&&x.id&&!nMap.has(x.id)) changes.push(`${label}: Deleted "${trunc(x.text)}"`); }
       };
+      if((existing.on_hold_until||"")!==(form.onHoldUntil||"")) changes.push(`On hold until: "${existing.on_hold_until||"-"}" to "${form.onHoldUntil||"-"}"`);
       logDiff("Setter note", existing.setter_notes_log, form.setterNotesLog);
       logDiff("Closer note", existing.closer_notes_log, form.closerNotesLog, existing.closer_notes);
     }
@@ -16084,7 +16097,7 @@ function App() {
       if(existing && existing.notes_created_by) return existing.notes_created_by;
       const hadBefore = existing && (existing.notes||"").trim();
       return hadBefore ? null : ((profile&&(profile.name||profile.email))||(user&&user.email)||null);
-    })(),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,close_appointment:form.close_appointment||"",close_event_id:form.close_event_id||null,followup_appointment:form.followup_appointment||"",followup_event_id:form.followup_event_id||null,appt_ts:(form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{},cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
+    })(),temperature:form.temperature||null,commission:form.commission||"",gift_card_dropped:form.giftCardDropped||false,stage:form.stage||STAGES[0],bill_retrieved:form.billRetrieved||"",autopay_input:form.autopayInput||"",knew_solar:form.knewSolar||"",closer_inside:form.closerInside||"",decision_makers:form.decisionMakers||"",closer_checklist:Array.isArray(form.closerChecklist)?form.closerChecklist:deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers}),contact_status:form.contactStatus||"",soft_solid:form.softSolid||"",confirmed:form.confirmed||"",is_arc:form.isArc||false,arc_stage:form.isArc?(form.arcStage||form.stage):null,on_hold:form.onHold||false,on_hold_stage:form.onHold?(form.onHoldStage||form.stage):null,needs_cancel_save:form.needsCancelSave||false,ncs_stage:form.needsCancelSave?(form.ncsStage||form.stage):null,ac_checklist:form.acChecklist||[],follow_up_agreed:form.followUpAgreed||"",follow_up_date:form.followUpDate||"",system_size:form.systemSize||"",battery_count:form.batteryCount||"",sold_sun_hours:form.soldSunHours||"",kwh_rate:form.kwhRate||"",monthly:form.monthly||"",offset_pct:form.offset||"",span_panel:form.spanPanel||"",flex:form.flex||"",lead_files:Array.isArray(form.leadFiles)?form.leadFiles:[],cs_appointment:form.cs_appointment||"",cs_event_id:form.cs_event_id||null,close_appointment:form.close_appointment||"",close_event_id:form.close_event_id||null,followup_appointment:form.followup_appointment||"",followup_event_id:form.followup_event_id||null,appt_ts:(()=>{ const m=(form.appt_ts&&typeof form.appt_ts==="object")?{...form.appt_ts}:{}; const prevUntil=(existing&&existing.on_hold_until)||""; if((form.onHoldUntil||"")!==prevUntil){ if(form.onHoldUntil){ m.on_hold=new Date().toISOString(); } else { delete m.on_hold; } } return m; })(),cancel_reason:form.cancelReason||"",cancel_tags:Array.isArray(form.cancelTags)?form.cancelTags:[],on_hold_reason:form.onHoldReason||"",on_hold_until:form.onHoldUntil||null,ncs_reason:form.ncsReason||"",assist_id:form.assistId||null,history:newHistory,updated_at:new Date().toISOString()};
 
     let viewId;
     const isUpdate = !!(modal.lead && modal.lead.id);
