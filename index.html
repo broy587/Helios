@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b4";
+const APP_BUILD = "b5";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -15350,8 +15350,13 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
             const blob = await res.blob();
             return new File([blob], name||"attachment", {type: blob.type||fallbackType});
           };
-          if(gmailPicker.image_url) files.push(await grab(gmailPicker.image_url, gmailPicker.image_name||"photo.jpg", "image/jpeg"));
-          if(gmailPicker.file_url) files.push(await grab(gmailPicker.file_url, gmailPicker.file_name||"attachment.pdf", "application/pdf"));
+          // Gmail's share window derives the SUBJECT from the shared file's name
+          // (it ignores the title we pass) — so name the files after the material.
+          // Bonus: the customer sees a clean attachment name, not "scan_0812.pdf".
+          const base=(gmailPicker.title||"attachment").replace(/[\\/:*?"<>|]+/g,"").trim()||"attachment";
+          const extOf=(name,fb)=>{ const m=/\.[a-z0-9]+$/i.exec(name||""); return m?m[0].toLowerCase():fb; };
+          if(gmailPicker.image_url) files.push(await grab(gmailPicker.image_url, base+" photo"+extOf(gmailPicker.image_name,".jpg"), "image/jpeg"));
+          if(gmailPicker.file_url) files.push(await grab(gmailPicker.file_url, base+extOf(gmailPicker.file_name,".pdf"), "application/pdf"));
           return files;
         };
         const shareWithFiles = async ()=>{
