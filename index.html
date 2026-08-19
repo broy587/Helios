@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b3";
+const APP_BUILD = "b4";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -14781,6 +14781,7 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
   const [pickerMode, setPickerMode] = useState("email"); // "email" | "text"
   const [pickerSearch, setPickerSearch] = useState("");
   const [emailChoice, setEmailChoice] = useState(null); // chosen lead awaiting app/browser pick
+  const [shareStep,setShareStep] = useState(false); // "email copied — paste in To" step before the share sheet
   // Recruit contacts for the "Recruits" template section (same scoping as the
   // Recruits tab: owner/manager see their team's, reps see their own).
   const [recruitContacts, setRecruitContacts] = useState([]);
@@ -15378,16 +15379,33 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
           }catch(e){ window.alert("Couldn't download: "+((e&&e.message)||e)); }
         };
         return (
-        <div onClick={()=>setEmailChoice(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:290,padding:20}}>
+        <div onClick={()=>{ setEmailChoice(null); setShareStep(false); }} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:290,padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:18,width:"100%",maxWidth:360,padding:"20px",boxShadow:"0 12px 40px rgba(0,0,0,0.3)"}}>
             <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Open in Gmail</div>
             <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,lineHeight:1.4}}>Sending “{gmailPicker.title}” to {emailChoice.name||emailChoice.email||"customer"}.{hasAtt?" This template has 📎 attachments — Gmail links can't carry files, so use Share to send with them attached.":""}</div>
-            {hasAtt && canShareFiles && (
-              <button onClick={shareWithFiles}
+            {hasAtt && canShareFiles && !shareStep && (
+              <button onClick={async()=>{ try{ await navigator.clipboard.writeText(emailChoice.email||""); }catch(ce){} setShareStep(true); }}
                 style={{width:"100%",padding:"13px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:17}}>📎</span>
-                <span style={{textAlign:"left"}}>Share with attachments<br/><span style={{fontSize:10,fontWeight:400,opacity:0.85}}>Pick Gmail in the share menu — photo & PDF attach. Their email is copied; paste it in "To".</span></span>
+                <span style={{textAlign:"left"}}>Share with attachments<br/><span style={{fontSize:10,fontWeight:400,opacity:0.85}}>Photo & PDF actually attach in Gmail</span></span>
               </button>
+            )}
+            {hasAtt && canShareFiles && shareStep && (
+              <div style={{marginBottom:12,background:dark?"rgba(5,150,105,0.12)":"#ecfdf5",border:"1.5px solid #10b981",borderRadius:12,padding:"12px"}}>
+                <div style={{fontSize:13,fontWeight:800,color:dark?"#6ee7b7":"#047857",marginBottom:4}}>Sending to {emailChoice.name||"customer"}</div>
+                <div style={{fontSize:12,color:dark?"#a7f3d0":"#065f46",lineHeight:1.5,marginBottom:10}}>
+                  ✓ <strong>{emailChoice.email||"their email"}</strong> is copied.<br/>
+                  The share menu can attach the files but can't fill in the "To" line — so when Gmail opens, <strong>tap To and Paste</strong>.
+                </div>
+                <button onClick={async()=>{ await shareWithFiles(); setShareStep(false); }}
+                  style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",marginBottom:6}}>
+                  Got it — open the share menu
+                </button>
+                <button onClick={async()=>{ try{ await navigator.clipboard.writeText(emailChoice.email||""); window.alert("Copied: "+(emailChoice.email||"")); }catch(ce){ window.alert("Couldn't copy — their email is: "+(emailChoice.email||"")); } }}
+                  style={{width:"100%",padding:"8px 0",borderRadius:9,border:"none",background:"transparent",color:dark?"#6ee7b7":"#047857",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                  Copy their email again
+                </button>
+              </div>
             )}
             <button onClick={()=>{
                 window.location.href = `googlegmail://co?to=${encodeURIComponent(emailChoice.email||"")}&subject=${encodeURIComponent(gmailPicker.title||"")}&body=${encodeURIComponent(gmailPicker.body||"")}`;
