@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b8";
+const APP_BUILD = "b9";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -2999,10 +2999,10 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                     </div>
                   );
                 })}
-                {(ExtraCals.rows||[]).length>0 && (
+                {isOwner && (ExtraCals.rows||[]).length>0 && (
                   <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"16px 0 8px"}}>Standalone calendars</div>
                 )}
-                {(ExtraCals.rows||[]).map(row=>{
+                {isOwner && (ExtraCals.rows||[]).map(row=>{
                   const on = all || (Array.isArray(row.rep_ids)&&row.rep_ids.includes(calAccessOpen));
                   return (
                     <div key={row.id} onClick={()=>{if(!all)handleToggleExtraCal(calAccessOpen,row);}}
