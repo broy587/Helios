@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b6";
+const APP_BUILD = "b8";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -458,6 +458,19 @@ function canBookCapRole(role, isOwner){ return !!isOwner || role==="manager" || 
 const GCAL_CLIENT_ID="108643204458-sp86nq24hv9lc7gon6cfgjngiegvpiof.apps.googleusercontent.com";
 const GCAL_CALENDAR_ID="ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986@group.calendar.google.com";
 // Team calendar map — add new teams here as they get calendars
+// ── Standalone calendars (not tied to a team) ─────────────────────────
+// Rows come from the extra_calendars table. The owner creates one (e.g. a
+// specific closer's booking calendar) and picks which reps can use it. They
+// ride the SAME rails as team calendars: the Calendar tab picker, Book Close
+// slot booking, and the per-device offline calendar cache.
+const ExtraCals = {
+  rows: [],
+  set(rows){ this.rows = Array.isArray(rows) ? rows.filter(r=>r&&r.calendar_id) : []; },
+  embedFor(calendarId){
+    return `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId||"")}&ctz=America%2FChicago&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=1&showCalendars=0&mode=WEEK`;
+  },
+};
+
 const TEAM_CALENDARS = {
   "b1f166c3-661e-4e02-b839-3b9560c9237b": { // Helios
     calendarId: "ecd33aca52f9b98d36a22904d2fb1fe46221c6b4f98ad0a1fb6e7ea5fe045986@group.calendar.google.com",
@@ -2402,6 +2415,23 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
   const [repsListOpen, setRepsListOpen] = useState(false); // collapse the rep list under a dropdown
   const [assignTeamOpen, setAssignTeamOpen] = useState(null);
   const [calAccessOpen, setCalAccessOpen] = useState(null);
+  // Standalone-calendar access lives on the calendar row (rep_ids). This tick
+  // re-renders the Calendar Access modal when those rows change anywhere.
+  const [,setXcalTick] = useState(0);
+  useEffect(()=>{
+    const f=()=>setXcalTick(t=>t+1);
+    window.addEventListener("pp-extracals-changed", f);
+    return ()=>window.removeEventListener("pp-extracals-changed", f);
+  },[]);
+  const handleToggleExtraCal = async (repId, row) => {
+    const cur = Array.isArray(row.rep_ids) ? row.rep_ids : [];
+    const nextIds = cur.includes(repId) ? cur.filter(x=>x!==repId) : [...cur, repId];
+    ExtraCals.set((ExtraCals.rows||[]).map(r=>r.id===row.id?{...r,rep_ids:nextIds}:r));
+    setXcalTick(t=>t+1);
+    const {error} = await sb.from("extra_calendars").update({rep_ids:nextIds}).eq("id",row.id);
+    if(error){ window.alert("Couldn't update calendar access: "+(error.message||error)); }
+    try{ window.dispatchEvent(new Event("pp-extracals-changed")); }catch(e){}
+  };
   const [showEditTeam, setShowEditTeam] = useState(false);
   const [viewingRepProfile, setViewingRepProfile] = useState(null);
   const [editTeamName, setEditTeamName] = useState("");
@@ -2927,6 +2957,8 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
         );
       })()}
 
+      {isOwner && <StandaloneCalendarsSection profiles={profiles}/>}
+
       {calAccessOpen && (()=>{
         const rep=profiles.find(p=>p.id===calAccessOpen);
         const all=!!(rep&&rep.calendar_access_all);
@@ -2939,7 +2971,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                 <div style={{fontWeight:800,fontSize:17,color:dark?"#f1f5f9":"#0f172a"}}>Calendar Access — {rep?.name}</div>
                 <button onClick={()=>setCalAccessOpen(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
               </div>
-              <div style={{fontSize:12,color:"#94a3b8",marginBottom:16,lineHeight:1.5}}>Pick which team calendars {rep?.name||"this rep"} can view in the Calendar tab. Select more than one and they can toggle between them. By default a rep only sees their own team's calendar.</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:16,lineHeight:1.5}}>Pick which calendars {rep?.name||"this rep"} can view in the Calendar tab and book onto. Select more than one and they can toggle between them. By default a rep only sees their own team's calendar.</div>
               <div onClick={()=>handleSetCalAll(calAccessOpen,!all)}
                 style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 14px",borderRadius:12,background:all?(dark?"rgba(16,185,129,0.15)":"#ecfdf5"):(dark?"#0f172a":"#f8fafc"),border:`1.5px solid ${all?"#10b981":(dark?"#334155":"#e2e8f0")}`,cursor:"pointer",marginBottom:16}}>
                 <div>
@@ -2967,6 +2999,22 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                     </div>
                   );
                 })}
+                {(ExtraCals.rows||[]).length>0 && (
+                  <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"16px 0 8px"}}>Standalone calendars</div>
+                )}
+                {(ExtraCals.rows||[]).map(row=>{
+                  const on = all || (Array.isArray(row.rep_ids)&&row.rep_ids.includes(calAccessOpen));
+                  return (
+                    <div key={row.id} onClick={()=>{if(!all)handleToggleExtraCal(calAccessOpen,row);}}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`,cursor:all?"default":"pointer"}}>
+                      <div style={{width:34,height:34,borderRadius:8,background:"linear-gradient(135deg,#1a2456,#6b2d4e)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>📅</div>
+                      <div style={{flex:1,fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{row.name||"Calendar"}</div>
+                      <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${on?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {on && <span style={{color:"#fff",fontSize:14,fontWeight:900,lineHeight:1}}>✓</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -2976,6 +3024,120 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
       {/* Close dropdown on outside click */}
       {repActionOpen && <div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setRepActionOpen(null)}/>}
       {viewingRepProfile && <RepProfileModal rep={viewingRepProfile} teams={teams} teamMembers={teamMembers} onClose={()=>setViewingRepProfile(null)}/>}
+    </div>
+  );
+}
+
+// ── Standalone calendars manager (owner only, Team tab) ────────────────
+// Create calendars that are NOT tied to a team (e.g. one closer's booking
+// calendar) and grant specific reps access. Reps with access see it in the
+// Calendar tab and can book closes onto it like any team calendar.
+function StandaloneCalendarsSection({profiles}) {
+  const dark=useDark();
+  const [rows,setRows]=useState([]);
+  const [openId,setOpenId]=useState(null); // calendar whose rep list is expanded
+  const [adding,setAdding]=useState(false);
+  const [form,setForm]=useState({name:"",calendar_id:""});
+  const [saving,setSaving]=useState(false);
+  const load=async()=>{
+    try{
+      const {data,error}=await sb.from("extra_calendars").select("*").order("created_at",{ascending:true});
+      if(error) throw error;
+      const rs=Array.isArray(data)?data:[];
+      setRows(rs); ExtraCals.set(rs);
+    }catch(e){ console.error("extra calendars:",e); }
+  };
+  useEffect(()=>{ load(); },[]);
+  const announce=()=>{ try{ window.dispatchEvent(new Event("pp-extracals-changed")); }catch(e){} };
+  const saveNew=async()=>{
+    const name=(form.name||"").trim(), cid=(form.calendar_id||"").trim();
+    if(!name||!cid){ window.alert("Give the calendar a name and paste its Google Calendar ID."); return; }
+    setSaving(true);
+    try{
+      const {data,error}=await sb.from("extra_calendars").insert({name,calendar_id:cid,rep_ids:[],created_by:TeamCalendars.currentUserId||null}).select("*").single();
+      if(error) throw error;
+      const next=[...rows,data]; setRows(next); ExtraCals.set(next); announce();
+      setForm({name:"",calendar_id:""}); setAdding(false); setOpenId(data.id);
+    }catch(e){ window.alert("Couldn't save the calendar: "+((e&&e.message)||e)+"\n\n(If this mentions a missing table, run the extra_calendars SQL first.)"); }
+    setSaving(false);
+  };
+  const toggleRep=async(row,uid)=>{
+    const cur=Array.isArray(row.rep_ids)?row.rep_ids:[];
+    const nextIds=cur.includes(uid)?cur.filter(x=>x!==uid):[...cur,uid];
+    const next=rows.map(r=>r.id===row.id?{...r,rep_ids:nextIds}:r);
+    setRows(next); ExtraCals.set(next); announce();
+    const {error}=await sb.from("extra_calendars").update({rep_ids:nextIds}).eq("id",row.id);
+    if(error){ window.alert("Couldn't update access: "+(error.message||error)); load(); }
+  };
+  const remove=async(row)=>{
+    if(!window.confirm(`Remove "${row.name||"this calendar"}" from the app? Reps lose access here — the Google calendar itself is untouched.`)) return;
+    const next=rows.filter(r=>r.id!==row.id); setRows(next); ExtraCals.set(next); announce();
+    try{ await sb.from("extra_calendars").delete().eq("id",row.id); }catch(e){ console.error(e); }
+  };
+  const people=(profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  return (
+    <div style={{marginTop:22,background:dark?"#1e293b":"#fff",borderRadius:14,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,padding:"18px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
+        <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Standalone Calendars</div>
+        <button onClick={()=>setAdding(a=>!a)}
+          style={{padding:"7px 12px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          {adding?"Cancel":"＋ Add Calendar"}
+        </button>
+      </div>
+      <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,marginBottom:12}}>
+        Calendars that aren't tied to a team — like one closer's booking calendar. Pick who has access: those reps see it in the Calendar tab and can book closes onto it. Before adding one here: create the calendar in Google Calendar, share it with the same service-account email as your team calendars (Make changes to events), and add its Calendar ID to the ALLOWED_CALENDAR_IDS secret in Supabase.
+      </div>
+      {adding && (
+        <div style={{background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,padding:"12px",marginBottom:12}}>
+          <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder={`Calendar name — e.g. "Jake's Close Calendar"`}
+            style={{width:"100%",padding:"10px 12px",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,boxSizing:"border-box",marginBottom:8}}/>
+          <input value={form.calendar_id} onChange={e=>setForm(f=>({...f,calendar_id:e.target.value}))} placeholder="Google Calendar ID — ends in @group.calendar.google.com"
+            style={{width:"100%",padding:"10px 12px",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,boxSizing:"border-box",marginBottom:10,fontFamily:"monospace"}}/>
+          <button onClick={saveNew} disabled={saving}
+            style={{width:"100%",padding:"11px 0",borderRadius:9,border:"none",background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",opacity:saving?0.7:1}}>
+            {saving?"Saving…":"Save Calendar"}
+          </button>
+        </div>
+      )}
+      {rows.length===0 && !adding && (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"10px 0"}}>No standalone calendars yet.</div>
+      )}
+      {rows.map(row=>{
+        const ids=Array.isArray(row.rep_ids)?row.rep_ids:[];
+        const isOpen=openId===row.id;
+        return (
+          <div key={row.id} style={{border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,marginBottom:8,overflow:"hidden"}}>
+            <div onClick={()=>setOpenId(isOpen?null:row.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
+              <span style={{fontSize:16}}>📅</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{row.name||"Calendar"}</div>
+                <div style={{fontSize:11,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.calendar_id}</div>
+              </div>
+              <span style={{fontSize:11,fontWeight:800,color:"#0369a1",background:dark?"rgba(3,105,161,0.2)":"#e0f2fe",borderRadius:12,padding:"2px 9px",flexShrink:0}}>{ids.length} rep{ids.length===1?"":"s"}</span>
+              <button onClick={e=>{e.stopPropagation();remove(row);}} title="Remove this calendar from the app"
+                style={{background:"none",border:"none",color:"#f87171",fontSize:15,cursor:"pointer",flexShrink:0,padding:"2px 4px"}}>🗑️</button>
+              <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>{isOpen?"▲":"▼"}</span>
+            </div>
+            {isOpen && (
+              <div style={{padding:"8px 12px",maxHeight:260,overflowY:"auto"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"4px 0 6px"}}>Who can see & book on it</div>
+                {people.map(p=>{
+                  const on=ids.includes(p.id);
+                  return (
+                    <div key={p.id} onClick={()=>toggleRep(row,p.id)}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 2px",borderBottom:`1px solid ${dark?"#1e293b":"#f1f5f9"}`,cursor:"pointer"}}>
+                      <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${on?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {on && <span style={{color:"#fff",fontSize:13,fontWeight:900,lineHeight:1}}>✓</span>}
+                      </div>
+                      <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{p.name||p.email}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -13134,7 +13296,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
   const teamCfg = selectedTid ? TEAM_CALENDARS[selectedTid] : null;
   const selectedTeam = browsable.find(t=>t.id===selectedTid);
-  const CALENDAR_EMBED = teamCfg?.embedUrl || null;
+  // Standalone calendars have no TEAM_CALENDARS entry — build their embed URL
+  // straight from the calendar id.
+  const derivedEmbed = (selectedTeam && selectedTeam.calendarId) ? ExtraCals.embedFor(selectedTeam.calendarId) : null;
+  const CALENDAR_EMBED = teamCfg?.embedUrl || derivedEmbed;
   const CALENDAR_NAME = selectedTeam?.name || teamCfg?.name || "Calendar";
 
   if(!CALENDAR_EMBED){
@@ -13855,18 +14020,26 @@ const TeamCalendars = {
         return cfg ? { id:t.id, name:t.name||cfg.name, calendarId:cfg.calendarId } : null;
       })
       .filter(Boolean);
-    this.teams = withCal;
+    // Standalone (non-team) calendars ride along as extra entries.
+    const extras = (ExtraCals.rows||[]).map(r=>({ id:"cal:"+r.id, name:r.name||"Calendar", calendarId:r.calendar_id }));
+    const myExtras = extras.filter(x=>{
+      const row=(ExtraCals.rows||[]).find(r=>("cal:"+r.id)===x.id);
+      return row && Array.isArray(row.rep_ids) && row.rep_ids.includes(currentUserId);
+    });
+    this.teams = [...withCal, ...extras];
     // Which calendars THIS user can browse:
     //  • calendarAccessAll → every configured calendar, including any added later
     //  • calendarAccess (non-empty) → exactly those calendars (a per-rep override
     //    set by a manager/owner in the Team tab)
     //  • otherwise (default) → the calendars of the team(s) they belong to
+    // Standalone calendars: granted per-calendar by the owner (myExtras), or all
+    // of them when the rep has "see all calendars".
     if(calendarAccessAll){
-      this.myTeams = withCal;
+      this.myTeams = [...withCal, ...extras];
     } else if(Array.isArray(calendarAccess) && calendarAccess.length>0){
-      this.myTeams = withCal.filter(t=>calendarAccess.includes(t.id));
+      this.myTeams = [...withCal.filter(t=>calendarAccess.includes(t.id)), ...myExtras];
     } else {
-      this.myTeams = withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId));
+      this.myTeams = [...withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId)), ...myExtras];
     }
     // Remember the resolved calendars on this device. On a bad connection the
     // teams/team_members rows may not have loaded yet, which used to leave a rep
@@ -14220,6 +14393,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
     const candidates = [];
     if(calendarId) candidates.push(calendarId);
     try { Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); } catch(e){}
+    try { (ExtraCals.rows||[]).forEach(r=>{ if(r&&r.calendar_id&&!candidates.includes(r.calendar_id)) candidates.push(r.calendar_id); }); } catch(e){}
     if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
     // Preferred path: our backend (service account) — no Google sign-in needed.
     let backendDown = false;
@@ -15806,10 +15980,26 @@ function App() {
     if(user){ try{ await sb.from("profiles").update({pipeline_filters:next}).eq("id",user.id); }catch(e){ console.error("Pipeline filter save failed:",e); } }
   };
   const [teams,setTeams]=useState([]);  const [teamMembers,setTeamMembers]=useState({}); // { teamId: [{ user_id, ... }] }
+  const [extraCals,setExtraCals]=useState([]); // standalone (non-team) calendars
+  const loadExtraCals = async ()=>{
+    try{
+      const {data,error}=await sb.from("extra_calendars").select("*").order("created_at",{ascending:true});
+      if(error) throw error;
+      const rows=Array.isArray(data)?data:[];
+      setExtraCals(rows); ExtraCals.set(rows);
+    }catch(e){ console.error("extra calendars load (run the extra_calendars SQL if you haven't):", e); }
+  };
+  React.useEffect(()=>{ if(user) loadExtraCals(); },[user && user.id]);
+  React.useEffect(()=>{
+    const f=()=>loadExtraCals();
+    window.addEventListener("pp-extracals-changed", f);
+    return ()=>window.removeEventListener("pp-extracals-changed", f);
+  },[]);
   // Keep the team-calendar registry in sync so deeply-nested booking components
   // can resolve the right calendar without prop-drilling.
   React.useEffect(()=>{
     if(!user) return;
+    ExtraCals.set(extraCals);
     TeamCalendars.set({
       currentUserId: user.id,
       isOwner: user.id === OWNER_ID,
@@ -15818,7 +16008,7 @@ function App() {
       calendarAccess: profile && profile.calendar_access,
       calendarAccessAll: profile && profile.calendar_access_all,
     });
-  },[user, teams, teamMembers, profile]);
+  },[user, teams, teamMembers, profile, extraCals]);
   const [teamGoals,setTeamGoals]=useState({}); // { teamId: { weekly: {...}, quarterly: {...} } }
   const [personalGoals,setPersonalGoals]=useState({}); // { userId: { weekly: {...}, quarterly: {...} } }
   const [tab,setTab]=useState("pipeline");
@@ -16605,7 +16795,8 @@ function App() {
   const onCalendarTeam = isOwner
     || profile.calendar_access_all
     || (Array.isArray(profile.calendar_access) && profile.calendar_access.some(tid => TEAM_CALENDARS[tid]))
-    || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id));
+    || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id))
+    || (ExtraCals.rows||[]).some(r=>Array.isArray(r.rep_ids)&&r.rep_ids.includes(user.id));
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
   // pipelineFilter state already declared at top
