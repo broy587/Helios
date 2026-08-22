@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b12";
+const APP_BUILD = "b13";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13192,7 +13192,128 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     setRescheduling(false);
   };
 
-  const removeEventFromList = async (calendarId, ev, mode) => {
+  // ── Repeating-series helpers ──────────────────────────────────────────
+  // Chooser state for 🗑️/✏️ on a repeating event: {kind:'delete'|'edit', ev, calendarId}
+  const [recurAction, setRecurAction] = React.useState(null);
+  const untilStamp = (d)=>{ const p=(n)=>String(n).padStart(2,"0"); return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`; };
+  const stripRRuleLimits = (recurrence)=>(recurrence||[]).map(l=>/^RRULE/i.test(l) ? l.replace(/;?UNTIL=[^;]*/i,"").replace(/;?COUNT=\d+/i,"") : l);
+  const truncateRRule = (recurrence, beforeDate)=>stripRRuleLimits(recurrence).map(l=>/^RRULE/i.test(l) ? l+";UNTIL="+untilStamp(beforeDate) : l);
+  const fetchMasterEvent = async (calendarId, masterId)=>{
+    const token = await GCal.signIn();
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(masterId)}`, {headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) throw new Error("Couldn't read the repeating series — you need edit access to this calendar.");
+    return await res.json();
+  };
+  const patchEventSmart = async (calendarId, eventId, patch)=>{
+    try{ const r = await CalendarBackend.tryCall("patchEvent",{calendarId,eventId,patch}); if(r&&r.ok) return true; }catch(e){}
+    const token = await GCal.signIn();
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(patch)});
+    return res.ok;
+  };
+  const deleteEventSmart = async (calendarId, eventId)=>{
+    try{ const r = await CalendarBackend.tryCall("deleteEvent",{calendarId,eventId}); if(r&&r.ok) return true; }catch(e){}
+    const token = await GCal.signIn();
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      {method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
+    return res.ok || res.status===410 || res.status===404;
+  };
+  // Clear lead links for any BOOKED instances being wiped with the series.
+  const clearLeadsForEvents = async (evs)=>{
+    for(const x of evs){
+      if(!(x && (x.description||"").includes("BOOKED:"))) continue;
+      try{
+        await sb.from("leads").update({gcal_event_id:null,appointment:null,updated_at:new Date().toISOString()}).eq("gcal_event_id",x.id);
+        await sb.from("leads").update({cap_event_id:null,cap_appointment:null,updated_at:new Date().toISOString()}).eq("cap_event_id",x.id);
+        await sb.from("leads").update({cs_event_id:null,cs_appointment:null,updated_at:new Date().toISOString()}).eq("cs_event_id",x.id);
+        await sb.from("leads").update({install_event_id:null,install_appointment:null,updated_at:new Date().toISOString()}).eq("install_event_id",x.id);
+      }catch(e){ console.error("lead sync:",e); }
+    }
+  };
+  const deleteSeriesAll = async (calendarId, ev)=>{
+    setRemovingId(ev.id);
+    try{
+      const masterId = ev.recurringEventId;
+      const ok = await deleteEventSmart(calendarId, masterId);
+      if(ok){
+        const gone = tagEvents.filter(x=>x.recurringEventId===masterId || x.id===masterId);
+        await clearLeadsForEvents(gone);
+        setTagEvents(list=>list.filter(x=>!(x.recurringEventId===masterId || x.id===masterId)));
+        setCalKey(k=>k+1);
+      } else setTagMsg("Couldn't delete the series.");
+    }catch(e){ console.error(e); setTagMsg("Error deleting series: "+((e&&e.message)||"unknown")); }
+    setRemovingId(null);
+  };
+  const deleteSeriesFollowing = async (calendarId, ev)=>{
+    setRemovingId(ev.id);
+    try{
+      const masterId = ev.recurringEventId;
+      const instStart = new Date(ev.start && (ev.start.dateTime||ev.start.date));
+      const master = await fetchMasterEvent(calendarId, masterId);
+      const mStart = new Date(master.start && (master.start.dateTime||master.start.date));
+      let ok = false;
+      if(!(mStart < instStart)){
+        // "Following" from the first occurrence = the whole series.
+        ok = await deleteEventSmart(calendarId, masterId);
+      } else {
+        ok = await patchEventSmart(calendarId, masterId, {recurrence: truncateRRule(master.recurrence, new Date(instStart.getTime()-1000))});
+      }
+      if(ok){
+        const cut = instStart.getTime();
+        const startMs = (x)=> (x.start && (x.start.dateTime||x.start.date)) ? new Date(x.start.dateTime||x.start.date).getTime() : 0;
+        const gone = tagEvents.filter(x=>(x.recurringEventId===masterId||x.id===masterId) && startMs(x)>=cut);
+        await clearLeadsForEvents(gone);
+        setTagEvents(list=>list.filter(x=>!((x.recurringEventId===masterId||x.id===masterId) && startMs(x)>=cut)));
+        setCalKey(k=>k+1);
+      } else setTagMsg("Couldn't update the series.");
+    }catch(e){ console.error(e); setTagMsg("Error updating series: "+((e&&e.message)||"unknown")); }
+    setRemovingId(null);
+  };
+  const applySeriesEdit = async (calendarId, ev, scope, newStartISO, newEndISO)=>{
+    setRescheduling(true);
+    try{
+      const masterId = ev.recurringEventId;
+      const master = await fetchMasterEvent(calendarId, masterId);
+      const mStart = new Date(master.start && (master.start.dateTime||master.start.date));
+      const pick = new Date(newStartISO);
+      const durMs = new Date(newEndISO).getTime() - pick.getTime();
+      let ok = false;
+      if(scope==="all"){
+        // Change the TIME for every event in the series (each keeps its own day).
+        const s2 = new Date(mStart); s2.setHours(pick.getHours(), pick.getMinutes(), 0, 0);
+        const e2 = new Date(s2.getTime()+durMs);
+        ok = await patchEventSmart(calendarId, masterId, {start:{dateTime:s2.toISOString()}, end:{dateTime:e2.toISOString()}});
+      } else { // "following"
+        const instStart = new Date(ev.start && (ev.start.dateTime||ev.start.date));
+        if(!(mStart < instStart)){
+          // First occurrence — re-anchor the whole series to the picked date/time.
+          ok = await patchEventSmart(calendarId, masterId, {start:{dateTime:newStartISO}, end:{dateTime:newEndISO}});
+        } else {
+          // Split: end the old series before this occurrence, start a fresh one.
+          const trunc = await patchEventSmart(calendarId, masterId, {recurrence: truncateRRule(master.recurrence, new Date(instStart.getTime()-1000))});
+          if(trunc){
+            const token = await GCal.signIn();
+            const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+              {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+               body:JSON.stringify({summary:master.summary||"", description:master.description||"", colorId:master.colorId, visibility:master.visibility||"public",
+                 start:{dateTime:newStartISO, timeZone:"America/Chicago"}, end:{dateTime:newEndISO, timeZone:"America/Chicago"},
+                 recurrence: stripRRuleLimits(master.recurrence)})});
+            ok = res.ok;
+          }
+        }
+      }
+      if(ok){
+        setEditEvent(null);
+        await loadTagEvents(calendarId); // series changed shape — reload the list
+        setCalKey(k=>k+1);
+      } else {
+        window.alert("Couldn't update the series. You may not have edit access to this calendar.");
+      }
+    }catch(e){ console.error(e); window.alert("Error updating series: "+((e&&e.message)||"unknown")); }
+    setRescheduling(false);
+  };
+
+  const removeEventFromList = async (calendarId, ev, mode, opts) => {
     if(!canRemoveEvent(ev)) return;
     const isBooked = (ev.description||"").includes("BOOKED:");
     const isOpen = (ev.summary||"").toLowerCase().includes("open slot");
@@ -13203,7 +13324,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     const confirmMsg = release
       ? "Remove the lead from this slot? It returns to an open slot on the calendar and the appointment is cleared on the lead."
       : `Delete this ${label}? This removes it from the calendar.`;
-    if(!window.confirm(confirmMsg)) return;
+    if(!(opts && opts.skipConfirm) && !window.confirm(confirmMsg)) return;
     setRemovingId(ev.id);
     try {
       let ok = false;
@@ -13484,7 +13605,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                         {!canTag && !isOpenSlot && !removable && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
                         {removable && (
-                          <button onClick={()=>removeEventFromList((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, "delete")} disabled={isRemoving}
+                          <button onClick={()=>{ const cal=(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId); if(recurring){ setRecurAction({kind:"delete", ev, calendarId:cal}); } else { removeEventFromList(cal, ev, "delete"); } }} disabled={isRemoving}
                             title="Delete this appointment from the calendar"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fecaca`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>
                             {isRemoving?"…":"🗑️"}
@@ -13498,7 +13619,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                           </button>
                         )}
                         {canEditEvent && (
-                          <button onClick={()=>setEditEvent({ev, calendarId:(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)})}
+                          <button onClick={()=>{ const cal=(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId); if(recurring){ setRecurAction({kind:"edit", ev, calendarId:cal}); } else { setEditEvent({ev, calendarId:cal}); } }}
                             title="Edit date, time & length"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>
                             ✏️
@@ -13529,14 +13650,44 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               const dateStr=`${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}`;
               const timeStr=`${pad(start.getHours())}:${pad(start.getMinutes())}`;
               const durMin=Math.max(5,Math.round((end.getTime()-start.getTime())/60000))||30;
-              return <RescheduleModal dark={dark} title={stripMarker(ev.summary)||"Appointment"}
+              const scope = editEvent.scope || "one";
+              const scopeLabel = scope==="all" ? " — all events (time applies to every one)" : scope==="following" ? " — this & all following" : "";
+              return <RescheduleModal dark={dark} title={(stripMarker(ev.summary)||"Appointment")+scopeLabel}
                 initDate={dateStr} initTime={timeStr} initDur={durMin} saving={rescheduling}
                 onClose={()=>setEditEvent(null)}
                 onSave={(d,t,dur)=>{
                   const s=new Date(`${d}T${t}:00`);
                   const e=new Date(s.getTime()+dur*60000);
-                  saveReschedule(editEvent.calendarId, ev, s.toISOString(), e.toISOString());
+                  if(scope==="one"){ saveReschedule(editEvent.calendarId, ev, s.toISOString(), e.toISOString()); }
+                  else { applySeriesEdit(editEvent.calendarId, ev, scope, s.toISOString(), e.toISOString()); }
                 }}/>;
+            })()}
+            {recurAction && (()=>{
+              const {kind, ev, calendarId} = recurAction;
+              const verb = kind==="delete" ? "Delete" : "Change";
+              const run = (scope)=>{
+                setRecurAction(null);
+                if(kind==="delete"){
+                  if(scope==="one") removeEventFromList(calendarId, ev, "delete", {skipConfirm:true});
+                  else if(scope==="following") deleteSeriesFollowing(calendarId, ev);
+                  else deleteSeriesAll(calendarId, ev);
+                } else {
+                  setEditEvent({ev, calendarId, scope});
+                }
+              };
+              const btnStyle2={width:"100%",padding:"13px 14px",borderRadius:11,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontWeight:700,fontSize:14,cursor:"pointer",textAlign:"left",marginBottom:8};
+              return (
+                <div onClick={()=>setRecurAction(null)} style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:3400,padding:20}}>
+                  <div onClick={e=>e.stopPropagation()} style={{background:dark?"#1e293b":"#fff",borderRadius:18,width:"100%",maxWidth:380,padding:"20px",boxShadow:"0 12px 40px rgba(0,0,0,0.3)"}}>
+                    <div style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>🔁 {verb} repeating event</div>
+                    <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,lineHeight:1.4}}>"{stripMarker(ev.summary)||"This event"}" repeats. {verb} which events?</div>
+                    <button onClick={()=>run("one")} style={btnStyle2}>This event only</button>
+                    <button onClick={()=>run("following")} style={btnStyle2}>This and all following events</button>
+                    <button onClick={()=>run("all")} style={{...btnStyle2, border:"1.5px solid #fca5a5", color:"#b91c1c"}}>All events{kind==="delete"?" — past, current & future":""}</button>
+                    <button onClick={()=>setRecurAction(null)} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",background:"transparent",color:"#94a3b8",fontWeight:700,fontSize:13,cursor:"pointer"}}>Cancel</button>
+                  </div>
+                </div>
+              );
             })()}
           </div>
         </div>
