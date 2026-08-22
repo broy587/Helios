@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b9";
+const APP_BUILD = "b10";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13368,7 +13368,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 service account reads calendars with full details and team calendars
                 are public with "See all event details". The publishOpenSlots helper
                 is kept in code in case it's ever needed again. */}
-            <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents(teamCfg && teamCfg.calendarId); }}
+            <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)); }}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
               🏷️ Tag & Manage
             </button>
@@ -13376,15 +13376,15 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
               ↗ Open in Google
             </a>
-            {teamCfg && teamCfg.calendarId && (
-              <a href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(teamCfg.calendarId)}`} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
-                title="Add this team calendar to your own Google Calendar so its appointments show on your phone and laptop"
+            {((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)) && (
+              <a href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent((teamCfg && teamCfg.calendarId) || selectedTeam.calendarId)}`} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
+                title="Add this calendar to your own Google Calendar so its appointments show on your phone and laptop"
                 style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
                 ➕ Add to My Google Calendar
               </a>
             )}
             <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",lineHeight:1.4,padding:"2px 2px 0"}}>
-              "Add to My Google Calendar" subscribes your own Google account to this team's calendar so its appointments appear in your Google Calendar app. Booking works either way — this is just for viewing.
+              "Add to My Google Calendar" subscribes your own Google account to this calendar so its appointments appear in your Google Calendar app. Booking works either way — this is just for viewing.
             </div>
           </div>
         </div>
