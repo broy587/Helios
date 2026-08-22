@@ -442,7 +442,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b10";
+const APP_BUILD = "b12";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5662,22 +5662,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const cancelExtraAppt = async (entry) => {
     if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
     try {
-      const r = TeamCalendars.resolve();
-      const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
-      // Try the backend first (service account) so no Google sign-in is needed.
-      let released = false;
+      // Release the slot on whichever calendar it actually lives on.
       if(entry.id){
-        try {
-          const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:entry.id});
-          released = !!(br && br.ok);
-        } catch(e){ console.error(e); }
-      }
-      if(entry.id && !released){
-        try {
-          const token = await GCal.signIn();
-          await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${entry.id}`,
-            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
-        } catch(e){ console.error("Couldn't restore slot:",e); }
+        const released = await releaseSlotEverywhere(entry.id);
+        if(!released) console.error("Couldn't restore slot to open:", entry.id);
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
       await leadPatch(lead.id, {extra_appointments:next});
@@ -7024,15 +7012,11 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                       <button type="button" onClick={async()=>{
                         if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
                         try {
-                          const r = TeamCalendars.resolve();
-                          const calId = (r && r.status==="ok" && r.calendarId) || GCAL_CALENDAR_ID;
-                          // Backend first (service account) — no Google sign-in needed.
-                          let released = false;
+                          // Release the slot on whichever calendar it actually lives on.
                           if(a.id){
-                            try { const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:a.id}); released = !!(br && br.ok); }
-                            catch(e){ console.error(e); }
+                            const released = await releaseSlotEverywhere(a.id);
+                            if(!released) console.error("Couldn't restore slot to open:", a.id);
                           }
-                          if(a.id && !released){ try{ const token = await GCal.signIn(); await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${a.id}`,{method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}); }catch(e){ console.error(e); } }
                           const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
                           await leadPatch(form.id, {extra_appointments:next});
                           setForm(f=>({...f,extra_appointments:next}));
@@ -13500,21 +13484,21 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                         {!canTag && !isOpenSlot && !removable && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
                         {removable && (
-                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev, "delete")} disabled={isRemoving}
+                          <button onClick={()=>removeEventFromList((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, "delete")} disabled={isRemoving}
                             title="Delete this appointment from the calendar"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fecaca`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>
                             {isRemoving?"…":"🗑️"}
                           </button>
                         )}
                         {removable && (ev.description||"").includes("BOOKED:") && !isOpenSlot && (
-                          <button onClick={()=>removeEventFromList(teamCfg && teamCfg.calendarId, ev, "release")} disabled={isRemoving}
+                          <button onClick={()=>removeEventFromList((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, "release")} disabled={isRemoving}
                             title="Remove lead from this slot (returns it to an open slot & clears the appointment on the lead)"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fdba74`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ea580c",fontWeight:700}}>
                             {isRemoving?"…":"↩️"}
                           </button>
                         )}
                         {canEditEvent && (
-                          <button onClick={()=>setEditEvent({ev, calendarId:teamCfg && teamCfg.calendarId})}
+                          <button onClick={()=>setEditEvent({ev, calendarId:(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)})}
                             title="Edit date, time & length"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>
                             ✏️
@@ -13524,7 +13508,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                       {canTag && (
                         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                           {APPT_MARKERS.map(m=>(
-                            <button key={m} disabled={busy} onClick={()=>applyMarker(teamCfg && teamCfg.calendarId, ev, curMark===m?null:m)}
+                            <button key={m} disabled={busy} onClick={()=>applyMarker((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, curMark===m?null:m)}
                               style={{width:38,height:38,borderRadius:9,fontSize:18,cursor:busy?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",
                                 border:`2px solid ${curMark===m?"#1a2456":(dark?"#334155":"#e2e8f0")}`,
                                 background:curMark===m?(dark?"#1e293b":"#e8e2f0"):(dark?"#0f172a":"#fff"),
@@ -13639,7 +13623,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
             {meetMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{meetMsg}</div>}
 
             {(()=>{ const ready = meetType&&meetDate&&meetStart&&meetEnd&&!meetSaving&&(meetType!=="Custom"||meetCustomName.trim()); return (
-            <button onClick={()=>submitMeeting(teamCfg&&teamCfg.calendarId)}
+            <button onClick={()=>submitMeeting((teamCfg&&teamCfg.calendarId)||(selectedTeam&&selectedTeam.calendarId))}
               disabled={!ready}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:ready?"linear-gradient(135deg,#1a2456,#6b2d4e)":"#e2e8f0",color:ready?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:ready?"pointer":"default"}}>
               {meetSaving?"Adding…":"Add to Calendar"}
@@ -13707,7 +13691,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
             {slotMsg && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",borderRadius:8,padding:"8px 12px",marginBottom:14}}>{slotMsg}</div>}
 
-            <button onClick={()=>submitSlot(teamCfg&&teamCfg.calendarId)}
+            <button onClick={()=>submitSlot((teamCfg&&teamCfg.calendarId)||(selectedTeam&&selectedTeam.calendarId))}
               disabled={!slotDate||!slotStart||slotSaving}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:(slotDate&&slotStart&&!slotSaving)?"linear-gradient(135deg,#0f766e,#10b981)":"#e2e8f0",color:(slotDate&&slotStart&&!slotSaving)?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:(slotDate&&slotStart&&!slotSaving)?"pointer":"default"}}>
               {slotSaving?"Adding…":"Add Open Slot"}
@@ -14080,6 +14064,41 @@ const TeamCalendars = {
     return { status:"choose", options:mine };
   },
 };
+
+// Release a booked event back to "🟦 Open Slot" WITHOUT assuming which
+// calendar it lives on. The old single-calendar guess broke whenever a rep had
+// 2+ calendars (always true once standalone calendars exist): the release hit
+// the wrong calendar and the real slot stayed stuck as booked. Tries the
+// resolved calendar, then every calendar this app knows — backend (service
+// account) first, the rep's own Google sign-in only as a fallback.
+async function releaseSlotEverywhere(eventId){
+  if(!eventId) return false;
+  const candidates = [];
+  try{ const r = TeamCalendars.resolve(); if(r && r.status==="ok" && r.calendarId) candidates.push(r.calendarId); }catch(e){}
+  try{ (TeamCalendars.teams||[]).forEach(t=>{ if(t&&t.calendarId&&!candidates.includes(t.calendarId)) candidates.push(t.calendarId); }); }catch(e){}
+  try{ Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); }catch(e){}
+  try{ (ExtraCals.rows||[]).forEach(r2=>{ if(r2&&r2.calendar_id&&!candidates.includes(r2.calendar_id)) candidates.push(r2.calendar_id); }); }catch(e){}
+  if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
+  let backendDown = false;
+  for(const calId of candidates){
+    try{
+      const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId});
+      if(br && br.ok) return true;
+      if(br===null){ backendDown = true; break; }
+    }catch(e){ /* not on this calendar — try the next */ }
+  }
+  let token = null;
+  try{ token = await GCal.signIn(); }catch(e){ return false; }
+  if(!token) return false;
+  for(const calId of candidates){
+    try{
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${eventId}`,
+        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
+      if(res.ok) return true;
+    }catch(e){}
+  }
+  return false;
+}
 
 // ── Calendar Button Component ─────────────────────────────────────────
 
