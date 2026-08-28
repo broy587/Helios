@@ -148,12 +148,14 @@ const PendingSaves = {
   // field-level auto-save failed. Patches for the same lead merge together and
   // never collide with a queued full-lead save (different key). They ride the
   // same retry loop: online / focus / every 30s.
-  patch(leadId, fields){
+  patch(leadId, fields, bases){
     if(!leadId || !fields) return false;
     const key = leadId + "::patch";
     const existing = this.all().find(x=>x.viewId===key);
     return this.put({
       viewId:key, isPatch:true, isUpdate:true, leadId,
+      slogBase:(bases&&bases.slogBase)||(existing&&existing.slogBase)||undefined,
+      clogBase:(bases&&bases.clogBase)||(existing&&existing.clogBase)||undefined,
       payload: {...(existing?existing.payload:{}), ...fields, updated_at:new Date().toISOString()},
     });
   },
@@ -168,10 +170,15 @@ const PendingSaves = {
       if(item.isPatch){
         try {
           let ppay = item.payload;
-          if(ppay && ppay.history){
+          if(ppay && (ppay.history || ppay.setter_notes_log || ppay.closer_notes_log)){
             try{
-              const {data:curh} = await sb.from("leads").select("history").eq("id", item.leadId).maybeSingle();
-              if(curh) ppay = {...ppay, history:mergeHistory(ppay.history, curh.history)};
+              const {data:curh} = await sb.from("leads").select("history,setter_notes_log,closer_notes_log").eq("id", item.leadId).maybeSingle();
+              if(curh){
+                ppay = {...ppay};
+                if(ppay.history) ppay.history = mergeHistory(ppay.history, curh.history);
+                if(ppay.setter_notes_log) ppay.setter_notes_log = mergeNoteLogs(ppay.setter_notes_log, curh.setter_notes_log, item.slogBase);
+                if(ppay.closer_notes_log) ppay.closer_notes_log = mergeNoteLogs(ppay.closer_notes_log, curh.closer_notes_log, item.clogBase);
+              }
             }catch(e){}
           }
           const {data:rows, error} = await sb.from("leads").update(ppay).eq("id", item.leadId).select("id");
@@ -304,13 +311,40 @@ function mergeHistory(payloadHist, serverHist){
   return [p[0], ...extra, ...p.slice(1)];
 }
 
+// After a reload, leads come from the SERVER — but this device may still be
+// holding queued saves that haven't uploaded yet (bad service in the field).
+// Overlay them so a just-typed note doesn't LOOK deleted while it waits to
+// upload — and so re-editing the lead can't rebuild the form from a version
+// that's missing it (re-saving from that version used to overwrite the queued
+// note with nothing, which made the note vanish for good).
+function overlayPendingSaves(rows){
+  try{
+    const q = PendingSaves.all();
+    if(!q.length) return rows;
+    const out = rows.slice();
+    for(const item of q){
+      if(!item || !item.payload) continue;
+      if(item.isPatch){
+        const i = out.findIndex(l=>l&&l.id===item.leadId);
+        if(i>=0) out[i] = {...out[i], ...item.payload};
+      } else if(item.isUpdate){
+        const i = out.findIndex(l=>l&&l.id===item.viewId);
+        if(i>=0) out[i] = {...out[i], ...item.payload};
+      } else if(!out.some(l=>l&&l.id===item.viewId)){
+        out.unshift({...item.payload, id:item.viewId, owner_id:item.ownerId, created_at:item.createdAt||new Date().toISOString(), bill_photos:item.photos||[]});
+      }
+    }
+    return out;
+  }catch(e){ console.warn("pending overlay skipped:", e); return rows; }
+}
+
 // ── Safe partial lead update ──────────────────────────────────────────
 // THE standard way to write lead fields outside the full-lead save. Tries the
 // write; on ANY failure (dead service, timeout, server hiccup) the fields are
 // stashed on this device via PendingSaves.patch and upload automatically when
 // the connection returns / the app refocuses / every 30s. Never throws.
 // Returns {ok, queued, error}: ok=false+queued=true means "safe on device".
-async function leadPatch(leadId, fields){
+async function leadPatch(leadId, fields, bases){
   if(!leadId || !fields) return {ok:false, queued:false, error:new Error("missing leadId/fields")};
   let error=null, rows=null;
   try{
@@ -334,7 +368,7 @@ async function leadPatch(leadId, fields){
   if(!error && rows && rows.length>0) return {ok:true, queued:false, error:null};
   if(!error) error = new Error("the database accepted the request but no lead row was updated");
   console.warn("leadPatch failed — queueing on device:", leadId, (error&&(error.message||error))+"");
-  const queued = PendingSaves.patch(leadId, fields);
+  const queued = PendingSaves.patch(leadId, fields, bases);
   return {ok:false, queued, error};
 }
 
@@ -517,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b14";
+const APP_BUILD = "b15";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -881,15 +915,15 @@ const getDaysInMonth = (m,y) => new Date(y,m+1,0).getDate();
 
 // Editor for the closer-notes "pile": a list of timestamped notes you can edit
 // or delete, plus a box to add a new one (stamped with the current date/time).
-function CloserNotesEditor({log, onChange, dark, placeholder, deleteMsg, by}) {
+function CloserNotesEditor({log, onChange, dark, placeholder, deleteMsg, by, onCommit}) {
   const [draft, setDraft] = React.useState("");
   const list = Array.isArray(log) ? log : [];
   const ta = {width:"100%",padding:"8px 11px",borderRadius:6,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"};
   // Newest note lands at the top of the pile, right under the input. Each note is
   // stamped with the saving rep's name (by) alongside the date/time.
-  const save = () => { const t = draft.trim(); if(!t) return; onChange([{id:makeNoteId(), text:t, ts:new Date().toISOString(), by:by||undefined}, ...list]); setDraft(""); };
+  const save = () => { const t = draft.trim(); if(!t) return; const next=[{id:makeNoteId(), text:t, ts:new Date().toISOString(), by:by||undefined}, ...list]; onChange(next); if(onCommit) onCommit(next); setDraft(""); };
   const editText = (id,text) => onChange(list.map(n=>n.id===id?{...n,text}:n)); // edits text only; ts is never touched
-  const del = (id) => { if(window.confirm(deleteMsg||"Delete this closer note?")) onChange(list.filter(n=>n.id!==id)); };
+  const del = (id) => { if(window.confirm(deleteMsg||"Delete this closer note?")){ const next=list.filter(n=>n.id!==id); onChange(next); if(onCommit) onCommit(next); } };
   return (
     <div>
       {/* Add a new note. onBlur auto-commits so a typed note is never lost if the rep
@@ -918,7 +952,7 @@ function CloserNotesEditor({log, onChange, dark, placeholder, deleteMsg, by}) {
 // stamp and every integration that reads lead.notes — calendar descriptions,
 // canvass popups, audit). Every note after that goes into setter_notes_log.
 // The first note renders as an editable box pinned at the bottom of the pile.
-function SetterNotesEditor({firstText, firstTs, firstBy, log, onFirst, onFirstDelete, onLog, dark, by}) {
+function SetterNotesEditor({firstText, firstTs, firstBy, log, onFirst, onFirstDelete, onLog, dark, by, onCommit}) {
   const [draft, setDraft] = React.useState("");
   const list = Array.isArray(log) ? log : [];
   const hasFirst = !!((firstText||"").trim());
@@ -926,11 +960,11 @@ function SetterNotesEditor({firstText, firstTs, firstBy, log, onFirst, onFirstDe
   const save = () => {
     const t = draft.trim(); if(!t) return;
     if(!hasFirst) onFirst(t, true); // first note ever → classic notes field + First taken stamp
-    else onLog([{id:makeNoteId(), text:t, ts:new Date().toISOString(), by:by||undefined}, ...list]);
+    else { const next=[{id:makeNoteId(), text:t, ts:new Date().toISOString(), by:by||undefined}, ...list]; onLog(next); if(onCommit) onCommit(next); }
     setDraft("");
   };
   const editText = (id,text) => onLog(list.map(n=>n.id===id?{...n,text}:n)); // ts never touched
-  const del = (id) => { if(window.confirm("Delete this setter note?")) onLog(list.filter(n=>n.id!==id)); };
+  const del = (id) => { if(window.confirm("Delete this setter note?")){ const next=list.filter(n=>n.id!==id); onLog(next); if(onCommit) onCommit(next); } };
   return (
     <div>
       {/* onBlur auto-commits so a typed note is never lost if the rep presses the
@@ -6693,6 +6727,25 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
     if(fileInputRef.current)fileInputRef.current.value="";
   };
   const removePhoto=idx=>setForm(f=>({...f,billPhotos:f.billPhotos.filter((_,i)=>i!==idx)}));
+  // Instant note persistence: tapping 💾 Save Note (or deleting a note) on an
+  // EXISTING lead writes the pile to the database right then, not just into
+  // the form. Reps who tapped Save Note and then closed the form without the
+  // lead's main Save were losing those notes — they only ever lived in the
+  // form. Pre-merged with the server's current pile so nobody else's notes
+  // get hurt; if there's no service it queues on the device like any save.
+  const quickSaveLog = (field, list, baseIds) => {
+    if(!form.id) return; // brand-new lead — the row doesn't exist until main Save
+    (async()=>{
+      try{
+        let send = Array.isArray(list)?list:[];
+        try{
+          const {data:cur} = await sb.from("leads").select(field).eq("id",form.id).maybeSingle();
+          if(cur) send = mergeNoteLogs(send, cur[field], baseIds);
+        }catch(e){}
+        await leadPatch(form.id, {[field]:send}, {slogBase:form._slogBase, clogBase:form._clogBase});
+      }catch(e){ console.warn("quick note save failed (will retry / save with the lead):", e); }
+    })();
+  };
   // Book "On Hold Removed - {name}" on the rep's OWN Google Calendar as an
   // all-day event on the hold-until date. Personal calendar only — never the
   // team calendar, never an open slot.
@@ -7141,9 +7194,18 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </label>
           <SetterNotesEditor firstText={form.notes} firstTs={form.notesCreatedAt||(initial&&initial.created_at)} firstBy={form.notesCreatedBy}
             log={form.setterNotesLog||[]} dark={dark} by={currentUserName}
-            onFirst={(text,stampNow)=>setForm(f=>({...f,notes:text,notesCreatedAt:(stampNow&&!f.notesCreatedAt)?new Date().toISOString():f.notesCreatedAt,notesCreatedBy:(stampNow&&!f.notesCreatedBy)?(currentUserName||null):f.notesCreatedBy}))}
-            onFirstDelete={()=>setForm(f=>({...f,notes:"",notesCreatedAt:null,notesCreatedBy:null}))}
-            onLog={l=>setForm(f=>({...f,setterNotesLog:l}))}/>
+            onFirst={(text,stampNow)=>{
+              const at=(stampNow&&!form.notesCreatedAt)?new Date().toISOString():form.notesCreatedAt;
+              const byWho=(stampNow&&!form.notesCreatedBy)?(currentUserName||null):form.notesCreatedBy;
+              setForm(f=>({...f,notes:text,notesCreatedAt:(stampNow&&!f.notesCreatedAt)?new Date().toISOString():f.notesCreatedAt,notesCreatedBy:(stampNow&&!f.notesCreatedBy)?(currentUserName||null):f.notesCreatedBy}));
+              if(stampNow&&form.id) leadPatch(form.id,{notes:text,notes_created_at:at||null,notes_created_by:byWho||null},{slogBase:form._slogBase,clogBase:form._clogBase});
+            }}
+            onFirstDelete={()=>{
+              setForm(f=>({...f,notes:"",notesCreatedAt:null,notesCreatedBy:null}));
+              if(form.id) leadPatch(form.id,{notes:"",notes_created_at:null,notes_created_by:null},{slogBase:form._slogBase,clogBase:form._clogBase});
+            }}
+            onLog={l=>setForm(f=>({...f,setterNotesLog:l}))}
+            onCommit={l=>quickSaveLog("setter_notes_log", l, form._slogBase)}/>
         </div>
           );
         })()}
@@ -7196,7 +7258,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {form.id && (
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
-          <CloserNotesEditor log={form.closerNotesLog} dark={dark} by={currentUserName} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))}/>
+          <CloserNotesEditor log={form.closerNotesLog} dark={dark} by={currentUserName} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))} onCommit={l=>quickSaveLog("closer_notes_log", l, form._clogBase)}/>
         </div>
         )}
         {/* AC Checklist */}
@@ -16481,7 +16543,7 @@ function App() {
         setTeamGoals(goalsGrouped);
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
-        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
+        setLeads(overlayPendingSaves((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)}))));
         // Re-try anything that couldn't be saved earlier (bad service), and keep those
         // leads visible in the pipeline so nothing ever looks "lost".
         try {
@@ -16539,7 +16601,7 @@ function App() {
         setTeamGoals(goalsGrouped);
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
-        setLeads((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)})));
+        setLeads(overlayPendingSaves((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)}))));
         // Re-try anything that couldn't be saved earlier (bad service), and keep those
         // leads visible in the pipeline so nothing ever looks "lost".
         try {
