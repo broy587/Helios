@@ -167,7 +167,14 @@ const PendingSaves = {
     for(const item of list){
       if(item.isPatch){
         try {
-          const {data:rows, error} = await sb.from("leads").update(item.payload).eq("id", item.leadId).select("id");
+          let ppay = item.payload;
+          if(ppay && ppay.history){
+            try{
+              const {data:curh} = await sb.from("leads").select("history").eq("id", item.leadId).maybeSingle();
+              if(curh) ppay = {...ppay, history:mergeHistory(ppay.history, curh.history)};
+            }catch(e){}
+          }
+          const {data:rows, error} = await sb.from("leads").update(ppay).eq("id", item.leadId).select("id");
           if(error) throw error;
           if(!rows || rows.length===0){
             // Lead row doesn't exist (yet). If its insert is still queued, keep the
@@ -203,6 +210,20 @@ const PendingSaves = {
                 }
               }
             }catch(guardErr){ console.warn("stale-guard check skipped:", guardErr); }
+          }
+          // Union-merge note piles & history with what the server holds NOW —
+          // this entry may be hours old, and other reps may have added notes
+          // since it was queued (see mergeNoteLogs/mergeHistory).
+          if(("setter_notes_log" in payload)||("closer_notes_log" in payload)||("history" in payload)){
+            try{
+              const {data:curNotes} = await sb.from("leads").select("setter_notes_log,closer_notes_log,history").eq("id", item.viewId).maybeSingle();
+              if(curNotes){
+                payload = {...payload};
+                if("setter_notes_log" in payload) payload.setter_notes_log = mergeNoteLogs(payload.setter_notes_log, curNotes.setter_notes_log, item.slogBase);
+                if("closer_notes_log" in payload) payload.closer_notes_log = mergeNoteLogs(payload.closer_notes_log, curNotes.closer_notes_log, item.clogBase);
+                if("history" in payload) payload.history = mergeHistory(payload.history, curNotes.history);
+              }
+            }catch(nmErr){ console.warn("note-merge skipped:", nmErr); }
           }
           const {error} = await sb.from("leads").update(payload).eq("id", item.viewId);
           if(error) throw error;
@@ -246,6 +267,43 @@ if(typeof window!=="undefined"){
   setInterval(()=>{ if(navigator.onLine!==false && (PendingSaves.count()||CanvassPending.count())){ PendingSaves.flush(); CanvassPending.flush(); } }, 30000);
 }
 
+// ── Concurrent-edit protection for note piles & history ──────────────
+// A lead save carries the WHOLE notes array, so a save from a stale snapshot
+// (a form left open all day, another device, or an offline entry replaying
+// from the queue) used to overwrite notes other reps added in the meantime.
+// Before writing, callers fetch what the server has NOW and union it in:
+// - a server note this device has never seen (not in the payload, not in the
+//   snapshot the form opened with) was added by someone else -> KEEP it;
+// - a note the form DID open with but no longer carries was deleted by this
+//   rep on purpose -> stays deleted;
+// - same id in both -> this rep's edit wins.
+function mergeNoteLogs(payloadList, serverList, baseIds){
+  const p = Array.isArray(payloadList) ? payloadList.filter(Boolean) : [];
+  const srv = Array.isArray(serverList) ? serverList.filter(Boolean) : [];
+  if(!srv.length) return p;
+  const base = new Set(Array.isArray(baseIds) ? baseIds : []);
+  const pIds = new Set(p.map(n=>n&&n.id).filter(Boolean));
+  const keep = srv.filter(n=>n&&n.id && !pIds.has(n.id) && !base.has(n.id));
+  if(!keep.length) return p;
+  const merged = [...p, ...keep];
+  merged.sort((a,b)=>((Date.parse((b&&b.ts)||"")||0) - (Date.parse((a&&a.ts)||"")||0)));
+  return merged;
+}
+// Same idea for the history trail (entries have no ids - dedupe by content).
+// This save's own new entry stays on top; entries other devices wrote since
+// this snapshot slot in right after; the shared older tail follows.
+function mergeHistory(payloadHist, serverHist){
+  const p = Array.isArray(payloadHist) ? payloadHist.filter(Boolean) : [];
+  const srv = Array.isArray(serverHist) ? serverHist.filter(Boolean) : [];
+  if(!srv.length) return p;
+  if(!p.length) return srv;
+  const key = (h)=>{ try{ return JSON.stringify(h); }catch(e){ return String(h); } };
+  const pSet = new Set(p.map(key));
+  const extra = srv.filter(h=>!pSet.has(key(h)));
+  if(!extra.length) return p;
+  return [p[0], ...extra, ...p.slice(1)];
+}
+
 // ── Safe partial lead update ──────────────────────────────────────────
 // THE standard way to write lead fields outside the full-lead save. Tries the
 // write; on ANY failure (dead service, timeout, server hiccup) the fields are
@@ -254,10 +312,27 @@ if(typeof window!=="undefined"){
 // Returns {ok, queued, error}: ok=false+queued=true means "safe on device".
 async function leadPatch(leadId, fields){
   if(!leadId || !fields) return {ok:false, queued:false, error:new Error("missing leadId/fields")};
-  let error=null;
-  try{ ({error} = await sb.from("leads").update({...fields, updated_at:new Date().toISOString()}).eq("id",leadId)); }
+  let error=null, rows=null;
+  try{
+    let send = fields;
+    // History rides along on many patches (stage moves, booking clears). Merge
+    // it with what the server holds NOW so a patch from a stale device can't
+    // erase history entries someone else wrote since this device loaded.
+    if(send && send.history){
+      try{
+        const {data:cur} = await sb.from("leads").select("history").eq("id",leadId).maybeSingle();
+        if(cur) send = {...send, history:mergeHistory(send.history, cur.history)};
+      }catch(e){}
+    }
+    // .select("id") verifies a row actually changed — an update matching ZERO
+    // rows (lead deleted, or blocked by permissions) returns NO error and used
+    // to pass as success while nothing saved.
+    const r = await sb.from("leads").update({...send, updated_at:new Date().toISOString()}).eq("id",leadId).select("id");
+    error = r.error; rows = r.data;
+  }
   catch(e){ error=e; } // network failures reject instead of returning {error}
-  if(!error) return {ok:true, queued:false, error:null};
+  if(!error && rows && rows.length>0) return {ok:true, queued:false, error:null};
+  if(!error) error = new Error("the database accepted the request but no lead row was updated");
   console.warn("leadPatch failed — queueing on device:", leadId, (error&&(error.message||error))+"");
   const queued = PendingSaves.patch(leadId, fields);
   return {ok:false, queued, error};
@@ -442,7 +517,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b13";
+const APP_BUILD = "b14";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6587,7 +6662,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
       // Lazy load photos when editing. _photosLoaded/_photosBase remember what
       // the DB actually holds so the save can tell "changed" from "never loaded"
       // (the lead object in state NEVER carries bill_photos — LEAD_SELECT skips it).
-      setForm({...initial,billPhotos:[],_photosLoaded:false,_photosBase:[]});
+      setForm({...initial,billPhotos:[],_photosLoaded:false,_photosBase:[],_slogBase:(Array.isArray(initial.setterNotesLog)?initial.setterNotesLog.map(n=>n&&n.id).filter(Boolean):[]),_clogBase:(Array.isArray(initial.closerNotesLog)?initial.closerNotesLog.map(n=>n&&n.id).filter(Boolean):[])});
       setSaving(false);
       setShowSecondary(!!(initial.secondaryName||initial.secondaryPhone||initial.secondaryEmail));
       sb.from("leads").select("bill_photos").eq("id",initial.id).single()
@@ -16357,8 +16432,22 @@ function App() {
       const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo,on_hold_event_id";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
-        let res = await build(LEAD_SELECT);
-        if(res.error && /cents_kwh|average_bill|annual_kwh|bill_photos|system_size|battery_count|sold_sun_hours|kwh_rate|monthly|offset_pct|span_panel|flex|lead_files|install_appointment|install_event_id|cs_appointment|cs_event_id|appt_ts|archived|priority|cancel_reason|cancel_tags|on_hold_reason|on_hold_until|ncs_reason|assist_id|priority_order|followup_appointment|followup_event_id|close_appointment|close_event_id|appt_stacks|secondary_name|secondary_phone|secondary_email|rapport|objections|setter_notes_log|notes_created_by|has_bill_photo|on_hold_event_id/i.test(String((res.error.message||res.error.details||"")))) res = await build(LEAD_SELECT.replace(",cents_kwh","").replace(",average_bill","").replace(",annual_kwh","").replace(",system_size","").replace(",battery_count","").replace(",sold_sun_hours","").replace(",kwh_rate","").replace(",monthly","").replace(",offset_pct","").replace(",span_panel","").replace(",flex","").replace(",lead_files","").replace(",bill_photos","").replace(",install_appointment","").replace(",install_event_id","").replace(",cs_appointment","").replace(",cs_event_id","").replace(",appt_ts","").replace(",archived","").replace(",priority","").replace(",cancel_reason","").replace(",cancel_tags","").replace(",on_hold_reason","").replace(",on_hold_until","").replace(",ncs_reason","").replace(",assist_id","").replace(",priority_order","").replace(",followup_appointment","").replace(",followup_event_id","").replace(",close_appointment","").replace(",close_event_id","").replace(",appt_stacks","").replace(",secondary_name","").replace(",secondary_phone","").replace(",secondary_email","").replace(",rapport","").replace(",objections","").replace(",setter_notes_log","").replace(",notes_created_by","").replace(",has_bill_photo","").replace(",on_hold_event_id",""));
+        let cols = LEAD_SELECT;
+        let res = await build(cols);
+        // If the DB is missing a column, drop JUST the column the error names
+        // and retry. The old fallback dropped the whole modern column list at
+        // once — so ONE missing column silently loaded every lead WITHOUT its
+        // notes piles, and the next save wrote those empty piles back over the
+        // real ones ("all our notes stopped saving").
+        for(let i=0; i<10 && res.error; i++){
+          const emsg = String(res.error.message||res.error.details||"");
+          const m = emsg.match(/column\s+(?:[\w".]+\.)?["']?([a-z0-9_]+)["']?\s+does not exist/i) || emsg.match(/find the ['"]([a-z0-9_]+)['"] column/i);
+          if(!m || !m[1] || m[1]==="id") break;
+          const next = cols.split(",").filter(c=>c!==m[1]).join(",");
+          if(next===cols) break;
+          cols = next;
+          res = await build(cols);
+        }
         return res;
       };
       if (isPrivileged) {
@@ -16676,19 +16765,30 @@ function App() {
     }
 
     // ── Stale-save protection ──────────────────────────────────────────
-    // Only send WORKFLOW fields (stage, bookings, pile flags) that the rep
-    // actually CHANGED in this form. An edit saved from an older snapshot —
-    // a form left open, or an offline save replaying later from the queue —
-    // used to carry its old stage/appointments along and kick the lead BACK
-    // (e.g. AC/Scheduled reverting to Lead: Need Bill/Appointment right after
-    // booking). Dropping unchanged fields means the newest server state wins
-    // for everything the rep didn't touch.
+    // Send ONLY fields the rep actually CHANGED in this form. An edit saved
+    // from an older snapshot — a form left open, or an offline save replaying
+    // later from the queue — used to carry its old values along and overwrite
+    // newer work: first stages/bookings (leads kicked back to Lead: Need
+    // Bill/Appointment), then notes other reps had added in the meantime
+    // ("all our notes stopped saving"). Dropping unchanged fields means the
+    // newest server state wins for everything the rep didn't touch. Note
+    // piles & history get a SECOND layer: even when changed, they're
+    // union-merged with the server's current copy right before the write
+    // (mergeNoteLogs/mergeHistory), so concurrent adds survive.
     if(isUpdate && existing){
       const norm=(v)=>{ if(v===null||v===undefined||v===""||v===false) return ""; if(typeof v==="object"){ try{ return JSON.stringify(v); }catch(e){ return String(v); } } return String(v); };
-      ["stage","appointment","gcal_event_id","cs_appointment","cs_event_id","close_appointment","close_event_id","followup_appointment","followup_event_id","appt_ts","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","on_hold_event_id"].forEach(k=>{
+      Object.keys(payload).forEach(k=>{
+        if(k==="updated_at") return;
         if(norm(payload[k])===norm(existing[k])) delete payload[k];
       });
     }
+    // Snapshot of the note ids this form OPENED with — lets the write-time
+    // merge tell "this rep deleted it" from "someone else added it after we
+    // loaded" (falls back to the state snapshot for older queued entries).
+    const slogBase = Array.isArray(form._slogBase) ? form._slogBase
+      : (existing && Array.isArray(existing.setter_notes_log)) ? existing.setter_notes_log.map(n=>n&&n.id).filter(Boolean) : [];
+    const clogBase = Array.isArray(form._clogBase) ? form._clogBase
+      : (existing && Array.isArray(existing.closer_notes_log)) ? existing.closer_notes_log.map(n=>n&&n.id).filter(Boolean) : [];
 
     // Build the full lead object for local state so the view opens instantly
     const localLead = isUpdate
@@ -16711,7 +16811,7 @@ function App() {
     // app is closed mid-save, or the page reloads, the lead is already safe on the
     // device and will retry automatically. It's only removed once the save succeeds.
     PendingSaves.put({
-      viewId, isUpdate, payload, stripped:true, photos:photosChanged?newPhotos:[], photosAppend:photosAppendOnly, ownerId,
+      viewId, isUpdate, payload, stripped:true, slogBase, clogBase, photos:photosChanged?newPhotos:[], photosAppend:photosAppendOnly, ownerId,
       createdAt: isUpdate ? (existing&&existing.created_at) || new Date().toISOString() : new Date().toISOString(),
       name: payload.name || "(no name)",
     });
@@ -16724,6 +16824,19 @@ function App() {
       };
       const attempt = async()=>{
         if(isUpdate){
+          // Union-merge note piles & history with the server's CURRENT copy so
+          // this save can't overwrite notes someone else added since this form
+          // was opened (see mergeNoteLogs/mergeHistory).
+          if(("setter_notes_log" in payload)||("closer_notes_log" in payload)||("history" in payload)){
+            try{
+              const {data:curNotes} = await sb.from("leads").select("setter_notes_log,closer_notes_log,history").eq("id",viewId).maybeSingle();
+              if(curNotes){
+                if("setter_notes_log" in payload) payload.setter_notes_log = mergeNoteLogs(payload.setter_notes_log, curNotes.setter_notes_log, slogBase);
+                if("closer_notes_log" in payload) payload.closer_notes_log = mergeNoteLogs(payload.closer_notes_log, curNotes.closer_notes_log, clogBase);
+                if("history" in payload) payload.history = mergeHistory(payload.history, curNotes.history);
+              }
+            }catch(nmErr){ console.warn("note-merge check skipped:", nmErr); }
+          }
           // .select("id") verifies a row actually changed — an update blocked by
           // permissions matches ZERO rows with NO error, which used to pass as
           // success while nothing saved (the "vanishing lead" bug).
