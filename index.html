@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b26";
+const APP_BUILD = "b28";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -3143,6 +3143,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
 // Calendar tab and can book closes onto it like any team calendar.
 function StandaloneCalendarsSection({profiles}) {
   const dark=useDark();
+  const [showHelp,setShowHelp]=useState(false);
   const [rows,setRows]=useState([]);
   const [openId,setOpenId]=useState(null); // calendar whose rep list is expanded
   const [adding,setAdding]=useState(false);
@@ -3195,15 +3196,21 @@ function StandaloneCalendarsSection({profiles}) {
   return (
     <div style={{marginTop:22,background:dark?"#1e293b":"#fff",borderRadius:14,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,padding:"18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
-        <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Standalone Calendars</div>
+        <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Standalone Calendars</div>
+          <button type="button" onClick={()=>setShowHelp(v=>!v)} title="How to add a standalone calendar"
+            style={{width:18,height:18,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:11,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",background:showHelp?"#1a2456":(dark?"#334155":"#e2e8f0"),color:showHelp?"#fff":(dark?"#cbd5e1":"#64748b"),flexShrink:0,padding:0}}>?</button>
+        </div>
         <button onClick={()=>setAdding(a=>!a)}
           style={{padding:"7px 12px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
           {adding?"Cancel":"＋ Add Calendar"}
         </button>
       </div>
-      <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,marginBottom:12}}>
-        Calendars that aren't tied to a team — like one closer's booking calendar. Pick who has access: those reps see it in the Calendar tab and can book closes onto it. Before adding one here: create the calendar in Google Calendar, share it with the same service-account email as your team calendars (Make changes to events), and add its Calendar ID to the ALLOWED_CALENDAR_IDS secret in Supabase.
+      {showHelp && (
+      <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55,marginBottom:12,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px"}}>
+        Personal closer calendars (not team) — Before adding one here: create the calendar in Google Calendar, share it with the pipeline service-account email <span style={{display:"inline-flex",alignItems:"center",gap:4,maxWidth:"100%"}}><b style={{color:dark?"#cbd5e1":"#475569",wordBreak:"break-all"}}>pipeline-push-calendar@pipeline-push-calendar-503318.iam.gserviceaccount.com</b><CopyIcon value="pipeline-push-calendar@pipeline-push-calendar-503318.iam.gserviceaccount.com"/></span> and make sure its access is "Make changes and see all event details", and select "Make available to public – see all event details". Then add its Calendar ID to the ALLOWED_CALENDAR_IDS secret in Supabase (if you're a manager, email the Calendar ID to pipelinepush.crm@gmail.com). Done! You'll get an email confirmation once the calendar has been added to Pipeline Push.
       </div>
+      )}
       {adding && (
         <div style={{background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,padding:"12px",marginBottom:12}}>
           <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder={`Calendar name — e.g. "Jake's Close Calendar"`}
