@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b17";
+const APP_BUILD = "b18";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4249,7 +4249,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
         })}
         lead={{email:form.email, secondary_email:form.secondaryEmail, name:form.name}}
         collapsible={true}
-        onUpdate={next=>setForm(f=>({...f,closerChecklist:next}))}
+        onUpdate={next=>setForm(f=>({...f,closerChecklist:next,closer_checklist:next}))}
       />
       {/* Commission — sits right below the Closers VC Checklist */}
       <div style={{marginBottom:14}}>
@@ -6891,7 +6891,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         )}
 
-        <div style={{marginBottom:14}}>
+        {/* Appointments only exist on SAVED leads. Booking during creation
+            looked bookable but the checks read the not-yet-saved lead and
+            blocked it confusingly — so the whole section unlocks after Save. */}
+        {form.id ? (<div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
             {form.appointment&&!form.gcal_event_id&&<button onClick={async()=>{
@@ -7086,7 +7089,11 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
               )}
             </div>
           )}
-        </div>
+        </div>) : (
+          <div style={{marginBottom:14,padding:"12px 14px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:600,lineHeight:1.5}}>
+            📅 Appointments unlock once this lead is saved. Hit <b>Save</b> below, then open the lead to book the closer slot or any other appointment.
+          </div>
+        )}
         {/* Gift card drop-off — appears once the account has reached VC */}
         {(giftCardEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) || form.giftCardDropped) && (
           <div style={{marginBottom:14}}>
@@ -7266,7 +7273,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           leadId={form.id||null}
           initialChecked={form.acChecklist||[]}
           collapsible={true}
-          onUpdate={next=>setForm(f=>({...f,acChecklist:next}))}
+          onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
         />
         {/* Rapport + Objections — full form here; auto-saves to the lead. */}
         <RapportSection value={form.rapport} leadId={form.id||null}
@@ -16730,7 +16737,7 @@ function App() {
       if (isRep) {
         if (!form.meter || !String(form.meter).trim()) missing.push("Enter the meter number (under Smart Meter Texas)");
         const hasAppt = (!!(form.appointment && String(form.appointment).trim()) && !!(form.gcal_event_id || form.cb_event_id)) || (Array.isArray(form.extra_appointments) && form.extra_appointments.length>0) || !!form.cap_event_id;
-        if (!hasAppt) missing.push("Schedule a closer slot or personal callback");
+        if (!hasAppt) missing.push(existing ? "Schedule a closer slot or personal callback" : "Book the appointment after saving: save this lead at an earlier stage, open it, book the closer slot, then move it to AC / Scheduled");
         missing.push(...acRequirementsMissing(form, myAcReq));
       }
       if (missing.length > 0) {
