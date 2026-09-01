@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b28";
+const APP_BUILD = "b30";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -3066,7 +3066,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
         );
       })()}
 
-      {isOwner && <StandaloneCalendarsSection profiles={profiles}/>}
+      {(isOwner || currentUser.role==="manager") && <StandaloneCalendarsSection profiles={profiles} isOwner={isOwner} me={currentUser} teamMembers={teamMembers}/>}
 
       {calAccessOpen && (()=>{
         const rep=profiles.find(p=>p.id===calAccessOpen);
@@ -3092,7 +3092,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                 </div>
               </div>
               <div style={{opacity:all?0.45:1,pointerEvents:all?"none":"auto"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Individual calendars</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Team calendars</div>
                 {calTeams.length===0 && <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"14px 0"}}>No team calendars are configured yet.</div>}
                 {calTeams.map(t=>{
                   const on=all||access.includes(t.id);
@@ -3109,7 +3109,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
                   );
                 })}
                 {isOwner && (ExtraCals.rows||[]).length>0 && (
-                  <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"16px 0 8px"}}>Standalone calendars</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"16px 0 8px"}}>Closer calendars</div>
                 )}
                 {isOwner && (ExtraCals.rows||[]).map(row=>{
                   const on = all || (Array.isArray(row.rep_ids)&&row.rep_ids.includes(calAccessOpen));
@@ -3141,7 +3141,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
 // Create calendars that are NOT tied to a team (e.g. one closer's booking
 // calendar) and grant specific reps access. Reps with access see it in the
 // Calendar tab and can book closes onto it like any team calendar.
-function StandaloneCalendarsSection({profiles}) {
+function StandaloneCalendarsSection({profiles, isOwner, me, teamMembers}) {
   const dark=useDark();
   const [showHelp,setShowHelp]=useState(false);
   const [rows,setRows]=useState([]);
@@ -3193,12 +3193,18 @@ function StandaloneCalendarsSection({profiles}) {
     try{ await sb.from("extra_calendars").delete().eq("id",row.id); }catch(e){ console.error(e); }
   };
   const people=(profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  // Visibility: the app owner sees every standalone calendar. A manager sees
+  // only the ones THEY created plus any whose owner is on their team(s).
+  // (rows stays the FULL list — ExtraCals feeds booking for everyone.)
+  const myTeamIds = (!isOwner && me) ? Object.keys(teamMembers||{}).filter(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===me.id)) : [];
+  const ownerOnMyTeam = (uid)=> !!uid && myTeamIds.some(tid=>(teamMembers[tid]||[]).some(m=>m.user_id===uid));
+  const visibleRows = isOwner ? rows : rows.filter(r=>r && ((me && r.created_by===me.id) || ownerOnMyTeam(r.owner_id)));
   return (
     <div style={{marginTop:22,background:dark?"#1e293b":"#fff",borderRadius:14,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,padding:"18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
         <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-          <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Standalone Calendars</div>
-          <button type="button" onClick={()=>setShowHelp(v=>!v)} title="How to add a standalone calendar"
+          <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Closer Calendars</div>
+          <button type="button" onClick={()=>setShowHelp(v=>!v)} title="How to add a closer calendar"
             style={{width:18,height:18,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:11,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",background:showHelp?"#1a2456":(dark?"#334155":"#e2e8f0"),color:showHelp?"#fff":(dark?"#cbd5e1":"#64748b"),flexShrink:0,padding:0}}>?</button>
         </div>
         <button onClick={()=>setAdding(a=>!a)}
@@ -3223,10 +3229,10 @@ function StandaloneCalendarsSection({profiles}) {
           </button>
         </div>
       )}
-      {rows.length===0 && !adding && (
-        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"10px 0"}}>No standalone calendars yet.</div>
+      {visibleRows.length===0 && !adding && (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"10px 0"}}>No closer calendars yet.</div>
       )}
-      {rows.map(row=>{
+      {visibleRows.map(row=>{
         const ids=Array.isArray(row.rep_ids)?row.rep_ids:[];
         const isOpen=openId===row.id;
         return (
@@ -3238,12 +3244,13 @@ function StandaloneCalendarsSection({profiles}) {
                 <div style={{fontSize:11,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(()=>{ const o=(profiles||[]).find(p=>p.id===row.owner_id); return o ? <>👤 Owner: <b style={{color:dark?"#cbd5e1":"#475569"}}>{o.name||o.email}</b></> : "No owner set"; })()}</div>
               </div>
               <span style={{fontSize:11,fontWeight:800,color:"#0369a1",background:dark?"rgba(3,105,161,0.2)":"#e0f2fe",borderRadius:12,padding:"2px 9px",flexShrink:0}}>{ids.length} rep{ids.length===1?"":"s"}</span>
-              <button onClick={e=>{e.stopPropagation();remove(row);}} title="Remove this calendar from the app"
-                style={{background:"none",border:"none",color:"#f87171",fontSize:15,cursor:"pointer",flexShrink:0,padding:"2px 4px"}}>🗑️</button>
+              {(isOwner || (me && row.created_by===me.id)) && <button onClick={e=>{e.stopPropagation();remove(row);}} title="Remove this calendar from the app"
+                style={{background:"none",border:"none",color:"#f87171",fontSize:15,cursor:"pointer",flexShrink:0,padding:"2px 4px"}}>🗑️</button>}
               <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>{isOpen?"▲":"▼"}</span>
             </div>
             {isOpen && (
               <div style={{padding:"8px 12px",maxHeight:260,overflowY:"auto"}}>
+                {isOwner && (<>
                 <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"4px 0 6px"}}>Calendar owner</div>
                 <select value={row.owner_id||""} onChange={e=>setOwner(row, e.target.value||null)}
                   style={{width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:13,fontWeight:600,marginBottom:4}}>
@@ -3251,6 +3258,7 @@ function StandaloneCalendarsSection({profiles}) {
                   {people.map(p=><option key={p.id} value={p.id}>{p.name||p.email}</option>)}
                 </select>
                 <div style={{fontSize:11,color:"#94a3b8",lineHeight:1.45,margin:"2px 0 10px"}}>The owner can set this calendar's required items in Settings → Rep Management, and automatically gets access below.</div>
+                </>)}
                 <div style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 10px"}}>
                   <div style={{flex:1,minWidth:0,fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>ID: {row.calendar_id}</div>
                   <CopyIcon value={row.calendar_id}/>
@@ -4676,7 +4684,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   const standalone = isOwner ? (ExtraCals.rows||[]) : (ExtraCals.rows||[]).filter(r=>r && r.owner_id===user.id);
   const options = [
     ...scopedTeams.map(t=>({value:"team:"+t.id, kind:"team", row:t, label:(t.name||"Team")+" — team calendar"})),
-    ...standalone.map(c=>({value:"cal:"+c.id, kind:"cal", row:c, label:(c.name||"Calendar")+" — standalone calendar"})),
+    ...standalone.map(c=>({value:"cal:"+c.id, kind:"cal", row:c, label:(c.name||"Calendar")+" — closer calendar"})),
   ];
   const [selId, setSelId] = React.useState(options[0] ? options[0].value : "");
   const sel = options.find(o=>o.value===selId) || options[0] || null;
@@ -4721,7 +4729,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🎯 Rep Management</div>
       </div>
       {options.length===0 ? (
-        <div style={{...card,color:dark?"#cbd5e1":"#475569",fontSize:13}}>Nothing to manage yet — this page is for team managers and for closers who own a standalone calendar.</div>
+        <div style={{...card,color:dark?"#cbd5e1":"#475569",fontSize:13}}>Nothing to manage yet — this page is for team managers and for closers who own a closer calendar.</div>
       ) : (<>
         <div style={card}>
           <div style={{fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#64748b",marginBottom:8}}>Calendar</div>
