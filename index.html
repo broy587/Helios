@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b23";
+const APP_BUILD = "b24";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4606,60 +4606,107 @@ function acRequirementsMissing(lead, req) {
   return missing;
 }
 
-// Settings → Rep Management: managers/owner set the AC requirements for reps on
-// their own team(s). Only affects users with the "rep" role on those teams.
+// The calendar being booked decides the required items (b24). Returns true
+// (and shows the alert) when the lead is still missing items for calendarId.
+// Callers skip this for CAP / Cancel Save / extra appointments / managing an
+// existing booking — same exemptions as the checklist gate.
+async function calendarReqMissingAlert(calendarId, lead){
+  try{
+    const req = TeamCalendars.acReqForCalendarId(calendarId);
+    if(!acRequirementsActive(req)) return false;
+    let leadForCheck = lead || {};
+    // bill_photos never ride along with leads (too big) — if photos look
+    // missing but "Utility bill" is required, ask the DB before blocking.
+    const localHas = (Array.isArray(leadForCheck.bill_photos)&&leadForCheck.bill_photos.length>0)
+      || (Array.isArray(leadForCheck.billPhotos)&&leadForCheck.billPhotos.length>0)
+      || leadForCheck.has_bill_photo===true;
+    if(!localHas && leadForCheck.id && (req.items||[]).includes("bill")){
+      try{
+        const {data:ph} = await sb.from("leads").select("id").eq("id", leadForCheck.id).not("bill_photos->0","is",null).maybeSingle();
+        if(ph) leadForCheck = {...leadForCheck, has_bill_photo:true};
+      }catch(e2){ console.warn("bill-photo presence check failed:", e2); }
+    }
+    const miss = acRequirementsMissing(leadForCheck, req);
+    if(miss.length>0){
+      window.alert("You can't book a closer slot on this calendar yet. Please complete the following:\n\n• "+miss.join("\n• "));
+      return true;
+    }
+    return false;
+  }catch(e){ console.warn("calendar requirement check skipped:", e); return false; }
+}
+
+// Settings → Rep Management: pick a CALENDAR at the top, then view/edit the
+// required items for booking on it. Team calendars carry their team's rules
+// (which also gate moving accounts to AC / Scheduled). Standalone calendars
+// have their own rules, visible to the owner only. Managers see just their
+// own team(s); the owner sees everything.
 function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   const myTeams = (teams||[]).filter(t => (teamMembers[t.id]||[]).some(m => m.user_id === user.id));
-  const [teamId, setTeamId] = React.useState(myTeams[0] ? myTeams[0].id : "");
-  const team = (teams||[]).find(t=>t.id===teamId);
-  const [items, setItems] = React.useState(()=> (team && Array.isArray(team.ac_required_items)) ? team.ac_required_items : []);
-  const [count, setCount] = React.useState(()=> (team && Number(team.ac_required_count)) || 0);
+  const scopedTeams = isOwner ? (teams||[]) : myTeams;
+  const standalone = isOwner ? (ExtraCals.rows||[]) : [];
+  const options = [
+    ...scopedTeams.map(t=>({value:"team:"+t.id, kind:"team", row:t, label:(t.name||"Team")+" — team calendar"})),
+    ...standalone.map(c=>({value:"cal:"+c.id, kind:"cal", row:c, label:(c.name||"Calendar")+" — standalone calendar"})),
+  ];
+  const [selId, setSelId] = React.useState(options[0] ? options[0].value : "");
+  const sel = options.find(o=>o.value===selId) || options[0] || null;
+  const [items, setItems] = React.useState(()=> (sel && Array.isArray(sel.row.ac_required_items)) ? sel.row.ac_required_items : []);
+  const [count, setCount] = React.useState(()=> (sel && Number(sel.row.ac_required_count)) || 0);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState("");
   React.useEffect(()=>{
-    const t = (teams||[]).find(x=>x.id===teamId);
-    setItems(t && Array.isArray(t.ac_required_items) ? t.ac_required_items : []);
-    setCount((t && Number(t.ac_required_count)) || 0);
+    const o = options.find(x=>x.value===selId) || options[0] || null;
+    setItems(o && Array.isArray(o.row.ac_required_items) ? o.row.ac_required_items : []);
+    setCount((o && Number(o.row.ac_required_count)) || 0);
     setMsg("");
-  },[teamId]);
+  },[selId]);
   const toggleItem = (key)=> setItems(prev => prev.includes(key) ? prev.filter(k=>k!==key) : [...prev, key]);
   const save = async ()=>{
-    if(!teamId) return;
+    if(!sel) return;
     setSaving(true); setMsg("");
     try {
-      const {error} = await sb.from("teams").update({ac_required_items:items, ac_required_count:count||null}).eq("id",teamId);
-      if(error) throw error;
-      const t = (teams||[]).find(x=>x.id===teamId);
-      if(t){ t.ac_required_items = items; t.ac_required_count = count||null; } // keep in-memory copy fresh for this session
+      if(sel.kind==="team"){
+        const {error} = await sb.from("teams").update({ac_required_items:items, ac_required_count:count||null}).eq("id",sel.row.id);
+        if(error) throw error;
+        const t = (teams||[]).find(x=>x.id===sel.row.id);
+        if(t){ t.ac_required_items = items; t.ac_required_count = count||null; } // keep in-memory copy fresh
+        TeamCalendars.applyReqEdit(sel.row.id, items, count||0);
+      } else {
+        const {error} = await sb.from("extra_calendars").update({ac_required_items:items, ac_required_count:count||null}).eq("id",sel.row.id);
+        if(error) throw error;
+        const r = (ExtraCals.rows||[]).find(x=>x.id===sel.row.id);
+        if(r){ r.ac_required_items = items; r.ac_required_count = count||null; }
+        TeamCalendars.applyReqEdit("cal:"+sel.row.id, items, count||0);
+      }
       setMsg("saved");
     } catch(e){ console.error("Save AC requirements failed:",e); setMsg("error"); }
     setSaving(false);
   };
   const card = {background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:14};
-  const teamName = team ? (team.name||"your team") : "your team";
+  const selName = sel ? (sel.row.name||"this calendar") : "this calendar";
   return (
     <div style={{flex:1,overflowY:"auto",minHeight:0,padding:"0 4px 48px"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
         <button onClick={onBack} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",padding:0}}>‹</button>
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🎯 Rep Management</div>
       </div>
-      {myTeams.length===0 ? (
+      {options.length===0 ? (
         <div style={{...card,color:dark?"#cbd5e1":"#475569",fontSize:13}}>You're not on a team yet, so there are no reps to manage. Join a team in the Team tab first.</div>
       ) : (<>
-        {myTeams.length>1 && (
-          <div style={card}>
-            <div style={{fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#64748b",marginBottom:8}}>Team</div>
-            <select value={teamId} onChange={e=>setTeamId(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14}}>
-              {myTeams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-        )}
+        <div style={card}>
+          <div style={{fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#64748b",marginBottom:8}}>Calendar</div>
+          <select value={sel?sel.value:""} onChange={e=>setSelId(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontWeight:600}}>
+            {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
         <div style={{fontSize:12,color:"#94a3b8",marginBottom:14,lineHeight:1.5}}>
-          Rules only apply to <b>{teamName}</b>. The following is what will be required from everyone on your team to schedule leads on the closer calendar. For reps, items selected will also be required to move a lead to <b>AC / Scheduled</b> and beyond.
+          {sel && sel.kind==="cal"
+            ? (<>Rules only apply to <b>{selName}</b>. Anyone with the rep, self-gen, or closer role must complete these items on a lead before booking a slot on this calendar. Managers and owners can always book.</>)
+            : (<>Rules only apply to <b>{selName}</b>. The following is required from reps on this team to book on the team calendar and to move an account to AC / Scheduled and beyond. Managers and owners can always book.</>)}
         </div>
         <div style={card}>
           <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Required items</div>
-          <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Select which items are required to move an account to AC / Scheduled and beyond. Every item checked here must be completed.</div>
+          <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Select which items are required. Every item checked here must be complete on the lead.</div>
           {AC_REQ_ITEMS.map(it=>{
             const on = items.includes(it.key);
             return (
@@ -4674,13 +4721,13 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
         </div>
         <div style={card}>
           <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Minimum number of items</div>
-          <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Select the amount of items required to move an account to AC / Scheduled and beyond. The account needs at least this many of the items above completed (any of them count).</div>
+          <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Require at least this many of the AC items to be complete, on top of the specific items above. "Off" means no minimum.</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {[0,1,2,3,4,5,6,7,8].map(n=>{
               const on = count===n;
               return (
                 <button key={n} type="button" onClick={()=>setCount(n)}
-                  style={{minWidth:44,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${on?"#1a2456":(dark?"#334155":"#cbd5e1")}`,background:on?"#1a2456":(dark?"#1e293b":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                  style={{minWidth:44,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${on?"#1a2456":(dark?"#334155":"#cbd5e1")}`,background:on?"#1a2456":(dark?"#1e293b":"#fff"),color:on?"#fff":(dark?"#e2e8f0":"#334155"),fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   {n===0?"Off":n}
                 </button>
               );
@@ -4688,11 +4735,11 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
           </div>
         </div>
         <button onClick={save} disabled={saving}
-          style={{width:"100%",padding:"13px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:15,cursor:saving?"default":"pointer",opacity:saving?0.6:1,marginTop:4}}>
+          style={{width:"100%",padding:"13px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",opacity:saving?0.7:1}}>
           {saving?"Saving…":"Save requirements"}
         </button>
         {msg==="saved" && <div style={{textAlign:"center",color:"#10b981",fontSize:13,fontWeight:600,marginTop:10}}>Saved ✓ — reps pick this up next time their app refreshes.</div>}
-        {msg==="error" && <div style={{textAlign:"center",color:"#ef4444",fontSize:13,fontWeight:600,marginTop:10}}>Couldn't save. Make sure the team columns exist (see setup note) and try again.</div>}
+        {msg==="error" && <div style={{textAlign:"center",color:"#ef4444",fontSize:13,fontWeight:600,marginTop:10}}>Couldn't save. Make sure the columns exist (run the SQL), then try again.</div>}
       </>)}
     </div>
   );
@@ -14308,19 +14355,20 @@ const TeamCalendars = {
   myTeams: [],
   // owner's remembered pick for this session
   lastOwnerPick: null,
-  set({ currentUserId, isOwner, teams, teamMembers, calendarAccess, calendarAccessAll }) {
+  set({ currentUserId, isOwner, role, teams, teamMembers, calendarAccess, calendarAccessAll }) {
     this.currentUserId = currentUserId;
     this.isOwner = isOwner;
+    this.currentRole = role || this.currentRole || null;
     // Pull calendar config from the TEAM_CALENDARS map (keyed by team id).
     // A team only counts as "has a calendar" if it's present there.
     const withCal = (teams||[])
       .map(t=>{
         const cfg = TEAM_CALENDARS[t.id];
-        return cfg ? { id:t.id, name:t.name||cfg.name, calendarId:cfg.calendarId } : null;
+        return cfg ? { id:t.id, name:t.name||cfg.name, calendarId:cfg.calendarId, reqItems:Array.isArray(t.ac_required_items)?t.ac_required_items:[], reqCount:Number(t.ac_required_count)||0 } : null;
       })
       .filter(Boolean);
     // Standalone (non-team) calendars ride along as extra entries.
-    const extras = (ExtraCals.rows||[]).map(r=>({ id:"cal:"+r.id, name:r.name||"Calendar", calendarId:r.calendar_id }));
+    const extras = (ExtraCals.rows||[]).map(r=>({ id:"cal:"+r.id, name:r.name||"Calendar", calendarId:r.calendar_id, reqItems:Array.isArray(r.ac_required_items)?r.ac_required_items:[], reqCount:Number(r.ac_required_count)||0 }));
     const myExtras = extras.filter(x=>{
       const row=(ExtraCals.rows||[]).find(r=>("cal:"+r.id)===x.id);
       return row && Array.isArray(row.rep_ids) && row.rep_ids.includes(currentUserId);
@@ -14349,6 +14397,21 @@ const TeamCalendars = {
         localStorage.setItem("pp_cal_cache_"+currentUserId, JSON.stringify(this.myTeams));
       }
     }catch(e){}
+  },
+  // Per-calendar booking requirements: the calendar being booked decides.
+  // Requirements gate reps / self-gen / closers; managers and the owner are
+  // exempt (same rule as team requirements).
+  acReqForCalendarId(calendarId){
+    const role = this.currentRole || "";
+    if(role !== "rep" && role !== "self_gen" && role !== "closer") return {items:[], count:0};
+    const hit = (this.teams||[]).find(t=>t && t.calendarId===calendarId)
+             || (this.cachedTeams()||[]).find(t=>t && t.calendarId===calendarId);
+    if(!hit) return {items:[], count:0};
+    return {items:Array.isArray(hit.reqItems)?hit.reqItems:[], count:Number(hit.reqCount)||0};
+  },
+  // Keep in-memory requirement copies fresh right after an edit in Rep Management.
+  applyReqEdit(id, items, count){
+    [this.teams, this.myTeams].forEach(list=>(list||[]).forEach(t=>{ if(t && t.id===id){ t.reqItems=Array.isArray(items)?items:[]; t.reqCount=Number(count)||0; } }));
   },
   // Last-known calendars for this user, used only when live data hasn't loaded.
   cachedTeams() {
@@ -14436,27 +14499,16 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
       const checklist = Array.isArray(localLead.ac_checklist) ? localLead.ac_checklist : (Array.isArray(localLead.acChecklist) ? localLead.acChecklist : []);
       const miss = [];
       if(checklist.length===0) miss.push("Mark at least one item in the Setters AC Checklist");
-      // Plus any team-configured Rep Management requirements (reps/self-gen/closers).
-      if(acRequirementsActive(acReq)){
-        let leadForCheck = localLead;
-        // bill_photos are NOT loaded with leads (they're huge, fetched on demand),
-        // so this check can't see photos uploaded in an earlier session. If photos
-        // LOOK missing, ask the DB whether any exist (tiny query — ids only)
-        // before telling the rep their uploaded bill isn't there.
-        const localHas = (Array.isArray(localLead.bill_photos)&&localLead.bill_photos.length>0)
-          || (Array.isArray(localLead.billPhotos)&&localLead.billPhotos.length>0)
-          || localLead.has_bill_photo===true;
-        if(!localHas && localLead.id){
-          try{
-            const {data:ph} = await sb.from("leads").select("id").eq("id", localLead.id).not("bill_photos->0","is",null).maybeSingle();
-            if(ph) leadForCheck = {...localLead, has_bill_photo:true};
-          }catch(e2){ console.warn("bill-photo presence check failed:", e2); }
-        }
-        miss.push(...acRequirementsMissing(leadForCheck, acReq));
-      }
       if(miss.length>0){
         window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
         return;
+      }
+      // Per-calendar requirements: the calendar being booked decides. When the
+      // rep's calendar auto-resolves, check it right here; when they'll pick
+      // from a list instead, pickCalendar inside the modal runs the same check.
+      {
+        const r0 = TeamCalendars.resolve();
+        if(r0 && r0.status==="ok" && await calendarReqMissingAlert(r0.calendarId, localLead)) return;
       }
     }
     setShowModal(true);
@@ -14645,7 +14697,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
   const [view, setView] = React.useState(
     noCalendar ? "nocal" : (needsPick ? "pickcal" : ((isBooked&&!appendMode)?"manage":"calendar"))
   ); // pickcal | nocal | manage | calendar | slots | confirm
-  const pickCalendar = (opt) => {
+  const pickCalendar = async (opt) => {
+    // Each calendar carries its own required items — check the one being
+    // picked (skipped for CAP / Cancel Save / extra appts / managing a booking).
+    if(!capMode && !csMode && !appendMode && !isBooked){
+      if(await calendarReqMissingAlert(opt.calendarId, lead)) return;
+    }
     TeamCalendars.lastOwnerPick = opt.calendarId; // remember for the session (owner)
     setCalChoice({calendarId:opt.calendarId, teamName:opt.name});
     setView((isBooked&&!doAppend)?"manage":"calendar");
@@ -16337,6 +16394,7 @@ function App() {
     TeamCalendars.set({
       currentUserId: user.id,
       isOwner: user.id === OWNER_ID,
+      role: profile && profile.role,
       teams,
       teamMembers,
       calendarAccess: profile && profile.calendar_access,
