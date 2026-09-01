@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b30";
+const APP_BUILD = "b31";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4686,7 +4686,10 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
     ...scopedTeams.map(t=>({value:"team:"+t.id, kind:"team", row:t, label:(t.name||"Team")+" — team calendar"})),
     ...standalone.map(c=>({value:"cal:"+c.id, kind:"cal", row:c, label:(c.name||"Calendar")+" — closer calendar"})),
   ];
-  const [selId, setSelId] = React.useState(options[0] ? options[0].value : "");
+  // Default to YOUR OWN team's calendar (e.g. a Helios manager lands on
+  // Helios), falling back to the first thing in the list.
+  const defaultSel = (()=>{ const mine = myTeams.find(t=>options.some(o=>o.value==="team:"+t.id)); return mine ? "team:"+mine.id : (options[0] ? options[0].value : ""); })();
+  const [selId, setSelId] = React.useState(defaultSel);
   const sel = options.find(o=>o.value===selId) || options[0] || null;
   const [items, setItems] = React.useState(()=> (sel && Array.isArray(sel.row.ac_required_items)) ? sel.row.ac_required_items : []);
   const [count, setCount] = React.useState(()=> (sel && Number(sel.row.ac_required_count)) || 0);
