@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b22";
+const APP_BUILD = "b23";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4698,7 +4698,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   );
 }
 
-function ACStatus({softSolid, confirmed, onChange, dark}) {
+function ACStatus({softSolid, confirmed, onChange, dark, requiredStar}) {
 
   const [openTip, setOpenTip] = React.useState(""); // "" | "commitment" | "textcall"
   const labelStyle = {fontSize:11,fontWeight:600,color:dark?"#94a3b8":"#64748b",textTransform:"uppercase",letterSpacing:"0.04em"};
@@ -4716,7 +4716,7 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
   );
   return (
     <div style={{marginBottom:14,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"12px 14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>AC Status</div>
+      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>AC Status{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}</div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:9}}>
         <span style={{...labelStyle,display:"inline-flex",alignItems:"center"}}>Commitment<InfoDot tip="commitment"/></span>
         <div style={{display:"flex",gap:6}}>
@@ -4744,7 +4744,7 @@ function ACStatus({softSolid, confirmed, onChange, dark}) {
   );
 }
 
-function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:collapsibleProp}) {
+function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:collapsibleProp, requiredStar}) {
   const dark = useDark();
   // Normalize any legacy item names to current ones so a renamed item still
   // shows as checked in both view and edit modes, regardless of data source.
@@ -4782,7 +4782,7 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
     <div style={{marginBottom:16,background:dark?"#0f172a":"#fef9ee",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#f0d080"}`}}>
       <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
         style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setters AC Checklist</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setters AC Checklist{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
           <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
@@ -6766,6 +6766,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   // Utility Info — ONE definition, rendered in a different spot per mode:
   // right below Book/Remove Appointment when editing a saved lead, and at the
   // very bottom (below Objections) when creating a new one.
+  // Red star shown next to required fields — ONLY while creating a new lead.
+  const reqStar = !form.id ? (<span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span>) : null;
   const utilityInfoSection = (<>
         {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
         <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
@@ -6906,7 +6908,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}</h2>
+          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}{!(initial&&initial.id) && <span style={{marginLeft:8,fontSize:11,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap"}}><span style={{color:"#dc2626",fontWeight:900}}>*</span> required</span>}</h2>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
               {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save":"Add")}
@@ -6916,7 +6918,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         </div>
         {[["name","Name","text","Full name"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}{reqStar}</label>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={{...inputStyle,flex:1}}/>
               {form[k] && <CopyIcon value={form[k]}/>}
@@ -6924,7 +6926,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         ))}
         <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Address</label>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Address{reqStar}</label>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{flex:1,minWidth:0}}>
               <AddressAutocomplete value={form.address||""} onChange={v=>setForm(f=>({...f,address:v}))} gmapsKey={gmapsKey} inputStyle={inputStyle} placeholder="Street address"/>
@@ -6934,7 +6936,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         </div>
         {[["phone","Phone","tel","(555) 000-0000"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}{reqStar}</label>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={{...inputStyle,flex:1}}/>
               {form[k] && <CopyIcon value={form[k]}/>}
@@ -7187,7 +7189,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         )}
         {form.id ? utilityInfoSection : null}
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
           // Note button, including the very FIRST one (which becomes the classic
@@ -7198,7 +7200,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           return (
         <div style={{marginBottom:14}}>
           <label style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-            <span>{(hasFirst||hasLog)?"Setter / Follow Up Notes":"Setter Notes"}</span>
+            <span>{(hasFirst||hasLog)?"Setter / Follow Up Notes":"Setter Notes"}{reqStar}</span>
             {form.notesCreatedAt && <span style={{fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"none",letterSpacing:0}}>First taken {formatNoteTime(form.notesCreatedAt)}{form.notesCreatedBy?` - ${form.notesCreatedBy}`:""}</span>}
           </label>
           <SetterNotesEditor firstText={form.notes} firstTs={form.notesCreatedAt||(initial&&initial.created_at)} firstBy={form.notesCreatedBy}
@@ -7223,7 +7225,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             {/* Photos */}
             <div>
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
+                Bill Photos {reqStar}{form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
               </label>
               <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:10,padding:"13px 10px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc",fontSize:14,color:dark?"#cbd5e1":"#475569",fontWeight:600}}>
                 📷 Add Photo
@@ -7273,6 +7275,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {/* AC Checklist */}
         <ACChecklist
           leadId={form.id||null}
+          requiredStar={!form.id}
           initialChecked={form.acChecklist||[]}
           collapsible={true}
           onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
