@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b25";
+const APP_BUILD = "b26";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -3228,7 +3228,7 @@ function StandaloneCalendarsSection({profiles}) {
               <span style={{fontSize:16}}>📅</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{row.name||"Calendar"}</div>
-                <div style={{fontSize:11,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.calendar_id}</div>
+                <div style={{fontSize:11,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(()=>{ const o=(profiles||[]).find(p=>p.id===row.owner_id); return o ? <>👤 Owner: <b style={{color:dark?"#cbd5e1":"#475569"}}>{o.name||o.email}</b></> : "No owner set"; })()}</div>
               </div>
               <span style={{fontSize:11,fontWeight:800,color:"#0369a1",background:dark?"rgba(3,105,161,0.2)":"#e0f2fe",borderRadius:12,padding:"2px 9px",flexShrink:0}}>{ids.length} rep{ids.length===1?"":"s"}</span>
               <button onClick={e=>{e.stopPropagation();remove(row);}} title="Remove this calendar from the app"
@@ -3244,6 +3244,10 @@ function StandaloneCalendarsSection({profiles}) {
                   {people.map(p=><option key={p.id} value={p.id}>{p.name||p.email}</option>)}
                 </select>
                 <div style={{fontSize:11,color:"#94a3b8",lineHeight:1.45,margin:"2px 0 10px"}}>The owner can set this calendar's required items in Settings → Rep Management, and automatically gets access below.</div>
+                <div style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 10px"}}>
+                  <div style={{flex:1,minWidth:0,fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>ID: {row.calendar_id}</div>
+                  <CopyIcon value={row.calendar_id}/>
+                </div>
                 <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"4px 0 6px"}}>Who can see & book on it</div>
                 {people.map(p=>{
                   const on=ids.includes(p.id);
