@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b20";
+const APP_BUILD = "b21";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4162,7 +4162,7 @@ function AppointmentPicker({value,onChange}) {
   );
 }
 
-function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
+function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}) {
   const dark=useDark();
   const [localVals, setLocalVals] = React.useState({});
   const [showFollowHelp, setShowFollowHelp] = React.useState(false);
@@ -4205,6 +4205,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
           readOnly={true}
           onUpdate={next=>{ if(onUpdate&&lead) onUpdate({...lead, closer_checklist:next}); }}
         />
+        {beforeSold||null}
         {/* Sold System Info — collapsible (read-only) */}
         {(()=>{
           const rows = [
@@ -4236,6 +4237,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate}) {
             </div>
           );
         })()}
+        {afterSold||null}
       </div>
     );
   }
@@ -4897,7 +4899,7 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
     <div style={{marginBottom:16,background:dark?"#0f172a":"#f5f3ff",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#ddd6fe"}`}}>
       <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
         style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#5b21b6",textTransform:"uppercase",letterSpacing:"0.05em"}}>💬 Personality / Rapport</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#5b21b6",textTransform:"uppercase",letterSpacing:"0.05em"}}>💬 Personality / Rapport{!readOnly && <span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving…</span>}
           {filledCount>0 && <div style={{background:"#7c3aed",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:800}}>{filledCount}</div>}
@@ -5074,7 +5076,7 @@ function ObjectionsSection({value, onChange, readOnly, leadId, collapsible=true}
     <div style={{marginBottom:16,background:dark?"#0f172a":"#fff7ed",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#fed7aa"}`}}>
       <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
         style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#9a3412",textTransform:"uppercase",letterSpacing:"0.05em"}}>🛑 Objections</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#9a3412",textTransform:"uppercase",letterSpacing:"0.05em"}}>🛑 Objections{!readOnly && <span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving…</span>}
           {count>0 && <div style={{background:"#ea580c",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:800}}>{count}</div>}
@@ -6026,40 +6028,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             </div>
           ):null)}
-          {/* Utility Info — collapsible dropdown (mirrors the edit form) */}
-          {(()=>{
-            const rows=[["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["Total Rate / KWH",lead.cents_kwh?`$${lead.cents_kwh}/kwh`:""],["Annual kWh",lead.annual_kwh?`${lead.annual_kwh} kWh`:""],["Average Bill",lead.average_bill?`$${lead.average_bill}`:""]].filter(([l,v])=>v);
-            return (
-              <div style={{marginBottom:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,overflow:"hidden"}}>
-                <button type="button" onClick={()=>setShowUtilInfoV(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e293b":"#f8fafc",border:"none",cursor:"pointer"}}>
-                  <span style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Info</span>
-                  <span style={{fontSize:13,color:"#94a3b8"}}>{showUtilInfoV?"▲":"▼"}</span>
-                </button>
-                {showUtilInfoV && (
-                  <div style={{padding:"12px 14px 2px"}}>
-                    {rows.length===0 ? (
-                      <div style={{fontSize:13,color:"#94a3b8",paddingBottom:10}}>No utility info entered yet.</div>
-                    ) : rows.map(([label,value])=>(
-                      <div key={label} style={{marginBottom:12}}>
-                        <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                          <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>{value}</div>
-                          {(label==="ESIID"||label==="Meter #") && <CopyIcon value={value}/>}
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:rows.length?6:0,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
-                      <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 Smart Meter Texas</div>
-                      <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener,noreferrer")}
-                        style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"6px 14px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
-                        Open ›
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
           {/* Secondary contact */}
           {(()=>{
             const sName=lead.secondary_name, sPhone=lead.secondary_phone, sEmail=lead.secondary_email;
@@ -6100,16 +6068,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
-          {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
-          {(giftCardEligible(lead) || lead.gift_card_dropped) && (
-            <div onClick={toggleGift} title="Tap to toggle"
-              style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
-              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
-              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
-              {giftMsg==="saving" && <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>saving…</span>}
-              {giftMsg==="error" && <span style={{fontSize:11,color:"#b91c1c",marginLeft:"auto"}}>couldn't save</span>}
-            </div>
-          )}
           {lead.commission && String(lead.commission).trim() && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
@@ -6400,7 +6358,55 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           {/* Rapport + Objections — view mode shows only what's filled in. */}
           <RapportSection value={lead.rapport} readOnly={true}/>
           <ObjectionsSection value={lead.objections} readOnly={true}/>
-          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}/>
+          <CloseSection readOnly={true} lead={lead} onUpdate={onUpdate}
+            beforeSold={(<>
+          {/* Utility Info — collapsible dropdown (mirrors the edit form) */}
+          {(()=>{
+            const rows=[["Utility Company",lead.utility],["ESIID",lead.esiid],["Meter #",lead.meter],["Total Rate / KWH",lead.cents_kwh?`$${lead.cents_kwh}/kwh`:""],["Annual kWh",lead.annual_kwh?`${lead.annual_kwh} kWh`:""],["Average Bill",lead.average_bill?`$${lead.average_bill}`:""]].filter(([l,v])=>v);
+            return (
+              <div style={{marginBottom:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,overflow:"hidden"}}>
+                <button type="button" onClick={()=>setShowUtilInfoV(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e293b":"#f8fafc",border:"none",cursor:"pointer"}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Info</span>
+                  <span style={{fontSize:13,color:"#94a3b8"}}>{showUtilInfoV?"▲":"▼"}</span>
+                </button>
+                {showUtilInfoV && (
+                  <div style={{padding:"12px 14px 2px"}}>
+                    {rows.length===0 ? (
+                      <div style={{fontSize:13,color:"#94a3b8",paddingBottom:10}}>No utility info entered yet.</div>
+                    ) : rows.map(([label,value])=>(
+                      <div key={label} style={{marginBottom:12}}>
+                        <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                          <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>{value}</div>
+                          {(label==="ESIID"||label==="Meter #") && <CopyIcon value={value}/>}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:rows.length?6:0,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 Smart Meter Texas</div>
+                      <button onClick={()=>window.open("https://www.smartmetertexas.com/home","_blank","noopener,noreferrer")}
+                        style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"6px 14px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+                        Open ›
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+            </>)}
+            afterSold={(<>
+          {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
+          {(giftCardEligible(lead) || lead.gift_card_dropped) && (
+            <div onClick={toggleGift} title="Tap to toggle"
+              style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+              {giftMsg==="saving" && <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>saving…</span>}
+              {giftMsg==="error" && <span style={{fontSize:11,color:"#b91c1c",marginLeft:"auto"}}>couldn't save</span>}
+            </div>
+          )}
+            </>)}/>
           {lead.needs_cancel_save && (
             <div style={{marginBottom:16,background:dark?"#312e81":"#eef2ff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"14px 16px"}}>
               <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>🛟 Cancel Save Reasoning</div>
@@ -6757,6 +6763,92 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
       }catch(e){ console.warn("quick note save failed (will retry / save with the lead):", e); }
     })();
   };
+  // Utility Info — ONE definition, rendered in a different spot per mode:
+  // right below Book/Remove Appointment when editing a saved lead, and at the
+  // very bottom (below Objections) when creating a new one.
+  const utilityInfoSection = (<>
+        {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
+        <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
+          <button type="button" onClick={()=>setShowUtilInfo(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info</span>
+            <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>{showUtilInfo?"▲":"▼"}</span>
+          </button>
+          {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={{...inputStyle,flex:1}}/>
+            {form.utility && <CopyIcon value={form.utility}/>}
+          </div>
+        </div>
+        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
+          <div key={k} style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
+              {k==="esiid" && (
+                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
+                  target="_blank" rel="noreferrer"
+                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none"}}>
+                  🔍 Lookup
+                </a>
+              )}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={{...inputStyle,flex:1}}/>
+              {form[k] && <CopyIcon value={form[k]}/>}
+            </div>
+          </div>
+        ))}
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
+          <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+            Open ›
+          </button>
+        </div>
+        {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
+            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+            <input type="text" inputMode="decimal" placeholder=".16"
+              value={form.centsKwh||""}
+              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
+              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
+            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
+          </div>
+        </div>
+        {/* Annual kWh — a plain kWh number */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Annual kWh <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
+              <input type="text" inputMode="decimal" placeholder="e.g. 14000"
+                value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
+                style={{...inputStyle,paddingRight:52}}/>
+              <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
+            </div>
+            {form.annualKwh && <CopyIcon value={form.annualKwh}/>}
+          </div>
+        </div>
+        {/* Average Bill — a dollar amount */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Average Bill <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
+              <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
+              <input type="text" inputMode="decimal" placeholder="0.00"
+                value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
+                style={{...inputStyle,paddingLeft:24}}/>
+            </div>
+            {form.averageBill && <CopyIcon value={form.averageBill}/>}
+          </div>
+        </div>
+          </div>)}
+        </div>
+  </>);
   // Book "On Hold Removed - {name}" on the rep's OWN Google Calendar as an
   // all-day event on the hold-until date. Personal calendar only — never the
   // team calendar, never an open slot.
@@ -7094,16 +7186,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             📅 Appointments unlock once this lead is added.
           </div>
         )}
-        {/* Gift card drop-off — appears once the account has reached VC */}
-        {(giftCardEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) || form.giftCardDropped) && (
-          <div style={{marginBottom:14}}>
-            <div onClick={()=>setForm(f=>({...f,giftCardDropped:!f.giftCardDropped}))}
-              style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${form.giftCardDropped?"#10b981":(dark?"#334155":"#cbd5e1")}`}}>
-              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${form.giftCardDropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:form.giftCardDropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{form.giftCardDropped?"✓":""}</div>
-              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
-            </div>
-          </div>
-        )}
+        {form.id ? utilityInfoSection : null}
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
@@ -7135,87 +7218,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         </div>
           );
         })()}
-        {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
-        <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
-          <button type="button" onClick={()=>setShowUtilInfo(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
-            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info</span>
-            <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>{showUtilInfo?"▲":"▼"}</span>
-          </button>
-          {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Company</label>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <input type="text" placeholder="e.g. Oncor, AEP, Reliant..." value={form.utility||""} onChange={e=>setForm(f=>({...f,utility:e.target.value}))} style={{...inputStyle,flex:1}}/>
-            {form.utility && <CopyIcon value={form.utility}/>}
-          </div>
-        </div>
-        {[["esiid","ESIID","text","Electric Service ID"],["meter","Meter #","text","Meter number"]].map(([k,l,t,p])=>(
-          <div key={k} style={{marginBottom:14}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}</label>
-              {k==="esiid" && (
-                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
-                  target="_blank" rel="noreferrer"
-                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none"}}>
-                  🔍 Lookup
-                </a>
-              )}
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <input type={t} placeholder={p} value={form[k]} onChange={set(k)} style={{...inputStyle,flex:1}}/>
-              {form[k] && <CopyIcon value={form[k]}/>}
-            </div>
-          </div>
-        ))}
-        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
-          <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
-            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
-            Open ›
-          </button>
-        </div>
-        {/* Total Rate / KWH — value lives after the decimal (e.g. .16 → $.16/kwh) */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Rate / KWH <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",position:"relative"}}>
-            <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-            <input type="text" inputMode="decimal" placeholder=".16"
-              value={form.centsKwh||""}
-              onChange={e=>{ let v=e.target.value.replace(/[^0-9.]/g,""); const p=v.split("."); if(p.length>2) v=p[0]+"."+p.slice(1).join(""); setForm(f=>({...f,centsKwh:v})); }}
-              style={{...inputStyle,paddingLeft:24,paddingRight:52}}/>
-            <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>/kwh</span>
-          </div>
-        </div>
-        {/* Annual kWh — a plain kWh number */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Annual kWh <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
-              <input type="text" inputMode="decimal" placeholder="e.g. 14000"
-                value={(()=>{ const raw=(form.annualKwh||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,annualKwh:v})); }}
-                style={{...inputStyle,paddingRight:52}}/>
-              <span style={{position:"absolute",right:12,fontSize:13,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>kWh</span>
-            </div>
-            {form.annualKwh && <CopyIcon value={form.annualKwh}/>}
-          </div>
-        </div>
-        {/* Average Bill — a dollar amount */}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Average Bill <span style={{textTransform:"none",fontWeight:400,color:"#94a3b8"}}>Optional</span></label>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <div style={{flex:1,display:"flex",alignItems:"center",position:"relative"}}>
-              <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
-              <input type="text" inputMode="decimal" placeholder="0.00"
-                value={(()=>{ const raw=(form.averageBill||""); if(!raw) return ""; const [intPart,decPart]=raw.split("."); const withCommas=intPart.replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-                onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,averageBill:v})); }}
-                style={{...inputStyle,paddingLeft:24}}/>
-            </div>
-            {form.averageBill && <CopyIcon value={form.averageBill}/>}
-          </div>
-        </div>
-          </div>)}
-        </div>
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {/* Photos */}
@@ -7281,10 +7283,21 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         <ObjectionsSection value={form.objections} leadId={form.id||null}
           onChange={next=>setForm(f=>({...f,objections:next}))}/>
 
+        {!form.id ? utilityInfoSection : null}
         {/* Creating a NEW lead stops at Objections — VC checklist, commission,
             sold system, flags, stage and assist all apply to saved leads only. */}
         {form.id && (<>
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
+        {/* Gift card drop-off — appears once the account has reached VC */}
+        {(giftCardEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) || form.giftCardDropped) && (
+          <div style={{marginBottom:14}}>
+            <div onClick={()=>setForm(f=>({...f,giftCardDropped:!f.giftCardDropped}))}
+              style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${form.giftCardDropped?"#10b981":(dark?"#334155":"#cbd5e1")}`}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${form.giftCardDropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:form.giftCardDropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{form.giftCardDropped?"✓":""}</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+            </div>
+          </div>
+        )}
 
 
         {/* Flag toggles (ARC / On Hold / Needs Cancel Save) can only be turned ON
