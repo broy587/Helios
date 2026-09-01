@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b21";
+const APP_BUILD = "b22";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6366,7 +6366,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             return (
               <div style={{marginBottom:12,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,overflow:"hidden"}}>
                 <button type="button" onClick={()=>setShowUtilInfoV(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e293b":"#f8fafc",border:"none",cursor:"pointer"}}>
-                  <span style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Info</span>
+                  <span style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Utility Info<span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"#94a3b8",opacity:0.85,textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span></span>
                   <span style={{fontSize:13,color:"#94a3b8"}}>{showUtilInfoV?"▲":"▼"}</span>
                 </button>
                 {showUtilInfoV && (
@@ -6770,7 +6770,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
         <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
           <button type="button" onClick={()=>setShowUtilInfo(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
-            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info</span>
+            <span style={{fontSize:14,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.06em"}}>⚡ Utility Info<span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.75)",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span></span>
             <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>{showUtilInfo?"▲":"▼"}</span>
           </button>
           {showUtilInfo && (<div style={{padding:"14px 14px 2px"}}>
