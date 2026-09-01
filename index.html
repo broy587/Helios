@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b24";
+const APP_BUILD = "b25";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -3178,6 +3178,14 @@ function StandaloneCalendarsSection({profiles}) {
     const {error}=await sb.from("extra_calendars").update({rep_ids:nextIds}).eq("id",row.id);
     if(error){ window.alert("Couldn't update access: "+(error.message||error)); load(); }
   };
+  const setOwner=async(row,uid)=>{
+    const cur=Array.isArray(row.rep_ids)?row.rep_ids:[];
+    const nextIds = uid && !cur.includes(uid) ? [...cur, uid] : cur; // the owner always has access
+    const next=rows.map(r=>r.id===row.id?{...r,owner_id:uid||null,rep_ids:nextIds}:r);
+    setRows(next); ExtraCals.set(next); announce();
+    const {error}=await sb.from("extra_calendars").update({owner_id:uid||null, rep_ids:nextIds}).eq("id",row.id);
+    if(error){ window.alert("Couldn't set the owner: "+(error.message||error)+"\n\n(If this mentions owner_id, run the one-line SQL first.)"); load(); }
+  };
   const remove=async(row)=>{
     if(!window.confirm(`Remove "${row.name||"this calendar"}" from the app? Reps lose access here — the Google calendar itself is untouched.`)) return;
     const next=rows.filter(r=>r.id!==row.id); setRows(next); ExtraCals.set(next); announce();
@@ -3229,6 +3237,13 @@ function StandaloneCalendarsSection({profiles}) {
             </div>
             {isOpen && (
               <div style={{padding:"8px 12px",maxHeight:260,overflowY:"auto"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"4px 0 6px"}}>Calendar owner</div>
+                <select value={row.owner_id||""} onChange={e=>setOwner(row, e.target.value||null)}
+                  style={{width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:13,fontWeight:600,marginBottom:4}}>
+                  <option value="">— no owner —</option>
+                  {people.map(p=><option key={p.id} value={p.id}>{p.name||p.email}</option>)}
+                </select>
+                <div style={{fontSize:11,color:"#94a3b8",lineHeight:1.45,margin:"2px 0 10px"}}>The owner can set this calendar's required items in Settings → Rep Management, and automatically gets access below.</div>
                 <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"4px 0 6px"}}>Who can see & book on it</div>
                 {people.map(p=>{
                   const on=ids.includes(p.id);
@@ -4642,8 +4657,12 @@ async function calendarReqMissingAlert(calendarId, lead){
 // own team(s); the owner sees everything.
 function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   const myTeams = (teams||[]).filter(t => (teamMembers[t.id]||[]).some(m => m.user_id === user.id));
-  const scopedTeams = isOwner ? (teams||[]) : myTeams;
-  const standalone = isOwner ? (ExtraCals.rows||[]) : [];
+  const role = TeamCalendars.currentRole || "";
+  // Scope: the app owner manages every calendar; managers manage their own
+  // team calendar(s); a rep/closer who OWNS a standalone calendar manages
+  // exactly that calendar (set per calendar in Team → Standalone Calendars).
+  const scopedTeams = isOwner ? (teams||[]) : (role==="manager" ? myTeams : []);
+  const standalone = isOwner ? (ExtraCals.rows||[]) : (ExtraCals.rows||[]).filter(r=>r && r.owner_id===user.id);
   const options = [
     ...scopedTeams.map(t=>({value:"team:"+t.id, kind:"team", row:t, label:(t.name||"Team")+" — team calendar"})),
     ...standalone.map(c=>({value:"cal:"+c.id, kind:"cal", row:c, label:(c.name||"Calendar")+" — standalone calendar"})),
@@ -4691,7 +4710,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
         <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>🎯 Rep Management</div>
       </div>
       {options.length===0 ? (
-        <div style={{...card,color:dark?"#cbd5e1":"#475569",fontSize:13}}>You're not on a team yet, so there are no reps to manage. Join a team in the Team tab first.</div>
+        <div style={{...card,color:dark?"#cbd5e1":"#475569",fontSize:13}}>Nothing to manage yet — this page is for team managers and for closers who own a standalone calendar.</div>
       ) : (<>
         <div style={card}>
           <div style={{fontSize:12,fontWeight:700,color:dark?"#94a3b8":"#64748b",marginBottom:8}}>Calendar</div>
@@ -9598,12 +9617,12 @@ function SettingsPage({onBack, dark, setDark, user, profile, setProfile, isOwner
             <span style={{fontSize:20,color:"#94a3b8"}}>›</span>
           </div>
         )}
-        {isPrivileged && (
+        {(isPrivileged || (ExtraCals.rows||[]).some(r=>r && r.owner_id===user.id)) && (
           <div onClick={()=>setSubPage("repmgmt")}
             style={{background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
               <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#0f172a"}}>🎯 Rep Management</div>
-              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Set what reps need before an account can reach AC</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Set what's required to book each calendar</div>
             </div>
             <span style={{fontSize:20,color:"#94a3b8"}}>›</span>
           </div>
