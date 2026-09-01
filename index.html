@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b18";
+const APP_BUILD = "b20";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6132,7 +6132,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Appointment</div>
               {/* Single entry point */}
               <button onClick={()=>setShowBookOpts(v=>!v)}
-                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 0",borderRadius:10,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,background:dark?"#1e3a8a":"#2563eb",color:"#fff",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:"0.05em",cursor:"pointer",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
                 📅 Book / Remove Appointment <span style={{fontSize:12}}>{showBookOpts?"▲":"▼"}</span>
               </button>
               {showBookOpts && (<>
@@ -6915,7 +6915,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           {form.onHold && form.onHoldUntil && <div style={{fontSize:12,color:"#b45309",background:dark?"rgba(245,158,11,0.14)":"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>⏸️ On Hold Removed - {form.name||"Lead"}: {(()=>{ try{ return new Date(form.onHoldUntil+"T00:00:00").toLocaleDateString(); }catch(e){ return form.onHoldUntil; } })()}</div>}
           {/* Single entry point — reveals the four booking options. */}
           <button type="button" onClick={()=>setShowBookOpts(v=>!v)}
-            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:14,cursor:"pointer"}}>
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 0",borderRadius:10,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,background:dark?"#1e3a8a":"#2563eb",color:"#fff",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:"0.05em",cursor:"pointer",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
             📅 Book / Remove Appointment <span style={{fontSize:12}}>{showBookOpts?"▲":"▼"}</span>
           </button>
           {showBookOpts && (<>
@@ -7091,7 +7091,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           )}
         </div>) : (
           <div style={{marginBottom:14,padding:"12px 14px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:600,lineHeight:1.5}}>
-            📅 Appointments unlock once this lead is saved. Hit <b>Save</b> below, then open the lead to book the closer slot or any other appointment.
+            📅 Appointments unlock once this lead is added.
           </div>
         )}
         {/* Gift card drop-off — appears once the account has reached VC */}
@@ -7281,6 +7281,9 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         <ObjectionsSection value={form.objections} leadId={form.id||null}
           onChange={next=>setForm(f=>({...f,objections:next}))}/>
 
+        {/* Creating a NEW lead stops at Objections — VC checklist, commission,
+            sold system, flags, stage and assist all apply to saved leads only. */}
+        {form.id && (<>
         <CloseSection form={form} setForm={setForm} readOnly={false}/>
 
 
@@ -7449,6 +7452,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             </select>
           </div>
         )}
+        </>)}
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
           <button onClick={handleSave} disabled={saving} style={{flex:2,padding:"10px 0",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:saving?0.85:1,transition:"all 0.15s"}}>
