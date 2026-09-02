@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b46";
+const APP_BUILD = "b47";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4198,6 +4198,10 @@ function AppointmentPicker({value,onChange}) {
 
 function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}) {
   const dark=useDark();
+  // Edit-mode commission hides behind "Presenting" until 👁 View is tapped —
+  // a homeowner watching the screen never sees the word or the number.
+  const [showComm, setShowComm] = React.useState(false);
+  React.useEffect(()=>{ setShowComm(false); },[form && form.id]);
   const [localVals, setLocalVals] = React.useState({});
   const [showFollowHelp, setShowFollowHelp] = React.useState(false);
   const [showSold, setShowSold] = React.useState(false);
@@ -4287,9 +4291,17 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
         collapsible={true}
         onUpdate={next=>setForm(f=>({...f,closerChecklist:next,closer_checklist:next}))}
       />
-      {/* Commission — sits right below the Closers VC Checklist */}
+      {/* Commission — sits right below the Closers VC Checklist, hidden behind
+          "Presenting" until 👁 View is tapped */}
       <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</label>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:showComm?4:0}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{showComm ? "Commission" : "Presenting"}</label>
+          <button type="button" onClick={()=>setShowComm(v=>!v)}
+            style={{display:"flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            {showComm ? "Hide" : "👁 View"}
+          </button>
+        </div>
+        {showComm && (
         <div style={{display:"flex",alignItems:"center",position:"relative"}}>
           <span style={{position:"absolute",left:12,fontSize:14,color:"#94a3b8",fontWeight:600,pointerEvents:"none"}}>$</span>
           <input type="text" inputMode="decimal" placeholder="0.00"
@@ -4297,6 +4309,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
             onChange={e=>{ const v=e.target.value.replace(/[^0-9.]/g,""); setForm(f=>({...f,commission:v})); }}
             style={{...inputStyle,paddingLeft:24}}/>
         </div>
+        )}
       </div>
       {/* Sold System Info — collapsible (edit) */}
       <div style={{marginBottom:16,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
