@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b33";
+const APP_BUILD = "b34";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6868,6 +6868,11 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   // very bottom (below Objections) when creating a new one.
   // Red star shown next to required fields — ONLY while creating a new lead.
   const reqStar = !form.id ? (<span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span>) : null;
+  // Colored section "bubbles" — CREATE mode only (edit mode unchanged for
+  // now). A styleless div in edit mode keeps the layout identical there.
+  const createZone = (bg, bd, bgD, bdD) => !form.id
+    ? {background:dark?bgD:bg, border:`1.5px solid ${dark?bdD:bd}`, borderRadius:14, padding:"12px 12px 2px", marginBottom:14}
+    : undefined;
   const utilityInfoSection = (<>
         {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
         <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
@@ -7016,6 +7021,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
           </div>
         </div>
+        {/* ── Homeowner / secondary info ── */}
+        <div style={createZone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
         {[["name","Name","text","Full name"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}{reqStar}</label>
@@ -7085,6 +7092,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         )}
 
+        </div>
         {/* Appointments only exist on SAVED leads. Booking during creation
             looked bookable but the checks read the not-yet-saved lead and
             blocked it confusingly — so the whole section unlocks after Save. */}
@@ -7284,11 +7292,13 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             </div>
           )}
         </div>) : (
-          <div style={{marginBottom:14,padding:"12px 14px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px dashed ${dark?"#334155":"#cbd5e1"}`,fontSize:13,color:dark?"#94a3b8":"#64748b",fontWeight:600,lineHeight:1.5}}>
+          <div style={{marginBottom:14,padding:"13px 14px",borderRadius:10,background:dark?"#1e3a8a":"#2563eb",border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)",fontSize:13,color:"#fff",fontWeight:700,lineHeight:1.5}}>
             📅 Appointments unlock once this lead is added.
           </div>
         )}
         {form.id ? utilityInfoSection : null}
+        {/* ── AC Status → Setters AC Checklist ── */}
+        <div style={createZone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
@@ -7380,6 +7390,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           collapsible={true}
           onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
         />
+        </div>
+        <div style={createZone("#f0fdf4","#bbf7d0","rgba(16,185,129,0.10)","rgba(16,185,129,0.4)")}>
         {/* Rapport + Objections — full form here; auto-saves to the lead. */}
         <RapportSection value={form.rapport} leadId={form.id||null}
           onChange={next=>setForm(f=>({...f,rapport:next}))}/>
@@ -7387,6 +7399,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           onChange={next=>setForm(f=>({...f,objections:next}))}/>
 
         {!form.id ? utilityInfoSection : null}
+        </div>
         {/* Creating a NEW lead stops at Objections — VC checklist, commission,
             sold system, flags, stage and assist all apply to saved leads only. */}
         {form.id && (<>
