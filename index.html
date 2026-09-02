@@ -96,15 +96,23 @@
       animation:spin 0.8s linear infinite;
     }
     @keyframes spin { to{transform:rotate(360deg)} }
-    /* Lead header on PHONES: full-width name on one line up top, action
-       buttons flow underneath, ✕ pinned top-right. Tablets/desktop (>640px)
-       keep the side-by-side layout exactly as before. */
+    /* Lead header on PHONES: left column = name, owner, then chips; right
+       column = small Edit/Map/Priority/Archive stacked top-down with Assist
+       under them; ✕ pinned top-right. Tablets/desktop (>640px) unchanged. */
     @media (max-width: 640px) {
-      .pp-lead-head { flex-direction: column; position: relative; }
-      .pp-lead-head .pp-lead-name { padding-right: 34px; }
-      .pp-lead-head .pp-lead-actions { width: 100%; }
-      .pp-lead-head .pp-lead-actions > div:first-child { flex: 1; }
-      .pp-lead-head .pp-lead-close { position: absolute; top: -6px; right: -2px; }
+      .pp-lead-head { position: relative; }
+      .pp-lead-head .pp-lead-info { display: flex; flex-direction: column; }
+      .pp-lead-head .pp-lead-name { font-size: 18px !important; }
+      .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
+      .pp-lead-head .pp-lead-chips { order: 2; margin-top: 2px; }
+      .pp-lead-head .pp-lead-actions { padding-top: 24px; }
+      .pp-lead-head .pp-lead-actions > div:first-child { display: flex; flex-direction: column; width: 106px; gap: 6px; }
+      .pp-lead-head .pp-lead-actions > div:first-child > div:nth-child(1),
+      .pp-lead-head .pp-lead-actions > div:first-child > div:nth-child(2) { display: contents; }
+      .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 0 0 auto !important; padding: 6px 8px !important; font-size: 12px !important; }
+      .pp-btn-edit { order: 1; } .pp-btn-map { order: 2; } .pp-btn-priority { order: 3; } .pp-btn-archive { order: 4; }
+      .pp-lead-assist { order: 5; justify-content: flex-start !important; flex-wrap: wrap; }
+      .pp-lead-close { position: absolute; top: -6px; right: -2px; }
     }
   </style>
 </head>
@@ -561,7 +569,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b56";
+const APP_BUILD = "b57";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4301,7 +4309,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
       {/* Sold System Info — collapsible (edit) */}
       <div style={{marginBottom:16,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
         <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e3a8a":"#2563eb",border:"none",cursor:"pointer"}}>
-          <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚙️ System Info</span>
+          <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚙️ System Info<span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.75)",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span></span>
           <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{showSold?"▲":"▼"}</span>
         </button>
         {showSold && (
@@ -4786,7 +4794,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
   );
 }
 
-function ACStatus({softSolid, confirmed, onChange, dark, requiredStar}) {
+function ACStatus({softSolid, confirmed, onChange, dark, requiredStar, optionalTag}) {
 
   const [openTip, setOpenTip] = React.useState(""); // "" | "commitment" | "textcall"
   const labelStyle = {fontSize:11,fontWeight:600,color:dark?"#94a3b8":"#64748b",textTransform:"uppercase",letterSpacing:"0.04em"};
@@ -4804,7 +4812,7 @@ function ACStatus({softSolid, confirmed, onChange, dark, requiredStar}) {
   );
   return (
     <div style={{marginBottom:14,background:dark?"#0f172a":"#f8fafc",borderRadius:12,padding:"12px 14px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>AC Status{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}</div>
+      <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>AC Status{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}{optionalTag ? <span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span> : null}</div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:9}}>
         <span style={{...labelStyle,display:"inline-flex",alignItems:"center"}}>Commitment<InfoDot tip="commitment"/></span>
         <div style={{display:"flex",gap:6}}>
@@ -5993,8 +6001,9 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           )}
           <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           <div className="pp-lead-head" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
-            <div style={{flex:1,minWidth:0}}>
+            <div className="pp-lead-info" style={{flex:1,minWidth:0}}>
               <div className="pp-lead-name" style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{lead.name||"Unnamed Lead"}{lead.name && <CopyIcon value={lead.name}/>}</div>
+              <div className="pp-lead-chips">
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
               {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
@@ -6004,11 +6013,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                 {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
                 {lead.confirmed==="Yes" && <span style={{fontSize:11,fontWeight:600,color:"#065f46",background:"#d1fae5",borderRadius:20,padding:"3px 10px"}}>✓ Text/Call Confirmed</span>}
               </div>
+              </div>
               {lead.owner_id && (()=>{
                 const owner=(profiles||[]).find(p=>p.id===lead.owner_id);
                 const ownerName=owner?(owner.name||owner.email):"Unknown";
                 return (
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                  <div className="pp-lead-owner" style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                     <span style={{fontSize:13}}>👤</span>
                     <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
                   </div>
@@ -6019,27 +6029,27 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                   {onArchive && (
-                    <button onClick={()=>onArchive(lead)}
+                    <button className="pp-btn-archive" onClick={()=>onArchive(lead)}
                       title={lead.archived?"Unarchive — show in the pipeline again":"Archive — hide from the pipeline (not deleted)"}
                       style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.archived?"#16a34a":"#c8b8a2"}`,background:"none",color:lead.archived?"#16a34a":"#6b2d4e",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
                       {lead.archived?"📤 Unarchive":"🗄️ Archive"}
                     </button>
                   )}
-                  <button onClick={()=>onEdit(lead)}
+                  <button className="pp-btn-edit" onClick={()=>onEdit(lead)}
                     style={{flex:1,padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
                     Edit
                   </button>
                 </div>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
                   {onTogglePriority && (
-                    <button onClick={()=>{ handleUpdate({priority:!lead.priority}); onTogglePriority(lead); }}
+                    <button className="pp-btn-priority" onClick={()=>{ handleUpdate({priority:!lead.priority}); onTogglePriority(lead); }}
                       title={lead.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
                       style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.priority?"#eab308":"#c8b8a2"}`,background:lead.priority?"#fef9c3":"none",color:lead.priority?"#a16207":"#6b2d4e",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
                       {lead.priority?"⭐ Priority":"☆ Priority"}
                     </button>
                   )}
                   {lead.address&&onViewInCanvass&&(
-                    <button onClick={()=>onViewInCanvass(lead)}
+                    <button className="pp-btn-map" onClick={()=>onViewInCanvass(lead)}
                       style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid #c8b8a2",background:"none",color:"#1a2456",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
                       🗺️ Map
                     </button>
@@ -6049,7 +6059,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   const assist = (profiles||[]).find(p=>p.id===lead.assist_id);
                   const allReps = (profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
                   return (
-                    <div style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                    <div className="pp-lead-assist" style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                       <span style={{fontSize:13}}>🤝</span>
                       <span>Assist:</span>
                       {assistEditing ? (
@@ -6466,7 +6476,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             return (
               <div style={{marginBottom:12,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
                 <button type="button" onClick={()=>setShowUtilInfoV(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#78350f":"#b45309",border:"none",cursor:"pointer"}}>
-                  <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚡ Utility Info<span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.75)",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span></span>
+                  <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚡ Utility Info</span>
                   <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{showUtilInfoV?"▲":"▼"}</span>
                 </button>
                 {showUtilInfoV && (
@@ -7314,7 +7324,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         )}
         {/* ── AC Status → Setter Notes → Photos & Files ── */}
         <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id} optionalTag={!!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
           // Note button, including the very FIRST one (which becomes the classic
@@ -7415,7 +7425,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             <div onClick={()=>setForm(f=>({...f,giftCardDropped:!f.giftCardDropped}))}
               style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${form.giftCardDropped?"#10b981":(dark?"#334155":"#cbd5e1")}`}}>
               <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${form.giftCardDropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:form.giftCardDropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{form.giftCardDropped?"✓":""}</div>
-              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off<span style={{marginLeft:7,fontSize:10,fontWeight:600,color:"#94a3b8",textTransform:"lowercase",letterSpacing:"0.02em"}}>optional</span></div>
             </div>
           </div>
         )}
