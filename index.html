@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b34";
+const APP_BUILD = "b37";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6168,22 +6168,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
-          {lead.commission && String(lead.commission).trim() && (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
-              {showCommission ? (
-                <div onClick={()=>setShowCommission(false)} title="Tap to hide"
-                  style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857",cursor:"pointer"}}>
-                  ${(()=>{ const raw=String(lead.commission).trim(); const [intPart,decPart]=raw.split("."); const withCommas=(intPart||"").replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
-                </div>
-              ) : (
-                <button onClick={()=>setShowCommission(true)}
-                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 14px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#f1f5f9",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  👁 View
-                </button>
-              )}
-            </div>
-          )}
           {/* Appointment booking — one button reveals the four booking options. */}
           {repProfiles!==undefined&&(
             <div style={{marginBottom:14}}>
@@ -6494,6 +6478,22 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
+          {lead.commission && String(lead.commission).trim() && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
+              {showCommission ? (
+                <div onClick={()=>setShowCommission(false)} title="Tap to hide"
+                  style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857",cursor:"pointer"}}>
+                  ${(()=>{ const raw=String(lead.commission).trim(); const [intPart,decPart]=raw.split("."); const withCommas=(intPart||"").replace(/\B(?=(\d{3})+(?!\d))/g,","); return decPart!==undefined?withCommas+"."+decPart:withCommas; })()}
+                </div>
+              ) : (
+                <button onClick={()=>setShowCommission(true)}
+                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 14px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,background:dark?"#0f172a":"#f1f5f9",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  👁 View
+                </button>
+              )}
+            </div>
+          )}
             </>)}
             afterSold={(<>
           {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
@@ -6868,11 +6868,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   // very bottom (below Objections) when creating a new one.
   // Red star shown next to required fields — ONLY while creating a new lead.
   const reqStar = !form.id ? (<span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span>) : null;
-  // Colored section "bubbles" — CREATE mode only (edit mode unchanged for
-  // now). A styleless div in edit mode keeps the layout identical there.
-  const createZone = (bg, bd, bgD, bdD) => !form.id
-    ? {background:dark?bgD:bg, border:`1.5px solid ${dark?bdD:bd}`, borderRadius:14, padding:"12px 12px 2px", marginBottom:14}
-    : undefined;
+  // Colored section "bubbles" — group the form into color-coded boxes in
+  // BOTH create and edit mode (the groupings differ slightly per mode since
+  // some sections only exist on saved leads).
+  const zone = (bg, bd, bgD, bdD) => ({background:dark?bgD:bg, border:`1.5px solid ${dark?bdD:bd}`, borderRadius:14, padding:"12px 12px 2px", marginBottom:14});
   const utilityInfoSection = (<>
         {/* Utility Info — collapsible dropdown (Utility Company, ESIID, Meter #) */}
         <div style={{marginBottom:14,border:`2px solid ${dark?"#f59e0b":"#b45309"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(245,158,11,0.25)":"0 1px 4px rgba(180,83,9,0.18)"}}>
@@ -7022,7 +7021,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         </div>
         {/* ── Homeowner / secondary info ── */}
-        <div style={createZone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
+        <div style={zone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
         {[["name","Name","text","Full name"]].map(([k,l,t,p])=>(
           <div key={k} style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l}{reqStar}</label>
@@ -7296,9 +7295,9 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             📅 Appointments unlock once this lead is added.
           </div>
         )}
+        {/* ── Utility Info (edit) → AC Status → Setters AC Checklist ── */}
+        <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
         {form.id ? utilityInfoSection : null}
-        {/* ── AC Status → Setters AC Checklist ── */}
-        <div style={createZone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
@@ -7376,12 +7375,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
           {fileErr && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginTop:8}}>{fileErr}</div>}
         </div>
-        {form.id && (
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
-          <CloserNotesEditor log={form.closerNotesLog} dark={dark} by={currentUserName} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))} onCommit={l=>quickSaveLog("closer_notes_log", l, form._clogBase)}/>
-        </div>
-        )}
         {/* AC Checklist */}
         <ACChecklist
           leadId={form.id||null}
@@ -7391,7 +7384,13 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
         />
         </div>
-        <div style={createZone("#f0fdf4","#bbf7d0","rgba(16,185,129,0.10)","rgba(16,185,129,0.4)")}>
+        <div style={zone("#f0fdf4","#bbf7d0","rgba(16,185,129,0.10)","rgba(16,185,129,0.4)")}>
+        {form.id && (
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Closer Notes</label>
+          <CloserNotesEditor log={form.closerNotesLog} dark={dark} by={currentUserName} onChange={l=>setForm(f=>({...f,closerNotesLog:l}))} onCommit={l=>quickSaveLog("closer_notes_log", l, form._clogBase)}/>
+        </div>
+        )}
         {/* Rapport + Objections — full form here; auto-saves to the lead. */}
         <RapportSection value={form.rapport} leadId={form.id||null}
           onChange={next=>setForm(f=>({...f,rapport:next}))}/>
@@ -7399,11 +7398,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           onChange={next=>setForm(f=>({...f,objections:next}))}/>
 
         {!form.id ? utilityInfoSection : null}
-        </div>
-        {/* Creating a NEW lead stops at Objections — VC checklist, commission,
-            sold system, flags, stage and assist all apply to saved leads only. */}
-        {form.id && (<>
-        <CloseSection form={form} setForm={setForm} readOnly={false}/>
+        {form.id && <CloseSection form={form} setForm={setForm} readOnly={false}/>}
         {/* Gift card drop-off — appears once the account has reached VC */}
         {(giftCardEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) || form.giftCardDropped) && (
           <div style={{marginBottom:14}}>
@@ -7414,12 +7409,17 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             </div>
           </div>
         )}
+        </div>
+        {/* Creating a NEW lead stops at Objections — VC checklist, commission,
+            sold system, flags, stage and assist all apply to saved leads only. */}
+        {form.id && (<>
 
 
         {/* Flag toggles (ARC / On Hold / Needs Cancel Save) can only be turned ON
             once the lead has reached VC / SRA or later — checked via live stage and
             remembered flag stages so a currently-flagged lead still qualifies. */}
         {(()=>{ return null; })()}
+        <div style={zone("#fef2f2","#fecaca","rgba(239,68,68,0.10)","rgba(248,113,113,0.4)")}>
         {/* Needs Cancel Save toggle */}
         <div style={{marginBottom:18,background:form.needsCancelSave?(dark?"#312e81":"#eef2ff"):(dark?"#0f172a":"#faf6f0"),borderRadius:12,padding:"14px",border:`1.5px solid ${form.needsCancelSave?(dark?"#6366f1":"#a5b4fc"):(dark?"#334155":"#e2e8f0")}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -7565,7 +7565,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             </div>
           )}
         </div>
-
+        </div>
+        <div style={zone("#f8fafc","#e2e8f0","rgba(148,163,184,0.10)","rgba(148,163,184,0.4)")}>
         <div style={{marginBottom:14}}>
           <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
           <select value={form.stage} onChange={set("stage")} style={inputStyle}>
@@ -7581,6 +7582,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             </select>
           </div>
         )}
+        </div>
         </>)}
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
