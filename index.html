@@ -97,6 +97,7 @@
     }
     @keyframes spin { to{transform:rotate(360deg)} }
     .pp-assist-mobile { display: none; }
+    .pp-chips-mobile { display: none; }
     /* Lead header on PHONES: left column = name, owner, assist, chips; right
        column = compact 2×2 Edit/Archive/Map/Priority; ✕ pinned top-right.
        Tablets/desktop (>640px) keep the original layout. */
@@ -107,7 +108,8 @@
       .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
       .pp-assist-mobile { display: block; order: 2; margin-top: 4px; }
       .pp-assist-mobile .pp-lead-assist { justify-content: flex-start !important; flex-wrap: wrap; }
-      .pp-lead-head .pp-lead-chips { order: 3; margin-top: 4px; }
+      .pp-chips-mobile { display: block; margin: 2px 0 4px; }
+      .pp-chips-desktop { display: none; }
       .pp-lead-head .pp-lead-actions { padding-top: 24px; }
       .pp-lead-head .pp-lead-actions > div:first-child { width: 150px; gap: 6px; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 6px 4px !important; font-size: 11.5px !important; }
@@ -570,7 +572,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b60";
+const APP_BUILD = "b61";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6018,6 +6020,19 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     </div>
                   );
                 })() : null;
+  // Stage + status chips — desktop shows them inside the left column,
+  // phones show a full-width copy below the header so they flow in rows.
+  const leadChips = (<>
+              <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
+              {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
+              {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
+              {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#6366f1",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🛟 NEEDS CANCEL SAVE</span>}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                {lead.priority && <span style={{fontSize:11,fontWeight:800,color:"#a16207",background:"#fef9c3",border:"1px solid #fde047",borderRadius:20,padding:"3px 10px"}}>⭐ PRIORITY LEAD</span>}
+                {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
+                {lead.confirmed==="Yes" && <span style={{fontSize:11,fontWeight:600,color:"#065f46",background:"#d1fae5",borderRadius:20,padding:"3px 10px"}}>✓ Text/Call Confirmed</span>}
+              </div>
+  </>);
   return (
     // zIndex 2500 keeps the lead detail ABOVE the Priority Comeback sheet (1800)
     // so opening a lead from that list layers on top of it instead of under it.
@@ -6035,17 +6050,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           <div className="pp-lead-head" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div className="pp-lead-info" style={{flex:1,minWidth:0}}>
               <div className="pp-lead-name" style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{lead.name||"Unnamed Lead"}{lead.name && <CopyIcon value={lead.name}/>}</div>
-              <div className="pp-lead-chips">
-              <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
-              {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
-              {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
-              {lead.needs_cancel_save && !lead.is_arc && !lead.on_hold && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#6366f1",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🛟 NEEDS CANCEL SAVE</span>}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
-                {lead.priority && <span style={{fontSize:11,fontWeight:800,color:"#a16207",background:"#fef9c3",border:"1px solid #fde047",borderRadius:20,padding:"3px 10px"}}>⭐ PRIORITY LEAD</span>}
-                {lead.soft_solid && <span style={{fontSize:11,fontWeight:600,color:lead.soft_solid==="Solid"?"#047857":"#b91c1c",background:lead.soft_solid==="Solid"?"#d1fae5":"#fee2e2",borderRadius:20,padding:"3px 10px"}}>{lead.soft_solid}</span>}
-                {lead.confirmed==="Yes" && <span style={{fontSize:11,fontWeight:600,color:"#065f46",background:"#d1fae5",borderRadius:20,padding:"3px 10px"}}>✓ Text/Call Confirmed</span>}
-              </div>
-              </div>
+              <div className="pp-chips-desktop pp-lead-chips">{leadChips}</div>
               {lead.owner_id && (()=>{
                 const owner=(profiles||[]).find(p=>p.id===lead.owner_id);
                 const ownerName=owner?(owner.name||owner.email):"Unknown";
@@ -6093,6 +6098,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <button className="pp-lead-close" onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
           </div>
+          <div className="pp-chips-mobile pp-lead-chips">{leadChips}</div>
           {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
