@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b72";
+const APP_BUILD = "b73";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4556,6 +4556,7 @@ const AC_REQ_ITEMS = [
   {key:"spouses",      label:"Confirmed all decision makers / spouses will be present"},
   {key:"knows_solar",  label:"Knows solar is / can be involved", miss:"\"Knows solar is / can be involved\" must be checked in the AC checklist"},
   {key:"setter_notes", label:"Setter notes taken", miss:"Setter notes required"},
+  {key:"utility_info", label:"Utility info filled out", miss:"Missing info in Utility Info drop down"},
 ];
 // True if a given requirement item is satisfied on a lead. Accepts both the
 // camelCase edit-form shape and the snake_case DB shape.
@@ -4579,6 +4580,15 @@ function acItemSatisfied(key, lead) {
     case "spouses":      return acHas("Confirmed all decision makers / spouses will be present");
     case "knows_solar":  return acHas("Knows solar is / can be involved");
     case "setter_notes": return nonEmpty(lead.notes);
+    case "utility_info": {
+      // Every input in the Utility Info drop down: company, ESIID, meter,
+      // rate/kWh, annual kWh, and average bill (accepts both field shapes).
+      const uvals = [lead.utility, lead.esiid, lead.meter,
+        lead.cents_kwh!==undefined?lead.cents_kwh:lead.centsKwh,
+        lead.annual_kwh!==undefined?lead.annual_kwh:lead.annualKwh,
+        lead.average_bill!==undefined?lead.average_bill:lead.averageBill];
+      return uvals.every(v=>nonEmpty(v));
+    }
     default:             return false;
   }
 }
@@ -4773,7 +4783,7 @@ function RepManagementPage({dark, user, onBack, isOwner, teams, teamMembers}) {
           <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Minimum number of items</div>
           <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Require at least this many of the AC items to be complete, on top of the specific items above. "Off" means no minimum.</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {[0,1,2,3,4,5,6,7,8].map(n=>{
+            {[0,1,2,3,4,5,6,7,8,9].map(n=>{
               const on = count===n;
               return (
                 <button key={n} type="button" onClick={()=>setCount(n)}
