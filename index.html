@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b40";
+const APP_BUILD = "b41";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5985,7 +5985,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
+              <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{lead.name||"Unnamed Lead"}{lead.name && <CopyIcon value={lead.name}/>}</div>
               <span style={{display:"inline-block",marginTop:4,background:colors.badge,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{lead.stage}</span>
               {lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#ef4444",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ARC / CANCEL</span>}
               {lead.on_hold && !lead.is_arc && <span style={{display:"inline-block",marginTop:4,marginLeft:6,background:"#f59e0b",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⏸️ ON HOLD</span>}
