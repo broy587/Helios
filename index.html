@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b52";
+const APP_BUILD = "b54";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4312,10 +4312,10 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
         )}
       </div>
       {/* Sold System Info — collapsible (edit) */}
-      <div style={{marginBottom:16,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
-        <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:dark?"#0f172a":"#f8fafc",border:"none",cursor:"pointer"}}>
-          <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>System Info</span>
-          <span style={{fontSize:13,color:"#94a3b8"}}>{showSold?"▲":"▼"}</span>
+      <div style={{marginBottom:16,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
+        <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e3a8a":"#2563eb",border:"none",cursor:"pointer"}}>
+          <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚙️ System Info</span>
+          <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{showSold?"▲":"▼"}</span>
         </button>
         {showSold && (
           <div style={{padding:"14px 14px 2px"}}>
@@ -6985,6 +6985,18 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>)}
         </div>
   </>);
+  // AC Checklist — rendered right under Setter Notes when EDITING a saved
+  // lead, and after Bill Photos when CREATING (same section, different spot).
+  const acChecklistSection = (<>
+        {/* AC Checklist */}
+        <ACChecklist
+          leadId={form.id||null}
+          requiredStar={!form.id}
+          initialChecked={form.acChecklist||[]}
+          collapsible={true}
+          onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
+        />
+  </>);
   // Book "On Hold Removed - {name}" on the rep's OWN Google Calendar as an
   // all-day event on the hold-until date. Personal calendar only — never the
   // team calendar, never an open slot.
@@ -7311,9 +7323,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             📅 Appointments unlock once this lead is added.
           </div>
         )}
-        {/* ── Utility Info (edit) → AC Status → Setters AC Checklist ── */}
+        {/* ── AC Status → Notes → AC Checklist → Utility Info → Photos ── */}
         <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
-        {form.id ? utilityInfoSection : null}
         <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
@@ -7345,6 +7356,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         </div>
           );
         })()}
+        {form.id ? acChecklistSection : null}
+        {form.id ? utilityInfoSection : null}
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             {/* Photos */}
@@ -7391,14 +7404,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
           {fileErr && <div style={{fontSize:12,color:"#b91c1c",fontWeight:600,marginTop:8}}>{fileErr}</div>}
         </div>
-        {/* AC Checklist */}
-        <ACChecklist
-          leadId={form.id||null}
-          requiredStar={!form.id}
-          initialChecked={form.acChecklist||[]}
-          collapsible={true}
-          onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
-        />
+        {!form.id ? acChecklistSection : null}
         </div>
         <div style={zone("#f0fdf4","#bbf7d0","rgba(16,185,129,0.10)","rgba(16,185,129,0.4)")}>
         {form.id && (
