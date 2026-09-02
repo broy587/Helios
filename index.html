@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b51";
+const APP_BUILD = "b52";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4255,10 +4255,10 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
             ["Flex", lead?.flex||""],
           ].filter(([l,v])=>v);
           return (
-            <div style={{marginBottom:16,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
-              <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:dark?"#0f172a":"#f8fafc",border:"none",cursor:"pointer"}}>
-                <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>System Info</span>
-                <span style={{fontSize:13,color:"#94a3b8"}}>{showSold?"▲":"▼"}</span>
+            <div style={{marginBottom:16,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,borderRadius:10,overflow:"hidden",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
+              <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",background:dark?"#1e3a8a":"#2563eb",border:"none",cursor:"pointer"}}>
+                <span style={{fontSize:11,fontWeight:800,color:"#fff",textTransform:"uppercase",letterSpacing:"0.05em"}}>⚙️ System Info</span>
+                <span style={{fontSize:13,fontWeight:800,color:"#fff"}}>{showSold?"▲":"▼"}</span>
               </button>
               {showSold && (
                 <div style={{padding:"12px 14px 2px"}}>
@@ -4641,7 +4641,7 @@ function acRequirementsMissing(lead, req) {
     const billChecked = (Array.isArray(cl) && cl.includes("Bill Acquired")) || !!(l.bill_retrieved || l.billRetrieved);
     const hasPhoto = (Array.isArray(l.bill_photos)&&l.bill_photos.length>0) || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0) || (Array.isArray(l.lead_files)&&l.lead_files.length>0) || l.has_bill_photo===true;
     if(billChecked && !hasPhoto) return "Utility bill photo not uploaded";
-    if(!billChecked && hasPhoto) return "Mark \"Bill Acquired\" in the Setters AC Checklist";
+    if(!billChecked && hasPhoto) return "Mark \"Bill Acquired\" in the AC Checklist";
     return "Utility bill: check \"Bill Acquired\" and upload a photo of the bill";
   };
   (req.items||[]).forEach(k=>{ if(!acItemSatisfied(k, lead)) missing.push(k==="bill" ? billReason(lead) : labelFor(k)); });
@@ -4883,7 +4883,7 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
     <div style={{marginBottom:16,background:dark?"#0f172a":"#fef9ee",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#f0d080"}`}}>
       <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
         style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Setters AC Checklist{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC Checklist{requiredStar ? <span style={{color:"#dc2626",fontWeight:900,marginLeft:3}}>*</span> : null}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
           <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
@@ -5491,7 +5491,7 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
     <div style={{marginBottom:16,background:dark?"#0f172a":"#eef4ff",borderRadius:12,padding:"14px",border:`1.5px solid ${dark?"#334155":"#9db8e8"}`}}>
       <div onClick={collapsible?()=>setOpen(o=>!o):undefined}
         style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showItems?12:0,cursor:collapsible?"pointer":"default"}}>
-        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Closers VC Checklist</div>
+        <div style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>VC Checklist</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {saving && <span style={{fontSize:10,color:"#94a3b8"}}>saving...</span>}
           <div style={{background:scoreColor,color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:13,fontWeight:800}}>
@@ -10847,7 +10847,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 const isRep=currentUser&&currentUser.role==="rep";
                 const missing=[];
                 // Everyone: at least one AC checklist item — always applies to reps too.
-                if(checklist.length===0) missing.push("Mark at least one item in the Setters AC Checklist");
+                if(checklist.length===0) missing.push("Mark at least one item in the AC Checklist");
                 // Reps also need meter # and a scheduled appointment (always), plus
                 // whatever their team set in Rep Management. The utility bill is only
                 // required when "Utility bill" is checked in Rep Management.
@@ -10869,7 +10869,7 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 const cc = Array.isArray(linkedLead.closer_checklist) ? linkedLead.closer_checklist : deriveCloserChecklist(linkedLead);
                 const closerDone = Array.isArray(cc) && cc.length > 0;
                 if(!closerDone){
-                  window.alert("Mark at least one item in the Closers VC Checklist to move this account to VC/SRA or after.");
+                  window.alert("Mark at least one item in the VC Checklist to move this account to VC/SRA or after.");
                   e.target.value=linkedLead.stage||"";
                   return;
                 }
@@ -14587,7 +14587,7 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
     if(!capMode && !csMode && !appendMode && !isBooked){
       const checklist = Array.isArray(localLead.ac_checklist) ? localLead.ac_checklist : (Array.isArray(localLead.acChecklist) ? localLead.acChecklist : []);
       const miss = [];
-      if(checklist.length===0) miss.push("Mark at least one item in the Setters AC Checklist");
+      if(checklist.length===0) miss.push("Mark at least one item in the AC Checklist");
       if(miss.length>0){
         window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
         return;
@@ -16897,7 +16897,7 @@ function App() {
       const missing = [];
       // Everyone still needs at least one AC checklist item — and this now ALWAYS
       // applies to reps, even when Rep Management requirements are configured.
-      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      if (checklist.length === 0) missing.push("Mark at least one item in the AC Checklist");
       // Reps also need meter # and a scheduled appointment (always), plus whatever
       // their team set in Rep Management. The utility bill is NOT hardcoded — it's
       // only required when "Utility bill" is checked in Rep Management.
@@ -16919,7 +16919,7 @@ function App() {
       const ccForm = Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers});
       const closerDone = Array.isArray(ccForm) && ccForm.length > 0;
       if (!closerDone) {
-        window.alert("Mark at least one item in the Closers VC Checklist to move this account to VC/SRA or after.");
+        window.alert("Mark at least one item in the VC Checklist to move this account to VC/SRA or after.");
         return; // block the save
       }
     }
@@ -17207,7 +17207,7 @@ function App() {
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
       const missing = [];
       // Everyone: at least one AC checklist box checked — always applies to reps too.
-      if (checklist.length === 0) missing.push("Mark at least one item in the Setters AC Checklist");
+      if (checklist.length === 0) missing.push("Mark at least one item in the AC Checklist");
       // Reps also need meter # and a scheduled appointment (always), plus whatever
       // their team set in Rep Management. The utility bill is only required when
       // "Utility bill" is checked in Rep Management.
