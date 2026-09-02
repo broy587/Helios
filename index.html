@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b78";
+const APP_BUILD = "b79";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -12786,7 +12786,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           </button>
           {/* Route planner — efficient route through the visible filtered pins */}
           <button onClick={buildRoute} style={{...btnStyle,background:"rgba(20,20,30,0.85)"}} title="Route Planner">
-            <span style={{fontSize:20}}>🧭</span>
+            <span style={{fontSize:20}}>🛣️</span>
           </button>
           {/* Add home (needs the geocoder, so hidden while offline — tap a
               building outline on the street map to pin a house instead) */}
