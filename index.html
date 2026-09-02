@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b31";
+const APP_BUILD = "b32";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5103,17 +5103,28 @@ const OBJECTION_ITEMS = [
   "Wants to think about it",
   "Wants to wait to do this",
   "Doesn't want long commitment / 25 year",
-  "Doesn't trust solar",
+  "Doesn't like / trust solar",
   "Moving / Selling",
   "Reviews",
   "Aesthetics",
-  "Concerned about roof",
-  "Doesn't want an extra payment",
+  "Roof concerns",
+  "Doesn't want to pay extra money or two bills",
+  "Concerned about 2.99% increase",
   "Wants spouse to decide",
-  "Had bad experience with solar before",
+  "Had bad experience with solar in the past",
+  "Thinks it's a scam",
   "Family / personal concerns",
   "Thinks utility prices will go down / stay the same",
 ];
+// Old wording saved on existing leads maps to the renamed items, so their
+// checkboxes stay checked and their pills show the current wording.
+const OBJECTION_RENAMES = {
+  "Doesn't trust solar": "Doesn't like / trust solar",
+  "Concerned about roof": "Roof concerns",
+  "Doesn't want an extra payment": "Doesn't want to pay extra money or two bills",
+  "Had bad experience with solar before": "Had bad experience with solar in the past",
+};
+const normalizeObjectionItems = (list)=>Array.isArray(list)?[...new Set(list.map(x=>OBJECTION_RENAMES[x]||x))]:[];
 function objectionsCount(o){
   if(!o || typeof o!=="object") return 0;
   const items = Array.isArray(o.items)?o.items:[];
@@ -5149,7 +5160,7 @@ function ObjectionsSection({value, onChange, readOnly, leadId, collapsible=true}
     if(debounce) saveTimer.current = setTimeout(write, 600); else write();
   };
   React.useEffect(()=>()=>clearTimeout(saveTimer.current),[]);
-  const items = Array.isArray(val.items)?val.items:[];
+  const items = normalizeObjectionItems(Array.isArray(val.items)?val.items:[]);
   const toggle = (item) => {
     const next = {...val, items: items.includes(item) ? items.filter(x=>x!==item) : [...items, item]};
     setVal(next); persist(next, false);
