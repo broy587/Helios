@@ -109,6 +109,7 @@
       .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; margin-right: 10px; font-size: 11px !important; }
       .pp-assist-mobile { order: 2; margin-top: 5px; }
       .pp-assist-mobile .pp-lead-assist { font-size: 11px !important; }
+      .pp-lbl { display: none; }
       .pp-lead-head .pp-lead-actions { width: 100%; padding-top: 0; margin-top: 10px; }
       .pp-lead-head .pp-lead-actions > div:first-child { width: 100%; gap: 6px; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 8px 4px !important; font-size: 13px !important; }
@@ -569,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b68";
+const APP_BUILD = "b69";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5993,7 +5994,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   return (
                     <div className="pp-lead-assist" style={{display:"flex",alignItems:"center",gap:5,justifyContent:"flex-end",fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                       <span style={{fontSize:13}}>🤝</span>
-                      <span>Assist:</span>
+                      <span className="pp-lbl">Assist:</span>
                       {assistEditing ? (
                         <select autoFocus value={lead.assist_id||""}
                           onChange={async e=>{
@@ -6039,7 +6040,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                 return (
                   <div className="pp-lead-owner" style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                     <span style={{fontSize:13}}>👤</span>
-                    <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
+                    <span><span className="pp-lbl">Owner: </span><span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
                   </div>
                 );
               })()}
