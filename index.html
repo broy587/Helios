@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b37";
+const APP_BUILD = "b40";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5967,6 +5967,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
 
   if (!lead) return null;
   const colors=getStageColor(lead.stage);
+  // Color-coded section bubbles (view mode) — same palettes as edit/create.
+  const vzone = (bg, bd, bgD, bdD) => ({background:dark?bgD:bg, border:`1.5px solid ${dark?bdD:bd}`, borderRadius:14, padding:"12px 12px 2px", marginBottom:12});
   return (
     // zIndex 2500 keeps the lead detail ABOVE the Priority Comeback sheet (1800)
     // so opening a lead from that list layers on top of it instead of under it.
@@ -5980,6 +5982,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <div style={{fontSize:13,fontWeight:600,color:"#92400e",lineHeight:1.5,whiteSpace:"pre-line"}}>{acWarning}</div>
             </div>
           )}
+          <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>{lead.name||"Unnamed Lead"}</div>
@@ -6066,7 +6069,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
           </div>
-          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email],["Appointment",lead.appointment]].map(([label,value])=>value?(
+          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -6128,6 +6131,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             </div>
           ):null)}
+          </div>
           {/* Secondary contact */}
           {(()=>{
             const sName=lead.secondary_name, sPhone=lead.secondary_phone, sEmail=lead.secondary_email;
@@ -6351,6 +6355,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             </div>
           )}
 
+          <div style={vzone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
           <ACStatus softSolid={lead.soft_solid||""} confirmed={lead.confirmed||""}
             onChange={(field,val)=>{
               const dbField = field==="softSolid"?"soft_solid":"confirmed";
@@ -6414,6 +6419,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             </div>
           )}
+          </div>
+          <div style={vzone("#f0fdf4","#bbf7d0","rgba(16,185,129,0.10)","rgba(16,185,129,0.4)")}>
           {(() => {
             const log = Array.isArray(lead.closer_notes_log) ? lead.closer_notes_log : [];
             const entries = log.length ? log : (lead.closer_notes ? [{id:"legacy",text:lead.closer_notes,ts:lead.updated_at||lead.created_at}] : []);
@@ -6478,6 +6485,18 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
+            </>)}
+            afterSold={(<>
+          {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
+          {(giftCardEligible(lead) || lead.gift_card_dropped) && (
+            <div onClick={toggleGift} title="Tap to toggle"
+              style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
+              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
+              {giftMsg==="saving" && <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>saving…</span>}
+              {giftMsg==="error" && <span style={{fontSize:11,color:"#b91c1c",marginLeft:"auto"}}>couldn't save</span>}
+            </div>
+          )}
           {lead.commission && String(lead.commission).trim() && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
@@ -6494,19 +6513,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               )}
             </div>
           )}
-            </>)}
-            afterSold={(<>
-          {/* Gift card drop-off — appears once the account has reached VC. Tappable to toggle. */}
-          {(giftCardEligible(lead) || lead.gift_card_dropped) && (
-            <div onClick={toggleGift} title="Tap to toggle"
-              style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,cursor:"pointer",padding:"10px 12px",borderRadius:10,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${lead.gift_card_dropped?"#10b981":(dark?"#334155":"#e2e8f0")}`}}>
-              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${lead.gift_card_dropped?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:lead.gift_card_dropped?"#10b981":"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900}}>{lead.gift_card_dropped?"✓":""}</div>
-              <div style={{fontSize:13,fontWeight:700,color:dark?"#e2e8f0":"#334155"}}>Gift card dropped off</div>
-              {giftMsg==="saving" && <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>saving…</span>}
-              {giftMsg==="error" && <span style={{fontSize:11,color:"#b91c1c",marginLeft:"auto"}}>couldn't save</span>}
-            </div>
-          )}
             </>)}/>
+          </div>
           {lead.needs_cancel_save && (
             <div style={{marginBottom:16,background:dark?"#312e81":"#eef2ff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"14px 16px"}}>
               <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>🛟 Cancel Save Reasoning</div>
@@ -7098,22 +7106,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {form.id ? (<div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Appointment</label>
-            {form.appointment&&!form.gcal_event_id&&<button onClick={async()=>{
-              if(form.cb_event_id){ try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error("Couldn't delete comeback from calendar:",e); } }
-              setForm(f=>({...f,appointment:"",gcal_event_id:"",cb_event_id:null}));
-            }} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:12}}>Clear ✕</button>}
           </div>
-          {form.appointment && (
-            <div style={{padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1.5px solid #10b981",fontSize:13,color:"#065f46",marginBottom:8}}>
-              {form.appointment}
-            </div>
-          )}
-          {/* CAP & Install badges — always visible so booked ones can be seen. */}
-          {form.cap_appointment && <div style={{fontSize:12,color:"#ea580c",background:dark?"rgba(234,88,12,0.12)":"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>📋 CAP: {form.cap_appointment}</div>}
-          {form.install_appointment && <div style={{fontSize:12,color:"#15803d",background:dark?"rgba(22,163,74,0.14)":"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>💰 Install: {form.install_appointment}</div>}
-          {form.cs_appointment && <div style={{fontSize:12,color:"#b91c1c",background:dark?"rgba(220,38,38,0.14)":"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>🛟 Cancel Save: {form.cs_appointment}</div>}
-          {/* On-hold reminder — not bookable, no booking button; comes from the On Hold section */}
-          {form.onHold && form.onHoldUntil && <div style={{fontSize:12,color:"#b45309",background:dark?"rgba(245,158,11,0.14)":"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 10px",marginBottom:6,fontWeight:600}}>⏸️ On Hold Removed - {form.name||"Lead"}: {(()=>{ try{ return new Date(form.onHoldUntil+"T00:00:00").toLocaleDateString(); }catch(e){ return form.onHoldUntil; } })()}</div>}
           {/* Single entry point — reveals the four booking options. */}
           <button type="button" onClick={()=>setShowBookOpts(v=>!v)}
             style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 0",borderRadius:10,border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,background:dark?"#1e3a8a":"#2563eb",color:"#fff",fontWeight:800,fontSize:14,textTransform:"uppercase",letterSpacing:"0.05em",cursor:"pointer",boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)"}}>
@@ -7243,13 +7236,14 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                   form.cap_appointment && {key:"cap",label:"📋 CAP",val:form.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id")},
                   form.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:form.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id")},
                   form.install_appointment && {key:"in",label:"💰 Install",val:form.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id")},
+                  form.onHold && form.onHoldUntil && {key:"oh",label:`⏸️ On Hold Removed - ${form.name||"Lead"}`,val:(()=>{ try{ return new Date(form.onHoldUntil+"T00:00:00").toLocaleDateString(); }catch(e){ return form.onHoldUntil; } })(),color:"#b45309",bg:dark?"rgba(245,158,11,0.12)":"#fffbeb",bd:"#fcd34d",noClear:true,hint:"Set from the On Hold section — change or remove it there."},
                 ].filter(Boolean);
                 if(cards.length===0) return null;
                 return (
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                     {cards.map(c=>(
-                      <div key={c.key} title={c.noClear?"To change or remove: 🤝 Book Close → 🏢 Closer":undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                      <div key={c.key} title={c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                         <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
                         {!c.noClear && <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
                           title="Remove this appointment"
