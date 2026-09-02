@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b69";
+const APP_BUILD = "b72";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5807,6 +5807,25 @@ function ZoomableImage({src, onClose}) {
   );
 }
 
+// Long note text clamps to 3 lines with a subtle "See more" toggle. Notes
+// short enough to fit fully never show the toggle.
+function NoteText({text, dark}) {
+  const [open, setOpen] = React.useState(false);
+  const t = String(text||"");
+  const long = t.length > 180 || t.split("\n").length > 3;
+  return (
+    <div>
+      <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",...(long&&!open?{display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}:{})}}>{t}</div>
+      {long && (
+        <button type="button" onClick={(e)=>{e.stopPropagation();setOpen(v=>!v);}}
+          style={{background:"none",border:"none",padding:"4px 0 0",color:dark?"#94a3b8":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+          {open ? "See less ▲" : "See more ▼"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   // Tracks the timestamp of our most recent LOCAL edit. The sync-from-parent effect
@@ -6144,7 +6163,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             </div>
           ):null)}
-          </div>
           {/* Secondary contact */}
           {(()=>{
             const sName=lead.secondary_name, sPhone=lead.secondary_phone, sEmail=lead.secondary_email;
@@ -6185,6 +6203,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
             );
           })()}
+          </div>
           {/* Appointment booking — one button reveals the four booking options. */}
           {repProfiles!==undefined&&(
             <div style={{marginBottom:14}}>
@@ -6350,7 +6369,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       </div>
                     );
                   })()}
-              </>)}
               {/* Additional appointments — book any number of extra sits/appointments
                   without disturbing the closer slot or CAP above; each is cancellable. */}
               {Array.isArray(lead.extra_appointments) && lead.extra_appointments.length>0 && (
@@ -6365,6 +6383,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   ))}
                 </div>
               )}
+              </>)}
+
             </div>
           )}
 
@@ -6391,12 +6411,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {lead.notes && (
-                  <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{lead.notes}</div>
+                  <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"10px 12px"}}><NoteText text={lead.notes} dark={dark}/></div>
                 )}
                 {chron.map(n=>(
                   <div key={n.id} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"9px 12px"}}>
                     {n.ts && <div style={{display:"inline-block",fontSize:10,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5,marginBottom:5}}>🕒 {formatNoteTime(n.ts)}{n.by?` - ${n.by}`:""}</div>}
-                    <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.text}</div>
+                    <NoteText text={n.text} dark={dark}/>
                   </div>
                 ))}
               </div>
@@ -6445,7 +6465,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                   {entries.map(n=>(
                     <div key={n.id} style={{background:dark?"#0f172a":"#f8fafc",borderRadius:8,padding:"9px 12px"}}>
                       {n.ts && <div style={{display:"inline-block",fontSize:10,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b3a":"#e0e7ff",padding:"2px 8px",borderRadius:5,marginBottom:5}}>🕒 {formatNoteTime(n.ts)}{n.by?` - ${n.by}`:""}</div>}
-                      <div style={{fontSize:14,color:dark?"#cbd5e1":"#475569",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.text}</div>
+                      <NoteText text={n.text} dark={dark}/>
                     </div>
                   ))}
                 </div>
@@ -7281,7 +7301,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 );
               })()}
             </div>
-          </>)}
           {/* Additional appointments — any number of extra sits/appointments,
               independent of the closer slot and CAP; each can be cancelled. */}
           {form.id && (
@@ -7311,6 +7330,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
               )}
             </div>
           )}
+          </>)}
+
         </div>) : (
           <div style={{marginBottom:14,padding:"13px 14px",borderRadius:10,background:dark?"#1e3a8a":"#2563eb",border:`2px solid ${dark?"#3b82f6":"#1d4ed8"}`,boxShadow:dark?"0 0 0 1px rgba(59,130,246,0.35)":"0 2px 8px rgba(37,99,235,0.35)",fontSize:13,color:"#fff",fontWeight:700,lineHeight:1.5}}>
             📅 Appointments unlock once this lead is added.
