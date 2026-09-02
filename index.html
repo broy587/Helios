@@ -110,6 +110,7 @@
       .pp-assist-mobile { order: 2; margin-top: 5px; }
       .pp-assist-mobile .pp-lead-assist { font-size: 11px !important; }
       .pp-lbl { display: none; }
+      .pp-lead-stage-row { order: 3; width: 100%; margin-top: 5px !important; font-size: 11px !important; }
       .pp-lead-head .pp-lead-actions { width: 100%; padding-top: 0; margin-top: 10px; }
       .pp-lead-head .pp-lead-actions > div:first-child { width: 100%; gap: 6px; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 8px 4px !important; font-size: 13px !important; }
@@ -570,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b82";
+const APP_BUILD = "b84";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5918,6 +5919,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [assistEditing,setAssistEditing]=useState(false); // view-mode inline assist editor
+  const [stageEditing,setStageEditing]=useState(false); // view-mode inline stage editor
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   const [closeChoice,setCloseChoice]=useState(false); // Book Close → choose Closer or Personal
@@ -6074,6 +6076,33 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                 );
               })()}
             {assistControl && <div className="pp-assist-mobile">{assistControl}</div>}
+            {(()=>{
+              const stEmoji = STAGE_EMOJIS[lead.stage]||"📊";
+              return (
+                <div className="pp-lead-stage-row" style={{display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                  <span style={{fontSize:13}}>{stEmoji}</span>
+                  <span className="pp-lbl">Stage: </span>
+                  {stageEditing ? (
+                    <select autoFocus value={lead.stage||""}
+                      onChange={async e=>{
+                        const v=e.target.value;
+                        handleUpdate({...lead,stage:v});
+                        setStageEditing(false);
+                        await leadPatch(lead.id, {stage:v});
+                      }}
+                      onBlur={()=>setStageEditing(false)}
+                      style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:210}}>
+                      {STAGES.map(s2=><option key={s2} value={s2}>{s2}</option>)}
+                    </select>
+                  ) : (
+                    <span onClick={()=>setStageEditing(true)} title="Click to change stage"
+                      style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                      {lead.stage||"—"}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             </div>
             <div className="pp-lead-actions" style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -7480,6 +7509,23 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {form.id && (<>
 
 
+        <div style={zone("#f8fafc","#e2e8f0","rgba(148,163,184,0.10)","rgba(148,163,184,0.4)")}>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
+          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
+            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        {assistEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) && (
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>🤝 Assist Rep <span style={{textTransform:"none",fontWeight:500,color:"#94a3b8"}}>(50% commission split)</span></label>
+            <select value={form.assistId||""} onChange={set("assistId")} style={inputStyle}>
+              <option value="">— none —</option>
+              {(allProfiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||""))).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
+            </select>
+          </div>
+        )}
+        </div>
         {/* Flag toggles (ARC / On Hold / Needs Cancel Save) can only be turned ON
             once the lead has reached VC / SRA or later — checked via live stage and
             remembered flag stages so a currently-flagged lead still qualifies. */}
@@ -7631,23 +7677,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           )}
         </div>
         </div>
-        <div style={zone("#f8fafc","#e2e8f0","rgba(148,163,184,0.10)","rgba(148,163,184,0.4)")}>
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Stage</label>
-          <select value={form.stage} onChange={set("stage")} style={inputStyle}>
-            {STAGES.map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        {assistEligible({stage:form.stage,arc_stage:form.arcStage,on_hold_stage:form.onHoldStage,ncs_stage:form.ncsStage}) && (
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>🤝 Assist Rep <span style={{textTransform:"none",fontWeight:500,color:"#94a3b8"}}>(50% commission split)</span></label>
-            <select value={form.assistId||""} onChange={set("assistId")} style={inputStyle}>
-              <option value="">— none —</option>
-              {(allProfiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||""))).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
-            </select>
-          </div>
-        )}
-        </div>
+
         </>)}
         <div style={{display:"flex",gap:10}}>
           <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
