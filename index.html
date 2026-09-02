@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b76";
+const APP_BUILD = "b77";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -12315,6 +12315,48 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
   // Keep the latest home-render function in a ref so the map's idle listener (below)
   // always runs with current homes/filters/leads and never goes stale. This fixes
   // pins not re-drawing when panning to a new area.
+  // ── Route Planner: most efficient driving route through the VISIBLE pins ──
+  // Collects every marker currently shown (after Filter Pins + Viewing Leads),
+  // orders them nearest-neighbor from the rep's location, and hands the route
+  // to Google Maps. Google accepts ~10 stops per route and won't reorder them,
+  // so the ordering happens here and long lists go out in efficient chunks.
+  const buildRoute = () => {
+    const stops = []; const seen = new Set();
+    const collect = (m) => {
+      try{
+        if(!m || !m.getMap || !m.getMap()) return;
+        const p = m.getPosition && m.getPosition(); if(!p) return;
+        const key = p.lat().toFixed(6)+","+p.lng().toFixed(6);
+        if(seen.has(key)) return; seen.add(key);
+        stops.push({lat:p.lat(), lng:p.lng()});
+      }catch(e){}
+    };
+    (leadMarkersRef.current||[]).forEach(collect);
+    (markersRef.current||[]).forEach(collect);
+    if(stops.length < 2){ window.alert("Need at least 2 pins showing on the map to build a route. Adjust Filter Pins / Viewing Leads first."); return; }
+    if(!window.confirm("Build the most efficient driving route for the "+stops.length+" pins showing on the map?")) return;
+    const go = (origin) => {
+      const R=6371, rad=(d)=>d*Math.PI/180;
+      const dist=(a,b)=>{ const dLa=rad(b.lat-a.lat), dLn=rad(b.lng-a.lng); const h=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLn/2)*Math.sin(dLn/2); return 2*R*Math.asin(Math.sqrt(h)); };
+      const remaining=[...stops]; const ordered=[]; let cur=origin||remaining[0];
+      while(remaining.length){ let bi=0,bd=Infinity; remaining.forEach((st,i)=>{ const d=dist(cur,st); if(d<bd){bd=d;bi=i;} }); cur=remaining.splice(bi,1)[0]; ordered.push(cur); }
+      const MAX=10;
+      const take=ordered.slice(0,MAX);
+      if(ordered.length>MAX) window.alert("Google Maps tops out around "+MAX+" stops per route — routing the closest "+MAX+" of "+ordered.length+". Knock those out, then run Route Planner again for the rest.");
+      const fmt=(st)=>st.lat.toFixed(6)+","+st.lng.toFixed(6);
+      const dest=take[take.length-1];
+      const wps=take.slice(0,-1).map(fmt).join("|");
+      let url="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+encodeURIComponent(fmt(dest));
+      if(origin) url+="&origin="+encodeURIComponent(fmt(origin));
+      if(wps) url+="&waypoints="+encodeURIComponent(wps);
+      window.open(url,"_blank","noopener");
+    };
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        (pos)=>go({lat:pos.coords.latitude,lng:pos.coords.longitude}),
+        ()=>go(null), {timeout:4000});
+    } else { go(null); }
+  };
   const renderHomesRef = React.useRef(()=>{});
   renderHomesRef.current = () => {
     const map = mapInstanceRef.current;
@@ -12734,6 +12776,10 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           <button onClick={()=>{ const n=!showAreaPanel; setShowAreaPanel(n); if(!n){ cancelAreaDraw(); setAreaForm(null); } }}
             style={{...btnStyle,border:showAreaPanel?"2px solid #10b981":"none",background:showAreaPanel?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title="Area Management">
             <span style={{fontSize:20}}>🗺️</span>
+          </button>
+          {/* Route planner — efficient route through the visible filtered pins */}
+          <button onClick={buildRoute} style={{...btnStyle,background:"rgba(20,20,30,0.85)"}} title="Route Planner">
+            <span style={{fontSize:20}}>🧭</span>
           </button>
           {/* Add home (needs the geocoder, so hidden while offline — tap a
               building outline on the street map to pin a house instead) */}
