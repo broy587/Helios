@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b80";
+const APP_BUILD = "b81";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -10996,17 +10996,26 @@ function leadPinVisual(lead, activeFilters) {
 function leadMatchesCanvassFilters(lead, activeFilters) {
   if (!activeFilters || activeFilters.length === 0) return true;
   if (!lead) return false;
-  const prioMatch = activeFilters.includes("priority") && !!lead.priority;
-  const stageMatch = activeFilters.includes("stage:" + lead.stage);
-  const dispMatch = activeFilters.includes("disp:lead");
+  // Pipeline filters (pf:) REFINE — the lead must pass every checked one,
+  // exactly like Filter Pipeline on the Pipeline tab.
+  const pf = activeFilters.filter(f=>f.startsWith("pf:"));
+  for(const f of pf){
+    const def = PIPELINE_FILTER_DEFS.find(d=>("pf:"+d.key)===f);
+    if(def && !def.test(lead)) return false;
+  }
+  const chips = activeFilters.filter(f=>!f.startsWith("pf:"));
+  if (chips.length === 0) return true; // pipeline filters alone decide
+  const prioMatch = chips.includes("priority") && !!lead.priority;
+  const stageMatch = chips.includes("stage:" + lead.stage);
+  const dispMatch = chips.includes("disp:lead");
   // 🔥 Leads: warm leads still sitting in the Lead stage.
-  const warmMatch = activeFilters.includes("warm")
+  const warmMatch = chips.includes("warm")
     && lead.stage === "Lead: Need Bill/Appointment"
     && lead.temperature === "hot";
   const pileMatch =
-    (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
-    (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
-    (lead.is_arc && activeFilters.includes("pile:arc"));
+    (lead.on_hold && chips.includes("pile:on_hold")) ||
+    (lead.needs_cancel_save && chips.includes("pile:ncs")) ||
+    (lead.is_arc && chips.includes("pile:arc"));
   return !!(stageMatch || dispMatch || warmMatch || pileMatch || prioMatch);
 }
 
@@ -11764,6 +11773,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
   const [locating, setLocating] = React.useState(false);
   const myLocationMarkerRef = React.useRef(null);
   const [showFilter, setShowFilter] = React.useState(false);
+  const [openSecs, setOpenSecs] = React.useState({}); // which Filter Pins sections are expanded
   const [isFs, setIsFs] = React.useState(false);
   const containerRef = React.useRef(null);
   const filterPanelRef = React.useRef(null);
@@ -12379,7 +12389,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // Stage / pile filters apply to home pins THROUGH their linked pipeline lead.
     // Leads created from a canvass pin never get their own lead marker (the pin
     // "owns" that address), so without this, stage filtering hid every pin.
-    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority");
+    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority"||f.startsWith("pf:"));
     const findLinkedLead = (home) => {
       if(!home.address) return null;
       const key = home.address.split(",")[0].toLowerCase().trim();
@@ -12957,7 +12967,11 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
               <button onClick={()=>setActiveFilters([])} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
             )}
           </div>
-          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Dispositions</div>
+          <div onClick={()=>setOpenSecs(o=>({...o,disp:!o.disp}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
+            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Dispositions{(()=>{const n=activeFilters.filter(f=>f.startsWith("disp:")).length;return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{openSecs.disp?"▲":"▼"}</span>
+          </div>
+          {openSecs.disp && (<>
           {DISPOSITIONS.map(d=>{
             const isOn=activeFilters.includes("disp:"+d.key);
             return(
@@ -12969,7 +12983,12 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
               </div>
             );
           })}
-          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Lead Stages</div>
+          </>)}
+          <div onClick={()=>setOpenSecs(o=>({...o,stages:!o.stages}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
+            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Lead Stages{(()=>{const n=activeFilters.filter(f=>f.startsWith("stage:")||f==="warm"||f==="priority").length;return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{openSecs.stages?"▲":"▼"}</span>
+          </div>
+          {openSecs.stages && (<>
           {(()=>{ const isOn=activeFilters.includes("priority"); return (
             <div onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="priority"):[...f,"priority"])}
               style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent"}}>
@@ -12993,7 +13012,12 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
               </React.Fragment>
             );
           })}
-          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Piles</div>
+          </>)}
+          <div onClick={()=>setOpenSecs(o=>({...o,piles:!o.piles}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
+            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Piles{(()=>{const n=activeFilters.filter(f=>f.startsWith("pile:")).length;return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{openSecs.piles?"▲":"▼"}</span>
+          </div>
+          {openSecs.piles && (<>
           {CANVASS_PILES.map(p=>{
             const isOn=activeFilters.includes(p.key);
             return(
@@ -13005,6 +13029,29 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
               </div>
             );
           })}
+          </>)}
+          <div onClick={()=>setOpenSecs(o=>({...o,pf:!o.pf}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
+            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Filters{(()=>{const n=activeFilters.filter(f=>f.startsWith("pf:")).length;return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{openSecs.pf?"▲":"▼"}</span>
+          </div>
+          {openSecs.pf && (<>
+          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.35)",margin:"0 4px 8px",lineHeight:1.4}}>Same filters as Filter Pipeline — a lead pin must match EVERY checked filter.</div>
+          {PIPELINE_FILTER_GROUPS.map(g=>(
+            <React.Fragment key={g}>
+              <div style={{fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:"0.05em",margin:"8px 4px 4px"}}>{g}</div>
+              {PIPELINE_FILTER_DEFS.filter(d=>d.group===g).map(d=>{
+                const isOn=activeFilters.includes("pf:"+d.key);
+                return (
+                  <div key={d.key} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="pf:"+d.key):[...f,"pf:"+d.key])}
+                    style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent"}}>
+                    <div style={{width:14,height:14,borderRadius:4,border:`2px solid ${isOn?"#10b981":"rgba(255,255,255,0.25)"}`,background:isOn?"#10b981":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{isOn&&<span style={{color:"#fff",fontSize:9,fontWeight:900}}>✓</span>}</div>
+                    <span style={{fontSize:11.5,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1,lineHeight:1.3}}>{d.label}</span>
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+          </>)}
         </div>
       )}
 
