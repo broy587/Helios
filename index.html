@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b81";
+const APP_BUILD = "b82";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -10978,8 +10978,8 @@ const STAGE_EMOJIS = {
 // Decide how a pipeline lead pin should look on the canvass map.
 // No filters active -> generic lightning "lead" pin. Filters active -> show the
 // specific pile/stage emoji+color so multiple filtered types are distinguishable.
-function leadPinVisual(lead, activeFilters) {
-  if (!activeFilters || activeFilters.length === 0) return {emoji:"⚡", color:"#10b981"};
+function leadPinVisual(lead, activeFilters, extrasOn) {
+  if ((!activeFilters || activeFilters.length === 0) && !extrasOn) return {emoji:"⚡", color:"#10b981"};
   if (lead.priority && activeFilters.includes("priority")) return {emoji:"⭐", color:"#eab308"};
   if (lead.is_arc && activeFilters.includes("pile:arc")) return {emoji:"🔴", color:"#ef4444"};
   if (lead.on_hold && activeFilters.includes("pile:on_hold")) return {emoji:"⏸️", color:"#f59e0b"};
@@ -10993,17 +10993,42 @@ function leadPinVisual(lead, activeFilters) {
 
 // Whether a pipeline lead marker should be visible on the canvass map given the
 // active stage/disposition/pile filters. No filter → always visible.
-function leadMatchesCanvassFilters(lead, activeFilters) {
-  if (!activeFilters || activeFilters.length === 0) return true;
+// Extra pipeline-filter knobs usable on the canvass map (created-date range,
+// appointment windows/day/type, stale) — the same field shapes the pipeline
+// tab's matchesPipelineFilters reads, minus stages/archive (canvass has its
+// own stage & pile sections).
+const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",stale:{on:false,mode:"show",days:14}};
+function canvassPfxActive(p){
+  if(!p) return false;
+  return !!(p.after || p.before
+    || (Array.isArray(p.appt)&&p.appt.length)
+    || (Array.isArray(p.apptType)&&p.apptType.length)
+    || (p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")
+    || (p.stale && p.stale.on));
+}
+function canvassPfxCount(p){
+  if(!p) return 0;
+  return (p.after?1:0)+(p.before?1:0)
+    +(Array.isArray(p.appt)?p.appt.length:0)
+    +(Array.isArray(p.apptType)?p.apptType.length:0)
+    +((p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")?1:0)
+    +((p.stale&&p.stale.on)?1:0);
+}
+function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
+  const extras = canvassPfxActive(pfx);
+  if ((!activeFilters || activeFilters.length === 0) && !extras) return true;
   if (!lead) return false;
+  // Date / appointment / stale knobs REFINE — run through the pipeline tab's
+  // own matcher so semantics stay identical to Filter Pipeline.
+  if (extras && !matchesPipelineFilters(lead, {after:pfx.after, before:pfx.before, appt:pfx.appt, apptDay:pfx.apptDay, apptType:pfx.apptType, stale:pfx.stale})) return false;
   // Pipeline filters (pf:) REFINE — the lead must pass every checked one,
   // exactly like Filter Pipeline on the Pipeline tab.
-  const pf = activeFilters.filter(f=>f.startsWith("pf:"));
+  const pf = (activeFilters||[]).filter(f=>f.startsWith("pf:"));
   for(const f of pf){
     const def = PIPELINE_FILTER_DEFS.find(d=>("pf:"+d.key)===f);
     if(def && !def.test(lead)) return false;
   }
-  const chips = activeFilters.filter(f=>!f.startsWith("pf:"));
+  const chips = (activeFilters||[]).filter(f=>!f.startsWith("pf:"));
   if (chips.length === 0) return true; // pipeline filters alone decide
   const prioMatch = chips.includes("priority") && !!lead.priority;
   const stageMatch = chips.includes("stage:" + lead.stage);
@@ -11781,6 +11806,11 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
   const [activeFilters, setActiveFilters] = React.useState([]); // empty = show all
   const activeFiltersRef = React.useRef(activeFilters);
   activeFiltersRef.current = activeFilters;
+  const [pfx, setPfx] = React.useState(CANVASS_PFX_EMPTY); // extra pipeline-filter knobs (dates / appointments / stale)
+  const pfxRef = React.useRef(pfx);
+  pfxRef.current = pfx;
+  const pfxOn = canvassPfxActive(pfx);
+  const pfxKey = JSON.stringify(pfx);
   const buildingMarkersRef = React.useRef([]);
   const homesRef = React.useRef([]);
   const lastBuildingFetchRef = React.useRef(null);
@@ -12168,15 +12198,15 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
   React.useEffect(()=>{
     if(!mapLoaded||!mapInstanceRef.current||!window.google) return;
     const listener = window.google.maps.event.addListener(
-      mapInstanceRef.current, "idle", ()=>{ if(showBuildings&&activeFilters.length===0) fetchBuildings(); }
+      mapInstanceRef.current, "idle", ()=>{ if(showBuildings&&activeFilters.length===0&&!canvassPfxActive(pfx)) fetchBuildings(); }
     );
     return ()=>window.google.maps.event.removeListener(listener);
-  },[mapLoaded, showBuildings, activeFilters]);
+  },[mapLoaded, showBuildings, activeFilters, pfx]);
 
   // Apply filters to markers whenever activeFilters changes
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google) return;
-    const hasFilter = activeFilters.length > 0;
+    const hasFilter = activeFilters.length > 0 || pfxOn;
 
     // NOTE: canvass home (disposition) markers are filtered inside the viewport-cull
     // render effect above (it re-runs on activeFilters change), so we don't touch
@@ -12191,20 +12221,20 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       // Repaint the pin so it shows the generic lead bolt with no filter, or the
       // specific stage/pile icon when filtering.
       if(lead){
-        const vis = leadPinVisual(lead, activeFilters);
+        const vis = leadPinVisual(lead, activeFilters, pfxOn);
         const cur = m.getIcon() || {};
         m.setIcon({...cur, path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:vis.color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2.5});
         m.setLabel({text:vis.emoji, fontSize:"14px"});
       }
       if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
-      m.setMap(leadMatchesCanvassFilters(lead, activeFilters) ? mapInstanceRef.current : null);
+      m.setMap(leadMatchesCanvassFilters(lead, activeFilters, pfx) ? mapInstanceRef.current : null);
     });
 
     // Hide/show OSM building bubbles based on filter
     buildingMarkersRef.current.forEach(m=>{
       m.setMap(hasFilter?null:mapInstanceRef.current);
     });
-  },[activeFilters, homes, leads, mapLoaded]); // homes excluded — prevents bubble flicker
+  },[activeFilters, pfxKey, homes, leads, mapLoaded]); // homes excluded — prevents bubble flicker
 
   // Init Places Autocomplete service
   React.useEffect(()=>{
@@ -12285,10 +12315,10 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
         // Stale check — if filter changed since we started geocoding, discard
         if(gen!==leadGenRef.current) return;
         // Icon reflects the current filter state (generic ⚡ when nothing filtered).
-        const vis = leadPinVisual(lead, activeFiltersRef.current);
+        const vis = leadPinVisual(lead, activeFiltersRef.current, canvassPfxActive(pfxRef.current));
         const marker = new window.google.maps.Marker({
           position:{lat:loc.lat,lng:loc.lng},
-          map: leadMatchesCanvassFilters(lead, activeFiltersRef.current) ? mapInstanceRef.current : null,
+          map: leadMatchesCanvassFilters(lead, activeFiltersRef.current, pfxRef.current) ? mapInstanceRef.current : null,
           icon:{
             path:window.google.maps.SymbolPath.CIRCLE,
             scale:14,
@@ -12380,7 +12410,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     if(!map || !window.google) return;
     markersRef.current.forEach(m=>m.setMap(null));
     markersRef.current=[];
-    const hasFilter = activeFilters && activeFilters.length>0;
+    const hasFilter = (activeFilters && activeFilters.length>0) || pfxOn;
     const warmActive = hasFilter && activeFilters.includes("warm");
     const warmKeys = warmActive
       ? (leads||[]).filter(l=>l.stage==="Lead: Need Bill/Appointment" && l.temperature==="hot" && l.address)
@@ -12389,7 +12419,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // Stage / pile filters apply to home pins THROUGH their linked pipeline lead.
     // Leads created from a canvass pin never get their own lead marker (the pin
     // "owns" that address), so without this, stage filtering hid every pin.
-    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority"||f.startsWith("pf:"));
+    const stagePileActive = hasFilter && (activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority"||f.startsWith("pf:")) || pfxOn);
     const findLinkedLead = (home) => {
       if(!home.address) return null;
       const key = home.address.split(",")[0].toLowerCase().trim();
@@ -12407,7 +12437,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       const homeWarm = warmActive && home.address && warmKeys.some(k=>home.address.toLowerCase().includes(k));
       // Linked pipeline lead (only looked up when a stage/pile filter is active).
       const linked = stagePileActive ? findLinkedLead(home) : null;
-      const leadStageMatch = !!(linked && leadMatchesCanvassFilters(linked, activeFilters));
+      const leadStageMatch = !!(linked && leadMatchesCanvassFilters(linked, activeFilters, pfx));
       if(hasFilter){
         const dispMatch = disp && activeFilters.includes("disp:"+disp);
         if(!dispMatch && !homeWarm && !leadStageMatch) return;
@@ -12419,7 +12449,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       }
       const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
       const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-      const stageVis = leadStageMatch ? leadPinVisual(linked, activeFilters) : null;
+      const stageVis = leadStageMatch ? leadPinVisual(linked, activeFilters, pfxOn) : null;
       const emoji = homeWarm ? "🔥" : (stageVis ? stageVis.emoji : dispEmojis[disp]);
       const color = homeWarm ? "#ef4444" : (stageVis ? stageVis.color : (dispColors[disp]||"rgba(255,255,255,0.7)"));
       const marker = emoji ? new window.google.maps.Marker({
@@ -12448,8 +12478,8 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     : "";
   // When a stage/pile filter is active, home pins depend on their linked lead's
   // stage & flags — redraw if any of those change.
-  const leadLinkKey = (activeFilters||[]).some(f=>f.startsWith("stage:")||f.startsWith("pile:"))
-    ? (leads||[]).map(l=>l.id+":"+l.stage+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")).join(",")
+  const leadLinkKey = ((activeFilters||[]).some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f.startsWith("pf:")) || pfxOn)
+    ? (leads||[]).map(l=>l.id+":"+l.stage+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")+":"+(l.updated_at||"")).join(",")
     : "";
 
   // Pins for the offline street map. Unlike the live map's default (dispositions
@@ -12459,7 +12489,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     if(!offlineMapOn) return [];
     const dispEmojis={lead:"⚡",nh:"🏠",cb:"↩️",nn:"⏰",nq:"🚫"};
     const dispColors={lead:"#10b981",nh:"#3b82f6",cb:"#f59e0b",nn:"#f97316",nq:"#ef4444"};
-    const hasFilter=activeFilters&&activeFilters.length>0;
+    const hasFilter=(activeFilters&&activeFilters.length>0)||pfxOn;
     const out=[];
     const pinnedKeys=[];
     (homes||[]).forEach(home=>{
@@ -12482,12 +12512,12 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       }
       if(!(la&&ln)) return;
       if(lead.address && pinnedKeys.some(k=>k && lead.address.toLowerCase().includes(k))) return;
-      if(hasFilter && !leadMatchesCanvassFilters(lead, activeFilters)) return;
-      const vis=leadPinVisual(lead, activeFilters||[]);
+      if(hasFilter && !leadMatchesCanvassFilters(lead, activeFilters, pfx)) return;
+      const vis=leadPinVisual(lead, activeFilters||[], pfxOn);
       out.push({lat:+la,lng:+ln,emoji:vis.emoji,color:vis.color,lead});
     });
     return out;
-  },[offlineMapOn, homes, leads, activeFilters, scopeKey]);
+  },[offlineMapOn, homes, leads, activeFilters, pfxKey, scopeKey]);
 
   const offlineTapPin=(p)=>{
     if(p.home){ setSelectedHome(p.home); return; }
@@ -12514,7 +12544,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
   };
 
   // Draw pins whenever the data / filters / scope actually change or the map is ready.
-  React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, warmLeadKey, leadLinkKey, mapReady]);
+  React.useEffect(()=>{ renderHomesRef.current(); },[homesKey, scopeKey, filterKey, pfxKey, warmLeadKey, leadLinkKey, mapReady]);
   // Safety redraw shortly after the map instance exists (covers slow mobile init).
   React.useEffect(()=>{
     if(!mapReady) return;
@@ -12783,12 +12813,14 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           </>}
 
           {/* Filter */}
+          {(()=>{ const nFil = activeFilters.length + canvassPfxCount(pfx); return (
           <button ref={filterBtnRef} onClick={()=>setShowFilter(f=>!f)}
-            style={{...btnStyle,background:activeFilters.length>0?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:activeFilters.length>0?"2px solid #6b2d4e":"none",position:"relative"}}
+            style={{...btnStyle,background:nFil>0?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:nFil>0?"2px solid #6b2d4e":"none",position:"relative"}}
             title="Filter">
             <span style={{fontSize:20}}>🔍</span>
-            {activeFilters.length>0&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#6b2d4e",fontSize:9,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilters.length}</div>}
+            {nFil>0&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#6b2d4e",fontSize:9,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{nFil}</div>}
           </button>
+          ); })()}
           {/* Area management (everyone sees it) */}
           <button onClick={()=>{ const n=!showAreaPanel; setShowAreaPanel(n); if(!n){ cancelAreaDraw(); setAreaForm(null); } }}
             style={{...btnStyle,border:showAreaPanel?"2px solid #10b981":"none",background:showAreaPanel?"rgba(16,185,129,0.2)":"rgba(20,20,30,0.85)"}} title="Area Management">
@@ -12963,8 +12995,8 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
         <div ref={filterPanelRef} style={{position:"absolute",top:12,left:68,background:"rgba(18,18,28,0.97)",borderRadius:14,padding:"16px",zIndex:300,width:240,maxHeight:"calc(100vh - 140px)",overflowY:"auto",boxShadow:"0 8px 30px rgba(0,0,0,0.5)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Filter Pins</div>
-            {activeFilters.length>0&&(
-              <button onClick={()=>setActiveFilters([])} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
+            {(activeFilters.length>0||pfxOn)&&(
+              <button onClick={()=>{setActiveFilters([]);setPfx(CANVASS_PFX_EMPTY);}} style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11,fontWeight:700,cursor:"pointer"}}>Clear</button>
             )}
           </div>
           <div onClick={()=>setOpenSecs(o=>({...o,disp:!o.disp}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
@@ -13031,27 +13063,102 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           })}
           </>)}
           <div onClick={()=>setOpenSecs(o=>({...o,pf:!o.pf}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderRadius:8,marginBottom:4,marginTop:6}}>
-            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Filters{(()=>{const n=activeFilters.filter(f=>f.startsWith("pf:")).length;return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
+            <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.55)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Pipeline Filters{(()=>{const n=activeFilters.filter(f=>f.startsWith("pf:")).length + canvassPfxCount(pfx);return n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null;})()}</span>
             <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{openSecs.pf?"▲":"▼"}</span>
           </div>
-          {openSecs.pf && (<>
-          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.35)",margin:"0 4px 8px",lineHeight:1.4}}>Same filters as Filter Pipeline — a lead pin must match EVERY checked filter.</div>
-          {PIPELINE_FILTER_GROUPS.map(g=>(
-            <React.Fragment key={g}>
-              <div style={{fontSize:9,fontWeight:800,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:"0.05em",margin:"8px 4px 4px"}}>{g}</div>
-              {PIPELINE_FILTER_DEFS.filter(d=>d.group===g).map(d=>{
-                const isOn=activeFilters.includes("pf:"+d.key);
-                return (
-                  <div key={d.key} onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="pf:"+d.key):[...f,"pf:"+d.key])}
-                    style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent"}}>
-                    <div style={{width:14,height:14,borderRadius:4,border:`2px solid ${isOn?"#10b981":"rgba(255,255,255,0.25)"}`,background:isOn?"#10b981":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{isOn&&<span style={{color:"#fff",fontSize:9,fontWeight:900}}>✓</span>}</div>
-                    <span style={{fontSize:11.5,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1,lineHeight:1.3}}>{d.label}</span>
-                  </div>
-                );
+          {openSecs.pf && (()=>{
+            const subHead = (id,label,n)=>(
+              <div key={"h_"+id} onClick={()=>setOpenSecs(o=>({...o,[id]:!o[id]}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"6px 8px",borderRadius:8,marginBottom:3,marginLeft:4,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)"}}>
+                <span style={{fontSize:9.5,fontWeight:800,color:"rgba(255,255,255,0.6)",textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}{n>0?<span style={{marginLeft:6,background:"#6b2d4e",color:"#fff",borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:800}}>{n}</span>:null}</span>
+                <span style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>{openSecs[id]?"▲":"▼"}</span>
+              </div>
+            );
+            const dIn = {width:"100%",boxSizing:"border-box",padding:"7px 8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.08)",color:"#fff",fontSize:12,colorScheme:"dark",fontFamily:"inherit"};
+            const lbl = {fontSize:9.5,fontWeight:700,color:"rgba(255,255,255,0.45)",margin:"6px 2px 3px"};
+            const rowStyle = (on)=>({display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:8,marginBottom:3,marginLeft:8,cursor:"pointer",background:on?"rgba(255,255,255,0.1)":"transparent"});
+            const cbBox = (on)=>(<div style={{width:14,height:14,borderRadius:4,border:`2px solid ${on?"#10b981":"rgba(255,255,255,0.25)"}`,background:on?"#10b981":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{on&&<span style={{color:"#fff",fontSize:9,fontWeight:900}}>✓</span>}</div>);
+            const rowTxt = (on)=>({fontSize:11.5,color:on?"#fff":"rgba(255,255,255,0.5)",fontWeight:on?700:400,flex:1,lineHeight:1.3});
+            const togglePfx = (field,val)=>setPfx(p=>{const cur=Array.isArray(p[field])?p[field]:[];return {...p,[field]:cur.includes(val)?cur.filter(x=>x!==val):[...cur,val]};});
+            const st = pfx.stale||{};
+            return (<>
+            <div style={{fontSize:9.5,color:"rgba(255,255,255,0.35)",margin:"0 4px 8px",lineHeight:1.4}}>Same filters as Filter Pipeline — a lead pin must match EVERY selection here.</div>
+            {subHead("pf_dates","📅 Created Date Range",(pfx.after?1:0)+(pfx.before?1:0))}
+            {openSecs.pf_dates && (<div style={{margin:"2px 4px 8px 8px"}}>
+              <div style={lbl}>Created on/after</div>
+              <input type="date" value={pfx.after||""} max={pfx.before||undefined} onChange={e=>setPfx(p=>({...p,after:e.target.value||undefined}))} style={dIn}/>
+              <div style={lbl}>Created on/before</div>
+              <input type="date" value={pfx.before||""} min={pfx.after||undefined} onChange={e=>setPfx(p=>({...p,before:e.target.value||undefined}))} style={dIn}/>
+              {(pfx.after||pfx.before)&&(
+                <button onClick={()=>setPfx(p=>({...p,after:undefined,before:undefined}))} style={{marginTop:8,padding:"5px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10.5,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
+              )}
+            </div>)}
+            {subHead("pf_appt","⏰ Appointment Time",(Array.isArray(pfx.appt)?pfx.appt.length:0)+((pfx.apptDay!==undefined&&pfx.apptDay!=="any"&&pfx.apptDay!=="")?1:0))}
+            {openSecs.pf_appt && (<div style={{margin:"2px 0 8px"}}>
+              {[["morning","🌅 Morning · 8AM–1PM"],["afternoon","☀️ Afternoon · 1PM–5PM"],["evening","🌆 Evening · 5PM–9PM"]].map(([v,l2])=>{
+                const on=Array.isArray(pfx.appt)&&pfx.appt.includes(v);
+                return (<div key={v} onClick={()=>togglePfx("appt",v)} style={rowStyle(on)}>{cbBox(on)}<span style={rowTxt(on)}>{l2}</span></div>);
               })}
-            </React.Fragment>
-          ))}
-          </>)}
+              <div style={{...lbl,marginLeft:8}}>Appointment day</div>
+              <select value={pfx.apptDay===undefined?"any":String(pfx.apptDay)} onChange={e=>setPfx(p=>({...p,apptDay:e.target.value}))}
+                style={{...dIn,marginLeft:8,width:"calc(100% - 12px)",cursor:"pointer"}}>
+                <option value="any">Any day</option>
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+                <option value="5">Friday</option>
+                <option value="6">Saturday</option>
+                <option value="0">Sunday</option>
+              </select>
+            </div>)}
+            {subHead("pf_type","📌 Appointment Type",Array.isArray(pfx.apptType)?pfx.apptType.length:0)}
+            {openSecs.pf_type && (<div style={{margin:"2px 0 8px"}}>
+              {APPT_TYPE_FILTERS.map(t=>{
+                const on=Array.isArray(pfx.apptType)&&pfx.apptType.includes(t.key);
+                return (<div key={t.key} onClick={()=>togglePfx("apptType",t.key)} style={rowStyle(on)}>{cbBox(on)}<span style={rowTxt(on)}>{t.label}</span></div>);
+              })}
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",margin:"2px 8px 0",lineHeight:1.35}}>Matches the lead's most recently booked appointment.</div>
+            </div>)}
+            {PIPELINE_FILTER_GROUPS.map((g,gi)=>{
+              const defs=PIPELINE_FILTER_DEFS.filter(d=>d.group===g);
+              const n=defs.filter(d=>activeFilters.includes("pf:"+d.key)).length;
+              const emo=["🧾","✅","🤝","⚡"][gi]||"•";
+              return (<React.Fragment key={g}>
+                {subHead("pf_g"+gi, emo+" "+g, n)}
+                {openSecs["pf_g"+gi] && (<div style={{margin:"2px 0 8px"}}>
+                  {defs.map(d=>{
+                    const on=activeFilters.includes("pf:"+d.key);
+                    return (
+                      <div key={d.key} onClick={()=>setActiveFilters(f=>on?f.filter(x=>x!=="pf:"+d.key):[...f,"pf:"+d.key])} style={rowStyle(on)}>
+                        {cbBox(on)}<span style={rowTxt(on)}>{d.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>)}
+              </React.Fragment>);
+            })}
+            {subHead("pf_stale","💤 Stale · No Activity",(st.on?1:0))}
+            {openSecs.pf_stale && (<div style={{margin:"2px 0 8px"}}>
+              {[["show","Show only stale"],["hide","Hide stale"]].map(([m,l2])=>{
+                const on=!!(st.on&&st.mode===m);
+                return (<div key={m} onClick={()=>setPfx(p=>{const ps=p.stale||{};const cur=!!(ps.on&&ps.mode===m);return {...p,stale:cur?{on:false,mode:"show",days:ps.days||14}:{on:true,mode:m,days:ps.days||14}};})} style={rowStyle(on)}>{cbBox(on)}<span style={rowTxt(on)}>{l2}</span></div>);
+              })}
+              {st.on && (
+                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",margin:"4px 8px 0"}}>
+                  <span style={{fontSize:9.5,color:"rgba(255,255,255,0.45)"}}>Older than:</span>
+                  {[7,14,21,30,60].map(dd=>(
+                    <button key={dd} onClick={()=>setPfx(p=>({...p,stale:{on:true,mode:(p.stale&&p.stale.mode)||"show",days:dd}}))}
+                      style={{padding:"3px 9px",borderRadius:12,border:`1px solid ${st.days===dd?"#6b2d4e":"rgba(255,255,255,0.2)"}`,background:st.days===dd?"#6b2d4e":"transparent",color:st.days===dd?"#fff":"rgba(255,255,255,0.5)",fontSize:10,fontWeight:800,cursor:"pointer"}}>{dd}d</button>
+                  ))}
+                </div>
+              )}
+            </div>)}
+            {(activeFilters.some(f=>f.startsWith("pf:"))||pfxOn) && (
+              <button onClick={()=>{setActiveFilters(f=>f.filter(x=>!x.startsWith("pf:")));setPfx(CANVASS_PFX_EMPTY);}}
+                style={{width:"100%",marginTop:4,padding:"7px 0",borderRadius:8,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"rgba(255,255,255,0.6)",fontSize:10.5,fontWeight:800,cursor:"pointer"}}>Clear pipeline filters</button>
+            )}
+            </>);
+          })()}
         </div>
       )}
 
