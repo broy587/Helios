@@ -104,10 +104,10 @@
        empty pockets, ever. Tablets/desktop (>640px) unchanged. */
     @media (max-width: 640px) {
       .pp-lead-head { position: relative; flex-direction: column; align-items: stretch; }
-      .pp-lead-head .pp-lead-info { display: flex; flex-direction: column; }
-      .pp-lead-head .pp-lead-name { font-size: 18px !important; padding-right: 30px; }
-      .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
-      .pp-assist-mobile { order: 2; }
+      .pp-lead-head .pp-lead-info { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; }
+      .pp-lead-head .pp-lead-name { width: 100%; font-size: 18px !important; padding-right: 30px; }
+      .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; margin-right: 14px; }
+      .pp-assist-mobile { order: 2; margin-top: 5px; }
       .pp-lead-head .pp-lead-actions { width: 100%; padding-top: 0; margin-top: 10px; }
       .pp-lead-head .pp-lead-actions > div:first-child { width: 100%; gap: 6px; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 8px 4px !important; font-size: 13px !important; }
@@ -568,7 +568,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b65";
+const APP_BUILD = "b66";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
