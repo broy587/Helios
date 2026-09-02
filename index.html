@@ -98,21 +98,22 @@
     @keyframes spin { to{transform:rotate(360deg)} }
     .pp-assist-mobile { display: none; }
     .pp-chips-mobile { display: none; }
-    /* Lead header on PHONES: left column = name, owner, assist, chips; right
-       column = compact 2×2 Edit/Archive/Map/Priority; ✕ pinned top-right.
-       Tablets/desktop (>640px) keep the original layout. */
+    /* Lead header on PHONES: everything full-width and stacked — name row
+       (✕ top-right), Owner, Assist, then the four buttons as two full-width
+       pairs, then the chips flowing below. No side-by-side columns, so no
+       empty pockets, ever. Tablets/desktop (>640px) unchanged. */
     @media (max-width: 640px) {
-      .pp-lead-head { position: relative; }
+      .pp-lead-head { position: relative; flex-direction: column; align-items: stretch; }
       .pp-lead-head .pp-lead-info { display: flex; flex-direction: column; }
-      .pp-lead-head .pp-lead-name { font-size: 18px !important; }
+      .pp-lead-head .pp-lead-name { font-size: 18px !important; padding-right: 30px; }
       .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
       .pp-assist-mobile { display: block; order: 2; margin-top: 4px; }
       .pp-assist-mobile .pp-lead-assist { justify-content: flex-start !important; flex-wrap: wrap; }
-      .pp-chips-mobile { display: block; margin: 2px 0 4px; }
+      .pp-chips-mobile { display: block; margin: 6px 0 4px; }
       .pp-chips-desktop { display: none; }
-      .pp-lead-head .pp-lead-actions { padding-top: 24px; }
-      .pp-lead-head .pp-lead-actions > div:first-child { width: 150px; gap: 6px; }
-      .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 6px 4px !important; font-size: 11.5px !important; }
+      .pp-lead-head .pp-lead-actions { width: 100%; padding-top: 0; margin-top: 10px; }
+      .pp-lead-head .pp-lead-actions > div:first-child { width: 100%; gap: 6px; }
+      .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 8px 4px !important; font-size: 13px !important; }
       .pp-btn-edit { order: 1; } .pp-btn-map { order: 2; } .pp-btn-priority { order: 3; } .pp-btn-archive { order: 4; }
       .pp-assist-desktop { display: none; }
       .pp-lead-close { position: absolute; top: -6px; right: -2px; }
@@ -572,7 +573,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b61";
+const APP_BUILD = "b62";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
