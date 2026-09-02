@@ -569,7 +569,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b57";
+const APP_BUILD = "b58";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -7324,7 +7324,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         )}
         {/* ── AC Status → Setter Notes → Photos & Files ── */}
         <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id} optionalTag={!!form.id}/>
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
           // Note button, including the very FIRST one (which becomes the classic
