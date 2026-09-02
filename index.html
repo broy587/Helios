@@ -106,9 +106,9 @@
       .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
       .pp-lead-head .pp-lead-chips { order: 2; margin-top: 2px; }
       .pp-lead-head .pp-lead-actions { padding-top: 24px; }
-      .pp-lead-head .pp-lead-actions > div:first-child { display: flex; flex-direction: column; width: 106px; gap: 6px; }
+      .pp-lead-head .pp-lead-actions > div:first-child { width: 110px; gap: 6px; }
       .pp-lead-head .pp-lead-actions > div:first-child > div:nth-child(1),
-      .pp-lead-head .pp-lead-actions > div:first-child > div:nth-child(2) { display: contents; }
+      .pp-lead-head .pp-lead-actions > div:first-child > div:nth-child(2) { flex-direction: column; justify-content: flex-start; align-items: stretch; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 0 0 auto !important; padding: 6px 8px !important; font-size: 12px !important; }
       .pp-btn-edit { order: 1; } .pp-btn-map { order: 2; } .pp-btn-priority { order: 3; } .pp-btn-archive { order: 4; }
       .pp-lead-assist { order: 5; justify-content: flex-start !important; flex-wrap: wrap; }
@@ -569,7 +569,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b58";
+const APP_BUILD = "b59";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
