@@ -96,7 +96,8 @@
       animation:spin 0.8s linear infinite;
     }
     @keyframes spin { to{transform:rotate(360deg)} }
-    .pp-assist-mobile { display: none; }
+    .pp-assist-mobile { margin-top: 5px; }
+    .pp-assist-mobile .pp-lead-assist { justify-content: flex-start !important; flex-wrap: wrap; }
     /* Lead header on PHONES: everything full-width and stacked — name row
        (✕ top-right), Owner, Assist, then the four buttons as two full-width
        pairs, then the chips flowing below. No side-by-side columns, so no
@@ -106,12 +107,10 @@
       .pp-lead-head .pp-lead-info { display: flex; flex-direction: column; }
       .pp-lead-head .pp-lead-name { font-size: 18px !important; padding-right: 30px; }
       .pp-lead-head .pp-lead-owner { order: 1; margin-top: 5px !important; }
-      .pp-assist-mobile { display: block; order: 2; margin-top: 4px; }
-      .pp-assist-mobile .pp-lead-assist { justify-content: flex-start !important; flex-wrap: wrap; }
+      .pp-assist-mobile { order: 2; }
       .pp-lead-head .pp-lead-actions { width: 100%; padding-top: 0; margin-top: 10px; }
       .pp-lead-head .pp-lead-actions > div:first-child { width: 100%; gap: 6px; }
       .pp-lead-head .pp-lead-actions button:not(.pp-lead-close) { flex: 1 1 0 !important; min-width: 0; padding: 8px 4px !important; font-size: 13px !important; }
-      .pp-assist-desktop { display: none; }
       .pp-lead-close { position: absolute; top: -6px; right: -2px; }
     }
   </style>
@@ -569,7 +568,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b64";
+const APP_BUILD = "b65";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5986,8 +5985,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const colors=getStageColor(lead.stage);
   // Color-coded section bubbles (view mode) — same palettes as edit/create.
   const vzone = (bg, bd, bgD, bdD) => ({background:dark?bgD:bg, border:`1.5px solid ${dark?bdD:bd}`, borderRadius:14, padding:"12px 12px 2px", marginBottom:12});
-  // Assist picker — one control, two homes: under the buttons on desktop,
-  // under the Owner line on phones (CSS shows exactly one of them).
+  // Assist picker — lives right under the Owner line on every screen size.
   const assistControl = assistEligible(lead) ? (()=>{
                   const assist = (profiles||[]).find(p=>p.id===lead.assist_id);
                   const allReps = (profiles||[]).filter(p=>!p.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
@@ -6078,7 +6076,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     </button>
                   )}
                 </div>
-                <div className="pp-assist-desktop">{assistControl}</div>
               </div>
               <button className="pp-lead-close" onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
