@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b73";
+const APP_BUILD = "b74";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -11076,11 +11076,18 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
   // canvassLeadFilter is now an array for multi-select
   const filters = Array.isArray(canvassLeadFilter) ? canvassLeadFilter : [canvassLeadFilter||"mine"];
   const toggle = (key) => {
-    if(key==="mine"||key==="all"){
-      setCanvassLeadFilter([key]);
+    if(key==="all"){
+      setCanvassLeadFilter(["all"]);
+    } else if(key==="mine"||key==="assist"){
+      // Personal family: My Leads and Assisted-to-me combine with each other
+      // (mine only / assisted only / both) and replace team, rep or all picks.
+      const cur = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
+      const personal = cur.filter(k=>k==="mine"||k==="assist");
+      const next = personal.includes(key) ? personal.filter(k=>k!==key) : [...personal, key];
+      setCanvassLeadFilter(next.length?next:["mine"]);
     } else {
       const cur = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
-      const withoutSpecial = cur.filter(k=>k!=="mine"&&k!=="all");
+      const withoutSpecial = cur.filter(k=>k!=="mine"&&k!=="all"&&k!=="assist");
       if(withoutSpecial.includes(key)){
         const next = withoutSpecial.filter(k=>k!==key);
         setCanvassLeadFilter(next.length?next:["mine"]);
@@ -11093,6 +11100,8 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
   const label = ()=>{
     if(filters.includes("all")) return "All Reps";
     if(filters.length===1&&filters[0]==="mine") return "My Leads";
+    if(filters.length===1&&filters[0]==="assist") return "My Assisted";
+    if(filters.length===2&&filters.includes("mine")&&filters.includes("assist")) return "Mine + Assisted";
     if(filters.length===1&&filters[0].startsWith("team:")){
       const t=visibleTeams.find(t=>"team:"+t.id===filters[0]);
       return t?t.name:"Team";
@@ -11145,6 +11154,15 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
           </div>
 
           <Row fkey="mine" icon="👤" label="My Leads"/>
+          {/* Sub-option: leads where I'm the ASSIST — combine with My Leads or use alone */}
+          <div onClick={()=>toggle("assist")}
+            style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px 7px 34px",cursor:"pointer",background:filters.includes("assist")?"rgba(107,45,78,0.3)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+            <span style={{fontSize:13}}>🤝</span>
+            <span style={{flex:1,fontSize:12.5,color:filters.includes("assist")?"#fff":"rgba(255,255,255,0.6)",fontWeight:filters.includes("assist")?700:400}}>Assisted to me</span>
+            <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${filters.includes("assist")?"#6b2d4e":"rgba(255,255,255,0.2)"}`,background:filters.includes("assist")?"#6b2d4e":"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {filters.includes("assist")&&<span style={{color:"#fff",fontSize:10,fontWeight:800}}>✓</span>}
+            </div>
+          </div>
           {isOwner&&<Row fkey="all" icon="🌐" label="All Reps"/>}
 
           {isPrivileged&&visibleTeams.length>0&&(
@@ -17765,6 +17783,7 @@ function App() {
               const allowed = new Set();
               filters.forEach(f=>{
                 if(f==="mine") leads.filter(l=>l.owner_id===user.id).forEach(l=>allowed.add(l.id));
+                else if(f==="assist") leads.filter(l=>l.assist_id===user.id).forEach(l=>allowed.add(l.id));
                 else if(f.startsWith("team:")){
                   const tid=f.replace("team:","");
                   const membersList=teamMembers&&teamMembers[tid]?teamMembers[tid]:[];
@@ -17792,6 +17811,7 @@ function App() {
               const ids=new Set();
               filters.forEach(f=>{
                 if(f==="mine") ids.add(user.id);
+                else if(f==="assist") ids.add(user.id);
                 else if(f.startsWith("team:")){
                   const tid=f.replace("team:","");
                   (teamMembers[tid]||[]).forEach(m=>ids.add(m.user_id));
