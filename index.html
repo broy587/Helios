@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b45";
+const APP_BUILD = "b46";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4253,7 +4253,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
           return (
             <div style={{marginBottom:16,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
               <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:dark?"#0f172a":"#f8fafc",border:"none",cursor:"pointer"}}>
-                <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Sold System Info</span>
+                <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>System Info</span>
                 <span style={{fontSize:13,color:"#94a3b8"}}>{showSold?"▲":"▼"}</span>
               </button>
               {showSold && (
@@ -4301,7 +4301,7 @@ function CloseSection({form,setForm,readOnly,lead,onUpdate,beforeSold,afterSold}
       {/* Sold System Info — collapsible (edit) */}
       <div style={{marginBottom:16,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,overflow:"hidden"}}>
         <button type="button" onClick={()=>setShowSold(v=>!v)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:dark?"#0f172a":"#f8fafc",border:"none",cursor:"pointer"}}>
-          <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>Sold System Info</span>
+          <span style={{fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",textTransform:"uppercase",letterSpacing:"0.05em"}}>System Info</span>
           <span style={{fontSize:13,color:"#94a3b8"}}>{showSold?"▲":"▼"}</span>
         </button>
         {showSold && (
@@ -6500,7 +6500,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           )}
           {lead.commission && String(lead.commission).trim() && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Commission</div>
+              <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>{showCommission ? "Commission" : "Presenting"}</div>
               {showCommission ? (
                 <div onClick={()=>setShowCommission(false)} title="Tap to hide"
                   style={{fontSize:15,fontWeight:800,color:dark?"#6ee7b7":"#047857",cursor:"pointer"}}>
