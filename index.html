@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b75";
+const APP_BUILD = "b76";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -10980,6 +10980,7 @@ const STAGE_EMOJIS = {
 // specific pile/stage emoji+color so multiple filtered types are distinguishable.
 function leadPinVisual(lead, activeFilters) {
   if (!activeFilters || activeFilters.length === 0) return {emoji:"⚡", color:"#10b981"};
+  if (lead.priority && activeFilters.includes("priority")) return {emoji:"⭐", color:"#eab308"};
   if (lead.is_arc && activeFilters.includes("pile:arc")) return {emoji:"🔴", color:"#ef4444"};
   if (lead.on_hold && activeFilters.includes("pile:on_hold")) return {emoji:"⏸️", color:"#f59e0b"};
   if (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) return {emoji:"🛟", color:"#6366f1"};
@@ -10995,6 +10996,7 @@ function leadPinVisual(lead, activeFilters) {
 function leadMatchesCanvassFilters(lead, activeFilters) {
   if (!activeFilters || activeFilters.length === 0) return true;
   if (!lead) return false;
+  const prioMatch = activeFilters.includes("priority") && !!lead.priority;
   const stageMatch = activeFilters.includes("stage:" + lead.stage);
   const dispMatch = activeFilters.includes("disp:lead");
   // 🔥 Leads: warm leads still sitting in the Lead stage.
@@ -11005,7 +11007,7 @@ function leadMatchesCanvassFilters(lead, activeFilters) {
     (lead.on_hold && activeFilters.includes("pile:on_hold")) ||
     (lead.needs_cancel_save && activeFilters.includes("pile:ncs")) ||
     (lead.is_arc && activeFilters.includes("pile:arc"));
-  return !!(stageMatch || dispMatch || warmMatch || pileMatch);
+  return !!(stageMatch || dispMatch || warmMatch || pileMatch || prioMatch);
 }
 
 // Pile filter chips (booleans on the lead, not stage values).
@@ -12328,7 +12330,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // Stage / pile filters apply to home pins THROUGH their linked pipeline lead.
     // Leads created from a canvass pin never get their own lead marker (the pin
     // "owns" that address), so without this, stage filtering hid every pin.
-    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:"));
+    const stagePileActive = hasFilter && activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority");
     const findLinkedLead = (home) => {
       if(!home.address) return null;
       const key = home.address.split(",")[0].toLowerCase().trim();
@@ -12931,6 +12933,14 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
             );
           })}
           <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8,marginTop:12}}>Lead Stages</div>
+          {(()=>{ const isOn=activeFilters.includes("priority"); return (
+            <div onClick={()=>setActiveFilters(f=>isOn?f.filter(x=>x!=="priority"):[...f,"priority"])}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isOn?"rgba(255,255,255,0.1)":"transparent"}}>
+              <span style={{fontSize:14,width:26,textAlign:"center"}}>⭐</span>
+              <span style={{fontSize:12,color:isOn?"#fff":"rgba(255,255,255,0.5)",fontWeight:isOn?700:400,flex:1}}>Priority Comebacks</span>
+              {isOn&&<span style={{color:"#eab308",fontSize:13}}>✓</span>}
+            </div>
+          ); })()}
           {STAGES.map(s=>{
             const isOn=activeFilters.includes("stage:"+s);
             const emoji=STAGE_EMOJIS[s]||"📌";
