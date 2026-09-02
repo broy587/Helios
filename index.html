@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b44";
+const APP_BUILD = "b45";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5439,7 +5439,8 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
   const seed = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
   const [checked, setChecked] = React.useState(seed);
   const [saving, setSaving] = React.useState(false);
-  const [openHelp, setOpenHelp] = React.useState(null); // which item's "?" explanation is open
+  const [openHelp, setOpenHelp] = React.useState({}); // which items' "?" explanations are open — several can be open at once
+  React.useEffect(()=>{ setOpenHelp({}); },[leadId]); // fresh lead → all descriptions closed
   const score = checked.length;
   React.useEffect(()=>{
     const next = Array.isArray(initialChecked) ? initialChecked : deriveCloserChecklist(lead||{});
@@ -5481,7 +5482,7 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
       {showItems && VC_CHECKLIST_ITEMS.map((item,i)=>{
         const isChecked = checked.includes(item);
         const help = VC_ITEM_HELP[item];
-        const helpOpen = openHelp===item;
+        const helpOpen = !!openHelp[item];
         return (
           <div key={item} style={{borderBottom:i<VC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#d6e2f5"}`:"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px"}}>
@@ -5501,7 +5502,7 @@ function CloserChecklist({leadId, initialChecked, lead, onUpdate, readOnly, coll
                 <IntroEmailButton email={lead&&(lead.email||lead.secondary_email)} firstName={lead&&(lead.first_name||(lead.name||"").split(" ")[0])}/>
               )}
               {help && (
-                <button onClick={(e)=>{e.stopPropagation();setOpenHelp(o=>o===item?null:item);}}
+                <button onClick={(e)=>{e.stopPropagation();setOpenHelp(o=>({...o,[item]:!o[item]}));}}
                   title="What does this mean?"
                   style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`1.5px solid ${helpOpen?"#1a2456":dark?"#475569":"#a8bce0"}`,background:helpOpen?"#1a2456":"transparent",color:helpOpen?"#fff":(dark?"#94a3b8":"#64748b"),fontSize:12,fontWeight:800,cursor:"pointer",lineHeight:1,padding:0}}>?</button>
               )}
