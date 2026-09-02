@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b42";
+const APP_BUILD = "b44";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4501,15 +4501,15 @@ function UsagePulledToggle({leadId, initialValue, onUpdate}) {
 
 // ── AC Checklist ──────────────────────────────────────────────────────
 const AC_CHECKLIST_ITEMS = [
-  "Contact Info",
   "Prescreen Approved",
+  "Contact Info",
   "Bill Acquired",
-  "Transitioned Inside",
+  "Knows solar is / can be involved",
   "Same Day or Next Day Apt",
   "Confirmed all decision makers / spouses will be present",
-  "Homeowner Had Objections",
   "Named Drop In Pitch",
-  "Knows solar is / can be involved",
+  "Homeowner Had Objections",
+  "Transitioned Inside",
   "Clear Expectations Set",
 ];
 
@@ -5219,17 +5219,17 @@ function ObjectionsSection({value, onChange, readOnly, leadId, collapsible=true}
 
 // ── Closers VC Checklist (mirrors the Setters AC Checklist) ──────────────
 const VC_CHECKLIST_ITEMS = [
-  "Autopay Input",
-  "Homeowner knew solar was/could be involved",
   "Homeowner let closer inside",
   "Every true decision maker was present",
-  "Found their WHY and customer voiced it",
+  "Homeowner knew solar was/could be involved",
+  "Autopay Input",
   "Objections uncovered and resolved",
   "Pre-frame outside influence",
+  "Found their WHY and customer voiced it",
   "Future Commitment",
-  "Sent intro email",
-  "Added phone number to homeowners contacts",
   "Downloaded the app on homeowners phone",
+  "Added phone number to homeowners contacts",
+  "Sent intro email",
   "Customer has crystal clear understanding of what they're agreeing to and what happens next",
   "CAP/follow-up locked in",
 ];
