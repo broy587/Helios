@@ -570,7 +570,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b79";
+const APP_BUILD = "b80";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -12934,22 +12934,6 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
         <div style={{position:"absolute",top:12,left:"50%",transform:"translateX(-50%)",zIndex:450,background:"rgba(180,83,9,0.96)",color:"#fff",borderRadius:20,padding:"7px 14px",fontSize:12,fontWeight:800,boxShadow:"0 2px 10px rgba(0,0,0,0.4)",whiteSpace:"nowrap",pointerEvents:"none"}}>
           📴 Offline — {offlineMapOn?"street map from downloads":"downloaded areas"}{CanvassPending.count()>0?` · ${CanvassPending.count()} saved, waiting to upload`:""}
         </div>
-      )}
-      {/* Custom fullscreen button — left of eye */}
-      {mapLoaded && (
-        <button onClick={()=>{
-          const el = containerRef.current;
-          if(el){
-            if(!(document.fullscreenElement||document.webkitFullscreenElement)){
-              (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen)?.call(el);
-            } else {
-              (document.exitFullscreen||document.webkitExitFullscreen)?.call(document);
-            }
-          }
-        }} title={isFs?"Exit full screen":"Full screen"}
-        style={{position:"absolute",top:12,right:68,zIndex:400,width:48,height:48,borderRadius:12,background:isFs?"rgba(107,45,78,0.95)":"rgba(20,20,30,0.85)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.4)",backdropFilter:"blur(4px)"}}>
-          <span style={{fontSize:isFs?24:18,color:"#fff",lineHeight:1}}>{isFs?"✕":"⛶"}</span>
-        </button>
       )}
       {/* View Scope Button — separate from filter */}
       {mapLoaded && (
