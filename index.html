@@ -551,7 +551,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b50";
+const APP_BUILD = "b51";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9141,14 +9141,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           RAPPORT_TEXT_FIELDS.forEach(f=>{ if(String(r[f.key]||"").trim()) out.push([f.label, String(r[f.key]).trim()]); });
           if(String(r.years_in_home||"").trim()) out.push(["Years in home", r.years_in_home]);
           RAPPORT_YESNO_FIELDS.forEach(f=>{ if(r[f.key]==="Yes"||r[f.key]==="No") out.push([f.label, r[f.key]]); });
-          RAPPORT_MULTI_FIELDS.forEach(f=>{ if(Array.isArray(r[f.key])&&r[f.key].length) out.push([f.label, r[f.key].join(", ")]); });
+          RAPPORT_MULTI_FIELDS.forEach(f=>{ if(Array.isArray(r[f.key])&&r[f.key].length) out.push([f.label, r[f.key].map(o=>(o==="Other"&&f.otherKey&&String(r[f.otherKey]||"").trim())?("Other — "+String(r[f.otherKey]).trim()):o).join(", ")]); });
           if(String(r.notes||"").trim()) out.push(["Rapport notes", r.notes]);
           return out;
         };
         const objectionEntries = (o)=>{
           if(!o||typeof o!=="object") return [];
           const out=[];
-          const items=Array.isArray(o.items)?o.items:[];
+          const items=normalizeObjectionItems(Array.isArray(o.items)?o.items:[]);
           if(items.length) out.push(["Selected", items.join(" · ")]);
           if(String(o.other||"").trim()) out.push(["Other", o.other]);
           return out;
@@ -9161,7 +9161,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Sold system", [["Commission",commissionVal(l)],["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
           ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
           ["Appointments", [["Closer/CB",l.appointment],["Close",l.close_appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up appt",l.followup_appointment],["Extra",extraAppts(l)],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
-          ["Rapport", rapportEntries(l.rapport)],
+          ["Rapport / Preferences", rapportEntries(l.rapport)],
           ["Objections", objectionEntries(l.objections)],
           ["Meta", [["Owner",repName(l.owner_id)],["Assist (50% split)",l.assist_id?repName(l.assist_id):""],["Files",fileNames(l)],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
@@ -9185,6 +9185,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           const rows = pool.map(l=>[esc(repName(l.owner_id)),esc(l.assist_id?repName(l.assist_id):""),...keys.map(k=>{
             let v = l[k];
             if(k==="commission" && !pfNonEmpty(v)) v = "not input";
+            if(k==="rapport") v = rapportEntries(l.rapport).map(([a,b])=>a+": "+b).join(" | ");
+            if(k==="objections") v = objectionEntries(l.objections).map(([a,b])=>a+": "+b).join(" | ");
+            if(k==="setter_notes_log") v = Array.isArray(v)?v.map(n=>"["+((n&&n.by)||"")+" "+((n&&n.ts)||"")+"] "+((n&&n.text)||"")).join(" | "):"";
+            if(k==="extra_appointments") v = extraAppts(l);
+            if(k==="lead_files") v = fileNames(l);
             return esc(v);
           }),esc(noteText(l)),esc(histText(l))].join(","));
           const csv = [header,...rows].join("\n");
