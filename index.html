@@ -224,11 +224,11 @@ const PendingSaves = {
           // stripped down to what the rep actually changed (item.stripped).
           if(!item.stripped){
             try{
-              const {data:cur} = await sb.from("leads").select("updated_at,stage,appointment,gcal_event_id,cb_event_id,cs_appointment,cs_event_id,close_appointment,close_event_id,followup_appointment,followup_event_id,cap_appointment,cap_event_id,install_appointment,install_event_id,appt_ts,appt_stacks,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage").eq("id", item.viewId).maybeSingle();
+              const {data:cur} = await sb.from("leads").select("updated_at,stage,appointment,gcal_event_id,cb_event_id,cs_appointment,cs_event_id,close_appointment,close_event_id,followup_appointment,followup_event_id,cap_appointment,cap_event_id,install_appointment,install_event_id,pto_appointment,pto_event_id,checkin_appointment,checkin_event_id,appt_ts,appt_stacks,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage").eq("id", item.viewId).maybeSingle();
               if(cur){
                 payload = {...item.payload};
                 const emptyish=(v)=>v===null||v===undefined||v===""||v===false||(typeof v==="object"&&v&&!Array.isArray(v)&&Object.keys(v).length===0)||(Array.isArray(v)&&v.length===0);
-                ["appointment","gcal_event_id","cb_event_id","cs_appointment","cs_event_id","close_appointment","close_event_id","followup_appointment","followup_event_id","cap_appointment","cap_event_id","install_appointment","install_event_id","appt_ts","appt_stacks"].forEach(k=>{
+                ["appointment","gcal_event_id","cb_event_id","cs_appointment","cs_event_id","close_appointment","close_event_id","followup_appointment","followup_event_id","cap_appointment","cap_event_id","install_appointment","install_event_id","pto_appointment","pto_event_id","checkin_appointment","checkin_event_id","appt_ts","appt_stacks"].forEach(k=>{
                   if((k in payload) && emptyish(payload[k]) && !emptyish(cur[k])) delete payload[k];
                 });
                 const serverNewer = cur.updated_at && item.savedAt && (new Date(cur.updated_at).getTime() > new Date(item.savedAt).getTime());
@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b84";
+const APP_BUILD = "b86";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5910,7 +5910,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     // Same lead: ignore a parent snapshot that predates our latest local edit.
     if(leadProp && localEditTsRef.current && (leadProp._localTs||0) < localEditTsRef.current) return;
     setLead(leadProp);
-  },[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cb_event_id, leadProp?.cap_event_id, leadProp?.cap_appointment, leadProp?.cs_event_id, leadProp?.cs_appointment, leadProp?.install_event_id, leadProp?.install_appointment, leadProp?.followup_event_id, leadProp?.followup_appointment, leadProp?.close_event_id, leadProp?.close_appointment, leadProp?._localTs, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
+  },[leadProp?.id, leadProp?.stage, leadProp?.gcal_event_id, leadProp?.appointment, leadProp?.cb_event_id, leadProp?.cap_event_id, leadProp?.cap_appointment, leadProp?.cs_event_id, leadProp?.cs_appointment, leadProp?.install_event_id, leadProp?.install_appointment, leadProp?.followup_event_id, leadProp?.followup_appointment, leadProp?.close_event_id, leadProp?.close_appointment, leadProp?.pto_event_id, leadProp?.pto_appointment, leadProp?.checkin_event_id, leadProp?.checkin_appointment, leadProp?._localTs, JSON.stringify(leadProp?.extra_appointments), JSON.stringify(leadProp?.ac_checklist)]);
   React.useEffect(()=>{ setShowCommission(false); },[leadProp?.id]); // re-hide commission each time a lead opens
   const dark=useDark();
   const _creatorProfile = (profiles||[]).find(p=>p.id===lead.owner_id);
@@ -6338,6 +6338,22 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"in",apptField:"install_appointment",evField:"install_event_id",tsKey:"install",kind:"Install",val,evId,intent});
                       }}/>
+                    {/* PTO Setup (personal only) */}
+                    <PersonalApptButton lead={lead} existing={!!lead.pto_appointment}
+                      label="🔌 PTO Setup"
+                      title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
+                      summary={`🔵 PTO Setup - ${lead.name||"Lead"}`} accent="#0284c7" colorId="7"
+                      onSelect={async(val,evId,intent)=>{
+                        await bookApptStacked({key:"pto",apptField:"pto_appointment",evField:"pto_event_id",tsKey:"pto",kind:"PTO Setup",val,evId,intent});
+                      }}/>
+                    {/* Check In / Referrals (personal only) */}
+                    <PersonalApptButton lead={lead} existing={!!lead.checkin_appointment}
+                      label="🎁 Check In / Referrals"
+                      title="🟡 Book Check In / Referrals" confirmLabel="Book Check In"
+                      summary={`🟡 Check In / Referrals - ${lead.name||"Lead"}`} accent="#ca8a04" colorId="5"
+                      onSelect={async(val,evId,intent)=>{
+                        await bookApptStacked({key:"ci",apptField:"checkin_appointment",evField:"checkin_event_id",tsKey:"checkin",kind:"Check In / Referrals",val,evId,intent});
+                      }}/>
                   </div>
                   {/* Booked reminders — one card per booked appointment, X clears it. */}
                   {(()=>{
@@ -6383,6 +6399,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       lead.cap_appointment && {key:"cap",label:"📋 CAP",val:lead.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",stackCount:getApptStack(lead,"cap").length,clear:()=>popAppt("cap","cap_appointment","cap_event_id")},
                       lead.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:lead.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cs").length,clear:()=>popAppt("cs","cs_appointment","cs_event_id")},
                       lead.install_appointment && {key:"in",label:"💰 Install",val:lead.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"in").length,clear:()=>popAppt("in","install_appointment","install_event_id")},
+                      lead.pto_appointment && {key:"pto",label:"🔌 PTO Setup",val:lead.pto_appointment,color:"#0369a1",bg:dark?"rgba(2,132,199,0.12)":"#f0f9ff",bd:"#bae6fd",stackCount:getApptStack(lead,"pto").length,clear:()=>popAppt("pto","pto_appointment","pto_event_id")},
+                      lead.checkin_appointment && {key:"ci",label:"🎁 Check In / Referrals",val:lead.checkin_appointment,color:"#a16207",bg:dark?"rgba(202,138,4,0.12)":"#fefce8",bd:"#fde68a",stackCount:getApptStack(lead,"ci").length,clear:()=>popAppt("ci","checkin_appointment","checkin_event_id")},
                       // On-hold reminder — NOT a booking. Lives at the bottom of the
                       // scheduled list; set/changed only from the On Hold section.
                       lead.on_hold && lead.on_hold_until && {key:"oh",label:`⏸️ On Hold Removed - ${lead.name||"Lead"}`,val:(()=>{ try{ return new Date(lead.on_hold_until+"T00:00:00").toLocaleDateString(); }catch(e){ return lead.on_hold_until; } })(),color:"#b45309",bg:dark?"rgba(245,158,11,0.12)":"#fffbeb",bd:"#fcd34d",stackCount:0,noClear:true,hint:"Set from the On Hold section — change or remove it there."},
@@ -7298,6 +7316,28 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
                     setForm(f=>({...f,install_appointment:val,install_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),install:new Date().toISOString()}}));
                   }}/>
+                {/* PTO Setup (personal only) */}
+                <PersonalApptButton lead={{...form}}
+                  label={form.pto_event_id?"🔌 Change PTO Setup":"🔌 PTO Setup"}
+                  title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
+                  summary={`🔵 PTO Setup - ${form.name||"Lead"}`} accent="#0284c7" colorId="7"
+                  onSelect={async(val,evId)=>{
+                    if(form.pto_event_id && form.pto_event_id!==evId){ try{ await GCal.deletePersonalCB(form.pto_event_id); }catch(e){ console.error(e); } }
+                    const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),pto:new Date().toISOString()};
+                    setForm(f=>({...f,pto_appointment:val,pto_event_id:evId||null,appt_ts:nts}));
+                    if(form.id){ await leadPatch(form.id, {pto_appointment:val,pto_event_id:evId||null,appt_ts:nts}); }
+                  }}/>
+                {/* Check In / Referrals (personal only) */}
+                <PersonalApptButton lead={{...form}}
+                  label={form.checkin_event_id?"🎁 Change Check In / Referrals":"🎁 Check In / Referrals"}
+                  title="🟡 Book Check In / Referrals" confirmLabel="Book Check In"
+                  summary={`🟡 Check In / Referrals - ${form.name||"Lead"}`} accent="#ca8a04" colorId="5"
+                  onSelect={async(val,evId)=>{
+                    if(form.checkin_event_id && form.checkin_event_id!==evId){ try{ await GCal.deletePersonalCB(form.checkin_event_id); }catch(e){ console.error(e); } }
+                    const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),checkin:new Date().toISOString()};
+                    setForm(f=>({...f,checkin_appointment:val,checkin_event_id:evId||null,appt_ts:nts}));
+                    if(form.id){ await leadPatch(form.id, {checkin_appointment:val,checkin_event_id:evId||null,appt_ts:nts}); }
+                  }}/>
               </div>
               <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
               {(()=>{
@@ -7322,6 +7362,8 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                   form.cap_appointment && {key:"cap",label:"📋 CAP",val:form.cap_appointment,color:"#c2410c",bg:dark?"rgba(234,88,12,0.12)":"#fff7ed",bd:"#fed7aa",clear:()=>clearAppt({cap_appointment:"",cap_event_id:null},"cap_event_id")},
                   form.cs_appointment && {key:"cs",label:"🛟 Cancel Save",val:form.cs_appointment,color:"#b91c1c",bg:dark?"rgba(220,38,38,0.14)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({cs_appointment:"",cs_event_id:null},"cs_event_id")},
                   form.install_appointment && {key:"in",label:"💰 Install",val:form.install_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.14)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({install_appointment:"",install_event_id:null},"install_event_id")},
+                  form.pto_appointment && {key:"pto",label:"🔌 PTO Setup",val:form.pto_appointment,color:"#0369a1",bg:dark?"rgba(2,132,199,0.12)":"#f0f9ff",bd:"#bae6fd",clear:()=>clearAppt({pto_appointment:"",pto_event_id:null},"pto_event_id")},
+                  form.checkin_appointment && {key:"ci",label:"🎁 Check In / Referrals",val:form.checkin_appointment,color:"#a16207",bg:dark?"rgba(202,138,4,0.12)":"#fefce8",bd:"#fde68a",clear:()=>clearAppt({checkin_appointment:"",checkin_event_id:null},"checkin_event_id")},
                   form.onHold && form.onHoldUntil && {key:"oh",label:`⏸️ On Hold Removed - ${form.name||"Lead"}`,val:(()=>{ try{ return new Date(form.onHoldUntil+"T00:00:00").toLocaleDateString(); }catch(e){ return form.onHoldUntil; } })(),color:"#b45309",bg:dark?"rgba(245,158,11,0.12)":"#fffbeb",bd:"#fcd34d",noClear:true,hint:"Set from the On Hold section — change or remove it there."},
                 ].filter(Boolean);
                 if(cards.length===0) return null;
@@ -7865,6 +7907,8 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           if(lead.install_appointment) cands.push({raw:lead.install_appointment, label:"Install ", color:"#15803d", k:bookedKey(at.install, lead.install_appointment)});
           if(lead.cs_appointment) cands.push({raw:lead.cs_appointment, label:"CS ", color:"#dc2626", k:bookedKey(at.cs, lead.cs_appointment)});
           if(lead.followup_appointment) cands.push({raw:lead.followup_appointment, label:"Follow-Up ", color:"#9333ea", k:bookedKey(at.followup, lead.followup_appointment)});
+          if(lead.pto_appointment) cands.push({raw:lead.pto_appointment, label:"PTO ", color:"#0284c7", k:bookedKey(at.pto, lead.pto_appointment)});
+          if(lead.checkin_appointment) cands.push({raw:lead.checkin_appointment, label:"Check In ", color:"#ca8a04", k:bookedKey(at.checkin, lead.checkin_appointment)});
           (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).forEach(a=>{ if(a&&a.label) cands.push({raw:a.label, label:"Appt ", color:"#2563eb", k:bookedKey(a.ts, a.label), when:(a.ts && !isNaN(Date.parse(a.ts)))?Date.parse(a.ts):null}); });
           if(!cands.length) return null;
           // SOONEST UPCOMING appointment wins the card (a CAP tomorrow beats a
@@ -8011,7 +8055,7 @@ function pfMissingSold(l){
   return ["system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex"].some(f=>!pfNonEmpty(l[f]));
 }
 function pfHasAppt(l){
-  return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) || pfNonEmpty(l.cs_appointment) || pfNonEmpty(l.install_appointment) || pfNonEmpty(l.followup_appointment) || pfNonEmpty(l.close_appointment) ||
+  return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) || pfNonEmpty(l.cs_appointment) || pfNonEmpty(l.install_appointment) || pfNonEmpty(l.followup_appointment) || pfNonEmpty(l.close_appointment) || pfNonEmpty(l.pto_appointment) || pfNonEmpty(l.checkin_appointment) ||
     (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
 }
 function pfKnowsSolar(l){
@@ -8070,6 +8114,8 @@ const APPT_TYPE_FILTERS = [
   {key:"cap",      label:"📋 CAP"},
   {key:"cs",       label:"🛟 Cancel Save"},
   {key:"install",  label:"💰 Install"},
+  {key:"pto",      label:"🔌 PTO Setup"},
+  {key:"checkin",  label:"🎁 Check In / Referrals"},
 ];
 function leadLatestApptType(l){
   if(!l) return null;
@@ -8087,6 +8133,8 @@ function leadLatestApptType(l){
   if(pfNonEmpty(l.cap_appointment))      entries.push({type:"cap",      t:T("cap")});
   if(pfNonEmpty(l.cs_appointment))       entries.push({type:"cs",       t:T("cs")});
   if(pfNonEmpty(l.install_appointment))  entries.push({type:"install",  t:T("install")});
+  if(pfNonEmpty(l.pto_appointment))      entries.push({type:"pto",      t:T("pto")});
+  if(pfNonEmpty(l.checkin_appointment))  entries.push({type:"checkin",  t:T("checkin")});
   if(entries.length===0) return null;
   let best = entries[0];
   for(const e of entries){ if(e.t > best.t) best = e; }
@@ -9239,14 +9287,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Utility", [["Utility",l.utility],["ESIID",l.esiid],["Meter #",l.meter],["Usage input",l.usage_input],["¢/kWh",l.cents_kwh],["Annual kWh",l.annual_kwh],["Average bill",l.average_bill],["Autopay",l.autopay_input],["Knew solar",l.knew_solar],["Closer inside",l.closer_inside]]],
           ["Sold system", [["Commission",commissionVal(l)],["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
           ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
-          ["Appointments", [["Closer/CB",l.appointment],["Close",l.close_appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up appt",l.followup_appointment],["Extra",extraAppts(l)],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
+          ["Appointments", [["Closer/CB",l.appointment],["Close",l.close_appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up appt",l.followup_appointment],["PTO Setup",l.pto_appointment],["Check In / Referrals",l.checkin_appointment],["Extra",extraAppts(l)],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
           ["Rapport / Preferences", rapportEntries(l.rapport)],
           ["Objections", objectionEntries(l.objections)],
           ["Meta", [["Owner",repName(l.owner_id)],["Assist (50% split)",l.assist_id?repName(l.assist_id):""],["Files",fileNames(l)],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
         ]);
         const exportCsv = ()=>{
-          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","pto_appointment","checkin_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
           const esc = (s)=>{
             let v = (s===null||s===undefined) ? "" : s;
             if(Array.isArray(v)) v = v.map(x=>(x&&typeof x==="object")?JSON.stringify(x):x).join("; ");
@@ -16963,7 +17011,7 @@ function App() {
       const isPrivileged = p && (p.role==="manager" || u.id===OWNER_ID);
       // Fetch leads resiliently: if the cents_kwh column isn't in the DB yet, retry the
       // select WITHOUT it so leads still load. applyFilter narrows to owner/team.
-      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo,on_hold_event_id";
+      const LEAD_SELECT = "id,owner_id,name,address,phone,email,secondary_name,secondary_phone,secondary_email,appointment,utility,esiid,meter,usage_input,cents_kwh,annual_kwh,average_bill,notes,closer_notes,closer_notes_log,notes_created_at,temperature,commission,gift_card_dropped,stage,bill_retrieved,autopay_input,knew_solar,closer_inside,decision_makers,closer_checklist,contact_status,soft_solid,confirmed,is_arc,arc_stage,on_hold,on_hold_stage,needs_cancel_save,ncs_stage,ac_checklist,follow_up_agreed,follow_up_date,system_size,battery_count,sold_sun_hours,kwh_rate,monthly,offset_pct,span_panel,flex,lead_files,gcal_event_id,cb_event_id,cap_event_id,cap_appointment,install_appointment,install_event_id,cs_appointment,cs_event_id,appt_ts,archived,priority,cancel_reason,cancel_tags,on_hold_reason,on_hold_until,ncs_reason,assist_id,priority_order,followup_appointment,followup_event_id,close_appointment,close_event_id,appt_stacks,extra_appointments,history,created_at,updated_at,rapport,objections,setter_notes_log,notes_created_by,has_bill_photo,on_hold_event_id,pto_appointment,pto_event_id,checkin_appointment,checkin_event_id";
       const runLeads = async (applyFilter) => {
         const build = (cols) => { let q = sb.from("leads").select(cols); if(applyFilter) q = applyFilter(q); return q.order("created_at",{ascending:false}); };
         let cols = LEAD_SELECT;
@@ -16984,6 +17032,26 @@ function App() {
         }
         return res;
       };
+      // Profiles power every name in the app (Owner, Assist, calendars). If that
+      // one fetch fails or comes back empty (flaky network / DB hiccup / RLS
+      // accidentally enabled), every lead shows "Unknown" until the next full
+      // reload — so set what we got, then auto-retry in the background.
+      const ensureProfiles = (res)=>{
+        if(res.error) console.error("profiles error:",res.error);
+        setProfiles(res.data||[]);
+        if(res.error || !(res.data||[]).length){
+          (function retryProfiles(n){
+            if(n>5) return;
+            setTimeout(async()=>{
+              try{
+                const r=await sb.from("profiles").select("*");
+                if(!r.error && (r.data||[]).length){ setProfiles(r.data); console.warn("profiles recovered on retry",n+1); return; }
+              }catch(e){}
+              retryProfiles(n+1);
+            }, 4000*Math.pow(1.5,n));
+          })(0);
+        }
+      };
       if (isPrivileged) {
         // Start the heavy leads query in parallel, but resolve the small team/profile
         // queries FIRST and set them immediately — so the calendar and team UI work
@@ -16995,11 +17063,10 @@ function App() {
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
-        if(profilesRes.error) console.error("profiles error:",profilesRes.error);
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setProfiles(profilesRes.data||[]);
+        ensureProfiles(profilesRes);
         setTeams(teamsRes.data||[]);
         const grouped={};
         (membersRes.data||[]).forEach(m=>{
@@ -17053,11 +17120,10 @@ function App() {
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
-        if(profilesRes.error) console.error("profiles error:",profilesRes.error);
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        setProfiles(profilesRes.data||[]);
+        ensureProfiles(profilesRes);
         setTeams(teamsRes.data||[]);
         const grouped={};
         (membersRes.data||[]).forEach(m=>{
