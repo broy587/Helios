@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b86";
+const APP_BUILD = "b88";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4558,6 +4558,7 @@ const AC_REQ_ITEMS = [
   {key:"knows_solar",  label:"Knows solar is / can be involved", miss:"\"Knows solar is / can be involved\" must be checked in the AC checklist"},
   {key:"setter_notes", label:"Setter notes taken", miss:"Setter notes required"},
   {key:"utility_info", label:"Utility info filled out", miss:"Missing info in Utility Info drop down"},
+  {key:"ac_checklist", label:"AC Checklist filled out", miss:"Mark at least one item in the AC Checklist"},
 ];
 // True if a given requirement item is satisfied on a lead. Accepts both the
 // camelCase edit-form shape and the snake_case DB shape.
@@ -4590,6 +4591,7 @@ function acItemSatisfied(key, lead) {
         lead.average_bill!==undefined?lead.average_bill:lead.averageBill];
       return uvals.every(v=>nonEmpty(v));
     }
+    case "ac_checklist": return Array.isArray(checklist) && checklist.length > 0;
     default:             return false;
   }
 }
@@ -7061,7 +7063,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         {/* AC Checklist */}
         <ACChecklist
           leadId={form.id||null}
-          requiredStar={!form.id}
+          requiredStar={false}
           initialChecked={form.acChecklist||[]}
           collapsible={true}
           onUpdate={next=>setForm(f=>({...f,acChecklist:next,ac_checklist:next}))}
@@ -10970,11 +10972,10 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
               const acIdx=STAGE_PROGRESSION.indexOf("AC / Scheduled");
               const targetIdx=STAGE_PROGRESSION.indexOf(newStage);
               if(targetIdx>=acIdx){
-                const checklist=Array.isArray(linkedLead.ac_checklist)?linkedLead.ac_checklist:[];
                 const isRep=currentUser&&currentUser.role==="rep";
                 const missing=[];
-                // Everyone: at least one AC checklist item — always applies to reps too.
-                if(checklist.length===0) missing.push("Mark at least one item in the AC Checklist");
+                // AC Checklist gate removed — enforced only when "AC Checklist filled
+                // out" is selected in Rep Management (acRequirementsMissing below).
                 // Reps also need meter # and a scheduled appointment (always), plus
                 // whatever their team set in Rep Management. The utility bill is only
                 // required when "Utility bill" is checked in Rep Management.
@@ -12312,7 +12313,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     buildingMarkersRef.current.forEach(m=>{
       m.setMap(hasFilter?null:mapInstanceRef.current);
     });
-  },[activeFilters, pfxKey, homes, leads, mapLoaded]); // homes excluded — prevents bubble flicker
+  },[activeFilters, pfxKey, (leads||[]).map(l=>l.id+":"+l.stage+(l.priority?"P":"")+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")+(l.temperature||"")+":"+(l.updated_at||"")).join(","), mapLoaded]); // content-keyed — the raw leads/homes arrays are fresh objects every render and were repainting every marker on every render
 
   // Init Places Autocomplete service
   React.useEffect(()=>{
@@ -12369,28 +12370,42 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     }
   };
 
-  // Place pipeline lead markers on map
+  // Place pipeline lead markers on map. Content-keyed and DIFFED: the raw
+  // `leads` and `homes` props are fresh arrays on every render, and the old
+  // version cleared EVERY marker and re-created the lot each time — with a few
+  // hundred leads showing (All reps / Mine + Assisted) that made the whole map
+  // flicker and stutter constantly. Now markers persist across renders; only
+  // added / removed / re-addressed leads actually change on the map.
   React.useEffect(()=>{
     if(!mapInstanceRef.current||!window.google||!leads) return;
-    // Increment generation — any in-flight geocoding from previous render will be stale
-    const gen = ++leadGenRef.current;
-    // Immediately clear ALL lead markers from map
-    leadMarkersRef.current.forEach(m=>m.setMap(null));
-    leadMarkersRef.current=[];
-    if(!leads||leads.length===0) return; // nothing to place
-    // Only geocode leads that have an address but no canvass pin yet
-    const leadsWithAddress = leads.filter(l=>l.address&&l.address.trim());
-    leadsWithAddress.forEach(async(lead)=>{
-      // Check if there's already a canvass pin for this address
-      const alreadyPinned = homes.some(h=>
-        h.address&&h.address.toLowerCase().includes(lead.address.split(",")[0].toLowerCase().trim())
-      );
+    const gen = ++leadGenRef.current; // cancels in-flight geocodes from prior runs
+    // Which leads SHOULD have their own marker: has an address, and no canvass
+    // home pin already owns that address.
+    const want = new Map();
+    (leads||[]).forEach(lead=>{
+      if(!(lead.address&&lead.address.trim())) return;
+      const key = lead.address.split(",")[0].toLowerCase().trim();
+      const alreadyPinned = (homes||[]).some(h=>h.address&&h.address.toLowerCase().includes(key));
       if(alreadyPinned) return;
-      // Geocode the lead address (cached; SDK geocoder works with restricted keys)
+      want.set(lead.id, lead);
+    });
+    // Diff against the markers already on the map: keep unchanged ones exactly
+    // as they are (zero flicker), refresh their lead data, drop stale ones.
+    const keep=[];
+    leadMarkersRef.current.forEach(m=>{
+      const l = (m._leadId!==undefined) ? want.get(m._leadId) : null;
+      if(l && m._addr===l.address){ m._leadRef=l; want.delete(m._leadId); keep.push(m); }
+      else m.setMap(null);
+    });
+    leadMarkersRef.current=keep;
+    // Create ONLY the new markers (the geocode cache resolves instantly for
+    // addresses seen before).
+    want.forEach((lead)=>{ (async()=>{
       try {
         const loc = await gmapsGeocode(lead.address);
         if(!loc) return;
-        // Stale check — if filter changed since we started geocoding, discard
+        // Stale check — a newer run supersedes this one; it will re-create
+        // anything still wanted, so dropping here can't lose a pin.
         if(gen!==leadGenRef.current) return;
         // Icon reflects the current filter state (generic ⚡ when nothing filtered).
         const vis = leadPinVisual(lead, activeFiltersRef.current, canvassPfxActive(pfxRef.current));
@@ -12408,18 +12423,21 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           label:{text:vis.emoji,fontSize:"14px"},
           title:lead.name||lead.address,
           zIndex:10,
-          _leadRef:lead,
+          _leadRef:lead, _leadId:lead.id, _addr:lead.address,
         });
         marker.addListener("click",()=>{
+          // Read through _leadRef so the popup always shows CURRENT lead data
+          // (kept markers get their lead refreshed on every diff pass).
+          const L = marker._leadRef || lead;
           setSelectedHome({
             id:null,
             _isPipelineLead:true,
-            _leadId:lead.id,
-            address:lead.address||"",
-            owner_name:lead.name||"",
-            phone:lead.phone||"",
-            email:lead.email||"",
-            notes:lead.notes||"",
+            _leadId:L.id,
+            address:L.address||"",
+            owner_name:L.name||"",
+            phone:L.phone||"",
+            email:L.email||"",
+            notes:L.notes||"",
             prescreen:"lead",
             lat:loc.lat,
             lng:loc.lng,
@@ -12427,8 +12445,13 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
         });
         leadMarkersRef.current.push(marker);
       } catch(e){ console.error("Lead geocode error:",e); }
-    });
-  },[leads, homes, mapLoaded]);
+    })(); });
+  },[
+    // Content keys, NOT array identities — see the note above.
+    (leads||[]).map(l=>l.id+":"+(l.address||"")).join("|"),
+    (homes||[]).map(h=>h.id+":"+(h.address||"")).join("|"),
+    mapLoaded
+  ]);
 
   // Keep the latest home-render function in a ref so the map's idle listener (below)
   // always runs with current homes/filters/leads and never goes stale. This fixes
@@ -14927,17 +14950,11 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
   };
   const openBooking = async (e) => {
     e.stopPropagation();
-    // Booking a closer slot moves the account to AC/Scheduled. So — for EVERYONE,
-    // any role — require at least one Setters AC Checklist item first. (CAP, Cancel
-    // Save, extra appointments, and managing an already-booked slot are exempt.)
+    // Booking requirements are per-calendar (set in Rep Management — including
+    // the optional "AC Checklist filled out" item). The old hardcoded AC Checklist
+    // gate is gone. (CAP, Cancel Save, extra appointments, and managing an
+    // already-booked slot stay exempt, as before.)
     if(!capMode && !csMode && !appendMode && !isBooked){
-      const checklist = Array.isArray(localLead.ac_checklist) ? localLead.ac_checklist : (Array.isArray(localLead.acChecklist) ? localLead.acChecklist : []);
-      const miss = [];
-      if(checklist.length===0) miss.push("Mark at least one item in the AC Checklist");
-      if(miss.length>0){
-        window.alert("You can't book a closer slot for this account yet. Please complete the following:\n\n• "+miss.join("\n• "));
-        return;
-      }
       // Per-calendar requirements: the calendar being booked decides. When the
       // rep's calendar auto-resolves, check it right here; when they'll pick
       // from a list instead, pickCalendar inside the modal runs the same check.
@@ -17256,12 +17273,10 @@ function App() {
     const prevStageIdx = existing ? STAGE_PROGRESSION.indexOf(existing.stage) : -1;
     const movingIntoAcPlus = newStageIdx >= acIdx && prevStageIdx < acIdx; // crossing into AC+
     if (movingIntoAcPlus) {
-      const checklist = Array.isArray(form.acChecklist) ? form.acChecklist : [];
       const isRep = profile && profile.role === "rep";
       const missing = [];
-      // Everyone still needs at least one AC checklist item — and this now ALWAYS
-      // applies to reps, even when Rep Management requirements are configured.
-      if (checklist.length === 0) missing.push("Mark at least one item in the AC Checklist");
+      // The AC Checklist is no longer hardcoded here — it's enforced only when
+      // "AC Checklist filled out" is selected in Rep Management (myAcReq below).
       // Reps also need meter # and a scheduled appointment (always), plus whatever
       // their team set in Rep Management. The utility bill is NOT hardcoded — it's
       // only required when "Utility bill" is checked in Rep Management.
@@ -17567,11 +17582,10 @@ function App() {
     }
     // Guard: crossing INTO AC (or later, from before AC) has requirements.
     if (crossingIntoAc) {
-      const checklist = Array.isArray(lead.ac_checklist) ? lead.ac_checklist : [];
       const isRep = profile && profile.role === "rep"; // ONLY reps get the extra checks
       const missing = [];
-      // Everyone: at least one AC checklist box checked — always applies to reps too.
-      if (checklist.length === 0) missing.push("Mark at least one item in the AC Checklist");
+      // The AC Checklist is no longer hardcoded here — it's enforced only when
+      // "AC Checklist filled out" is selected in Rep Management (myAcReq below).
       // Reps also need meter # and a scheduled appointment (always), plus whatever
       // their team set in Rep Management. The utility bill is only required when
       // "Utility bill" is checked in Rep Management.
