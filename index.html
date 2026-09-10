@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b93";
+const APP_BUILD = "b94";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13772,7 +13772,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [slotRepeatDays, setSlotRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
   const [slotType, setSlotType] = React.useState("close"); // "close" | "cap" — which kind of open slot
   const [slotMsg, setSlotMsg] = React.useState("");
-  const SLOT_MINUTES = 90; // 1.5-hour block
+  const SLOT_MINUTES = slotType==="cap" ? 60 : 90; // close slots 1.5 hr, CAP slots 1 hr
   const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   // Given an "HH:MM" start, return the "h:MM AM/PM" label of start + 90 min.
   const slotEndLabel = (val) => {
@@ -14600,7 +14600,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>+ Add Open Slot</div>
               <button onClick={()=>!slotSaving&&setSlotOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>{slotType==="cap"?'"🟧 Open slot 🧢"':'"open slot"'}</b> to the <b>{CALENDAR_NAME}</b>.</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a {slotType==="cap"?"1-hour":"1.5-hour"} <b>{slotType==="cap"?'"🟧 Open slot 🧢"':'"open slot"'}</b> to the <b>{CALENDAR_NAME}</b>.</div>
 
             {/* Slot type — Close (default) or CAP */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Slot Type</label>
@@ -14626,8 +14626,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
             {/* Auto 1.5-hour end preview */}
             <div style={{fontSize:13,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f3ede3",border:`1px solid ${dark?"#334155":"#e2d8c8"}`,borderRadius:8,padding:"10px 12px",marginBottom:18}}>
               {slotStart
-                ? <>⏱️ 1.5-hour slot — ends at <b>{slotEndLabel(slotStart)}</b></>
-                : <>Pick a start time; the slot automatically runs 1.5 hours.</>}
+                ? <>⏱️ {slotType==="cap"?"1-hour":"1.5-hour"} slot — ends at <b>{slotEndLabel(slotStart)}</b></>
+                : <>Pick a start time; the slot automatically runs {slotType==="cap"?"1 hour":"1.5 hours"}.</>}
             </div>
 
             {/* Repeat */}
