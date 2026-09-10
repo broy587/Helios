@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b89";
+const APP_BUILD = "b90";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5922,6 +5922,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const [showBookOpts,setShowBookOpts]=useState(false); // reveals the 4 booking options
   const [assistEditing,setAssistEditing]=useState(false); // view-mode inline assist editor
   const [stageEditing,setStageEditing]=useState(false); // view-mode inline stage editor
+  const [manageBooking,setManageBooking]=useState(false); // Manage Booking opened from the Closer Appt ✕
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   const [closeChoice,setCloseChoice]=useState(false); // Book Close → choose Closer or Personal
@@ -6394,7 +6395,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         (!!lead.cb_event_id && !lead.gcal_event_id)
                           ? {key:"cb",label:"↩️ Comeback",val:lead.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",stackCount:getApptStack(lead,"cb").length,clear:()=>popAppt("cb","appointment","cb_event_id")}
                           : lead.gcal_event_id
-                            ? {key:"main",label:"🤝 Closer Appt",val:lead.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",stackCount:0,noClear:true}
+                            ? {key:"main",label:"🤝 Closer Appt",val:lead.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",stackCount:0,manage:true}
                             : {key:"main",label:"📆 Appointment",val:lead.appointment,color:dark?"#94a3b8":"#475569",bg:dark?"rgba(148,163,184,0.12)":"#f8fafc",bd:dark?"#334155":"#e2e8f0",stackCount:0,clear:()=>popAppt("cb","appointment","cb_event_id")}
                       ),
                       lead.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:lead.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",stackCount:getApptStack(lead,"fu").length,clear:()=>popAppt("fu","followup_appointment","followup_event_id")},
@@ -6412,9 +6413,12 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                         {cards.map(c=>(
-                          <div key={c.key} title={c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                          <div key={c.key} title={c.manage?"✕ opens Manage Booking — change, book another, or remove":c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                             <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}{c.stackCount>1 && <span style={{marginLeft:6,fontSize:10,fontWeight:800,color:c.color,background:"rgba(0,0,0,0.06)",borderRadius:8,padding:"1px 6px"}}>{c.stackCount} booked</span>}</span>
-                            {!c.noClear && <button onClick={async()=>{
+                            {c.manage && <button onClick={()=>setManageBooking(true)}
+                              title="Change, book another, or remove this closer appointment"
+                              style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
+                            {!c.noClear && !c.manage && <button onClick={async()=>{
                               const typeName=c.label.replace(/^[^ ]+ /,"");
                               const msg = c.stackCount>1
                                 ? `Remove the current ${typeName} (${c.val})? This deletes just this one from your calendar and reverts to the previous ${typeName} booking. ${c.stackCount-1} earlier booking${c.stackCount-1===1?"":"s"} will remain.`
@@ -6636,6 +6640,10 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           )}
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
+          )}
+          {manageBooking && (
+            <CalendarEventModal lead={lead} onClose={()=>setManageBooking(false)}
+              onUpdate={updated=>{handleUpdate({...lead,...updated});}} creatorName={creatorName}/>
           )}
           {showTransfer && (
             <div style={{background:"#f0f9ff",border:"1.5px solid #3b82f6",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
@@ -6886,6 +6894,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   const [fileErr,setFileErr]=useState("");
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
   const [cancelModalOpen,setCancelModalOpen]=useState(false); // ARC cancellation reason popup
+  const [manageBooking,setManageBooking]=useState(false); // Manage Booking opened from the Closer Appt ✕
   // A lead can only be flagged ARC / On Hold / Needs Cancel Save once it has reached
   // VC / SRA or later. Check live stage + remembered flag stages.
   const reachedVC = (() => {
@@ -7357,7 +7366,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     (!!form.cb_event_id && !form.gcal_event_id)
                       ? {key:"cb",label:"↩️ Comeback",val:form.appointment,color:"#b91c1c",bg:dark?"rgba(239,68,68,0.12)":"#fef2f2",bd:"#fecaca",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")}
                       : form.gcal_event_id
-                        ? {key:"main",label:"🤝 Closer Appt",val:form.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",noClear:true}
+                        ? {key:"main",label:"🤝 Closer Appt",val:form.appointment,color:"#2563eb",bg:dark?"rgba(37,99,235,0.12)":"#eff6ff",bd:"#bfdbfe",manage:true}
                         : {key:"main",label:"📆 Appointment",val:form.appointment,color:dark?"#94a3b8":"#475569",bg:dark?"rgba(148,163,184,0.12)":"#f8fafc",bd:dark?"#334155":"#e2e8f0",clear:()=>clearAppt({appointment:"",cb_event_id:null},"cb_event_id")}
                   ),
                   form.followup_appointment && {key:"fu",label:"🔁 Follow Up",val:form.followup_appointment,color:"#7e22ce",bg:dark?"rgba(147,51,234,0.12)":"#faf5ff",bd:"#e9d5ff",clear:()=>clearAppt({followup_appointment:"",followup_event_id:null},"followup_event_id")},
@@ -7373,9 +7382,12 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>Booked</div>
                     {cards.map(c=>(
-                      <div key={c.key} title={c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
+                      <div key={c.key} title={c.manage?"✕ opens Manage Booking — change, book another, or remove":c.noClear?(c.hint||"To change or remove: 🤝 Book Close → 🏢 Closer"):undefined} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:c.color,background:c.bg,border:`1px solid ${c.bd}`,borderRadius:8,padding:"8px 10px",fontWeight:600}}>
                         <span style={{flex:1,minWidth:0}}>{c.label}: {c.val}</span>
-                        {!c.noClear && <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
+                        {c.manage && <button type="button" onClick={()=>setManageBooking(true)}
+                          title="Change, book another, or remove this closer appointment"
+                          style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
+                        {!c.noClear && !c.manage && <button type="button" onClick={async()=>{ if(window.confirm(`Remove this ${c.label.replace(/^[^ ]+ /,"")} appointment? It will be cleared from the lead and your calendar.`)) await c.clear(); }}
                           title="Remove this appointment"
                           style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`1.5px solid ${c.bd}`,background:"transparent",color:c.color,fontSize:13,fontWeight:800,cursor:"pointer",lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>}
                       </div>
@@ -7754,6 +7766,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           <div onClick={()=>setEditImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer",zIndex:2002,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</div>
           <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",color:"#fff",fontSize:13,opacity:0.75,background:"rgba(0,0,0,0.45)",padding:"4px 12px",borderRadius:20,zIndex:2002,whiteSpace:"nowrap"}}>{editImgOpen+1} of {form.billPhotos.length} · pinch or scroll to zoom · double-tap to reset</div>
         </div>
+      )}
+      {manageBooking && (
+        <CalendarEventModal lead={{...form}} onClose={()=>setManageBooking(false)}
+          onUpdate={updated=>{ setForm(f=>({...f,...updated})); }} creatorName={creatorName}/>
       )}
       {cancelModalOpen && (
         <CancelReasonModal
