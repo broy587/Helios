@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b94";
+const APP_BUILD = "b95";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13660,6 +13660,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [tagLoading, setTagLoading] = React.useState(false);
   const [tagEvents, setTagEvents] = React.useState([]);
   const [tagBusyId, setTagBusyId] = React.useState(null);
+  const [tapDay, setTapDay] = React.useState(()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }); // day shown in the ✏️ Manage view
   const [tagMsg, setTagMsg] = React.useState("");
   const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
@@ -14211,6 +14212,9 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
   const teamCfg = selectedTid ? TEAM_CALENDARS[selectedTid] : null;
   const selectedTeam = browsable.find(t=>t.id===selectedTid);
+  // ✏️ Manage view shows real events (same loader as Tag & Manage) — load on
+  // entering the view and when switching calendars.
+  React.useEffect(()=>{ if(calView==="MANAGE"){ setTagMsg(""); loadTagEvents((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)); } },[calView, selectedTid]);
   // Standalone calendars have no TEAM_CALENDARS entry — build their embed URL
   // straight from the calendar id.
   const derivedEmbed = (selectedTeam && selectedTeam.calendarId) ? ExtraCals.embedFor(selectedTeam.calendarId) : null;
@@ -14252,6 +14256,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
           <option value="AGENDA">Schedule</option>
           <option value="WEEK">Week</option>
           <option value="MONTH">Month</option>
+          <option value="MANAGE">✏️ Manage</option>
         </select>
         <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
           style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:36,height:36,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#6b2d4e",fontSize:15,cursor:"pointer"}}>
@@ -14323,6 +14328,75 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
           </div>
           <iframe src={iframeUrl} style={{flex:1,border:"none",width:"100%"}} frameBorder="0" title="New Event"/>
         </div>
+      ) : calView==="MANAGE" ? (
+        (()=>{
+          const calId = (teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId);
+          const ymd = (d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+          const shiftDay = (n)=>{ const d=new Date(tapDay+"T00:00:00"); d.setDate(d.getDate()+n); setTapDay(ymd(d)); };
+          const d0 = new Date(tapDay+"T00:00:00").getTime(), d1 = d0+86400000;
+          const startMs = (e)=> (e.start && (e.start.dateTime||e.start.date)) ? new Date(e.start.dateTime||e.start.date).getTime() : 0;
+          const dayEvts = (tagEvents||[]).filter(e=>{ const t=startMs(e); return t>=d0 && t<d1; }).sort((a,b)=>startMs(a)-startMs(b));
+          const dayLabel = new Date(tapDay+"T00:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+          const navB = {flexShrink:0,width:36,height:36,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:16,fontWeight:800,cursor:"pointer"};
+          return (
+            <div style={{flex:1,overflowY:"auto",padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <button onClick={()=>shiftDay(-1)} style={navB}>‹</button>
+                <input type="date" value={tapDay} onChange={e=>{ if(e.target.value) setTapDay(e.target.value); }}
+                  style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                <button onClick={()=>shiftDay(1)} style={navB}>›</button>
+                <button onClick={()=>setTapDay(ymd(new Date()))} style={{...navB,width:"auto",padding:"0 12px",fontSize:12}}>Today</button>
+              </div>
+              <div style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:2}}>{dayLabel}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginBottom:12,lineHeight:1.5}}>Tap 🗑️ to delete an event · ↩️ to pull the lead off a booked slot (reopens it) · ✏️ to change date & time.</div>
+              {tagLoading ? (
+                <div style={{textAlign:"center",padding:"30px 0",color:"#94a3b8",fontSize:13}}>Loading events…</div>
+              ) : dayEvts.length===0 ? (
+                <div style={{textAlign:"center",padding:"30px 0",color:"#94a3b8",fontSize:13}}>No events on this day.</div>
+              ) : dayEvts.map(ev=>{
+                  const allowed = canTagEvent(ev);
+                  const isOpenSlot = ev.isOpen || (ev.summary||"").toLowerCase().includes("open slot");
+                  const when = ev.start && (ev.start.dateTime||ev.start.date) ? new Date(ev.start.dateTime||ev.start.date) : null;
+                  const endW = ev.end && (ev.end.dateTime||ev.end.date) ? new Date(ev.end.dateTime||ev.end.date) : null;
+                  const recurring = !!ev.recurringEventId;
+                  const removable = canRemoveEvent(ev);
+                  const isRemoving = removingId===ev.id;
+                  const booked = (ev.description||"").includes("BOOKED:");
+                  const isMeetingEvent = !isOpenSlot && !booked;
+                  const canEditEvent = isMeetingEvent ? canManageMeetings : allowed;
+                  const isCapSlot = isOpenSlot && (ev.summary||"").includes("🧢");
+                  return (
+                    <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${isCapSlot?"#fdba74":(dark?"#334155":"#e2e8f0")}`,background:isCapSlot?(dark?"rgba(234,88,12,0.12)":"#fff7ed"):(dark?"#0f172a":"#fff"),marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isOpenSlot?(isCapSlot?"🟧 Open Slot 🧢":"🟦 Open Slot"):(stripMarker(ev.summary)||"(untitled)")}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
+                          {when && <span>{when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}{endW?` – ${endW.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`:""}</span>}
+                          {recurring && <span> · 🔁 repeats</span>}
+                        </div>
+                      </div>
+                      {isRemoving && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>…</span>}
+                      {removable && (
+                        <button onClick={()=>{ if(recurring){ setRecurAction({kind:"delete", ev, calendarId:calId}); } else { removeEventFromList(calId, ev, "delete"); } }} disabled={isRemoving}
+                          title="Delete this event from the calendar"
+                          style={{flexShrink:0,background:dark?"transparent":"#fff",border:"1.5px solid #fecaca",borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>🗑️</button>
+                      )}
+                      {removable && booked && !isOpenSlot && (
+                        <button onClick={()=>removeEventFromList(calId, ev, "release")} disabled={isRemoving}
+                          title="Remove lead from this slot (returns it to an open slot & clears the appointment on the lead)"
+                          style={{flexShrink:0,background:dark?"transparent":"#fff",border:"1.5px solid #fdba74",borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ea580c",fontWeight:700}}>↩️</button>
+                      )}
+                      {canEditEvent && (
+                        <button onClick={()=>{ if(recurring){ setRecurAction({kind:"edit", ev, calendarId:calId}); } else { setEditEvent({ev, calendarId:calId}); } }}
+                          title="Edit date, time & length"
+                          style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>✏️</button>
+                      )}
+                    </div>
+                  );
+                })}
+              {tagMsg && <div style={{marginTop:8,fontSize:12,color:"#b91c1c"}}>{tagMsg}</div>}
+            </div>
+          );
+        })()
       ) : (
         <iframe
           src={CALENDAR_EMBED.replace(/mode=[A-Z]+/, "mode="+calView).replace("showTabs=1","showTabs=0")}
@@ -14452,6 +14526,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Reschedule + repeating-event choosers — shared by Tag & Manage AND the ✏️ Manage view */}
             {editEvent && (()=>{
               const ev=editEvent.ev;
               const start=new Date(ev.start && (ev.start.dateTime||ev.start.date));
@@ -14499,9 +14577,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 </div>
               );
             })()}
-          </div>
-        </div>
-      )}
       {/* Add Meeting modal */}
       {meetOpen && (
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>!meetSaving&&setMeetOpen(false)}>
