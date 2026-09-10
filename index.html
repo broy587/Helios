@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b100";
+const APP_BUILD = "b101";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4553,6 +4553,7 @@ const AC_REQ_ITEMS = [
   {key:"email",        label:"Email"},
   {key:"prescreen",    label:"Prescreen Approved"},
   {key:"bill",         label:"Utility bill"},
+  {key:"solid_status", label:"Solid (AC Status)", miss:"AC Status must be marked \"Solid\""},
   {key:"confirmation", label:"Confirmation text"},
   {key:"spouses",      label:"Confirmed all decision makers / spouses will be present"},
   {key:"knows_solar",  label:"Knows solar is / can be involved", miss:"\"Knows solar is / can be involved\" must be checked in the AC checklist"},
@@ -4592,6 +4593,7 @@ function acItemSatisfied(key, lead) {
       return uvals.every(v=>nonEmpty(v));
     }
     case "ac_checklist": return Array.isArray(checklist) && checklist.length > 0;
+    case "solid_status": return (lead.soft_solid||lead.softSolid)==="Solid";
     default:             return false;
   }
 }
@@ -7513,7 +7515,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         )}
         {/* ── AC Status → Setter Notes → Photos & Files ── */}
         <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
-        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={!form.id}/>
+        <ACStatus softSolid={form.softSolid||""} confirmed={form.confirmed||""} onChange={(field,val)=>setForm(f=>({...f,[field]:val}))} dark={dark} requiredStar={false}/>
         {(()=>{
           // Setter notes pile up like closer notes — every note has its own 💾 Save
           // Note button, including the very FIRST one (which becomes the classic
@@ -7549,7 +7551,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             {/* Photos */}
             <div>
               <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-                Bill Photos {reqStar}{form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
+                Bill Photos {form.billPhotos&&form.billPhotos.length>0&&<span style={{color:"#f97316"}}>({form.billPhotos.length})</span>}
               </label>
               <div onClick={()=>fileInputRef.current&&fileInputRef.current.click()} style={{border:`2px dashed ${dark?"#475569":"#cbd5e1"}`,borderRadius:10,padding:"13px 10px",textAlign:"center",cursor:"pointer",background:dark?"#0f172a":"#f8fafc",fontSize:14,color:dark?"#cbd5e1":"#475569",fontWeight:600}}>
                 📷 Add Photo
