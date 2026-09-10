@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b91";
+const APP_BUILD = "b92";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13770,6 +13770,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   // Recurrence for open slots: "none" | "daily" | "weekly" | "custom".
   const [slotRepeat, setSlotRepeat] = React.useState("none");
   const [slotRepeatDays, setSlotRepeatDays] = React.useState([]); // 0=Sun … 6=Sat
+  const [slotType, setSlotType] = React.useState("close"); // "close" | "cap" — which kind of open slot
   const [slotMsg, setSlotMsg] = React.useState("");
   const SLOT_MINUTES = 90; // 1.5-hour block
   const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
@@ -13782,7 +13783,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     const ap = d.getHours()>=12?"PM":"AM"; const h12 = d.getHours()%12||12;
     return `${h12}:${String(d.getMinutes()).padStart(2,"0")} ${ap}`;
   };
-  const resetSlot = () => { setSlotDate("");setSlotStart("");setSlotMsg("");setSlotRepeat("none");setSlotRepeatDays([]); };
+  const resetSlot = () => { setSlotDate("");setSlotStart("");setSlotMsg("");setSlotRepeat("none");setSlotRepeatDays([]);setSlotType("close"); };
   const submitSlot = async (calendarId) => {
     if(!slotDate || !slotStart) return;
     setSlotSaving(true); setSlotMsg("");
@@ -13802,7 +13803,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         const days = slotRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
         recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
       }
-      await GCal.createMeeting("🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, recurrence);
+      await GCal.createMeeting(slotType==="cap" ? "🟦 Open slot 🧢" : "🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setSlotSaving(false);
       setSlotOpen(false);
       resetSlot();
@@ -14599,7 +14600,15 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>+ Add Open Slot</div>
               <button onClick={()=>!slotSaving&&setSlotOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>"open slot"</b> to the <b>{CALENDAR_NAME}</b>.</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>{slotType==="cap"?'"Open slot 🧢"':'"open slot"'}</b> to the <b>{CALENDAR_NAME}</b>.</div>
+
+            {/* Slot type — Close (default) or CAP */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Slot Type</label>
+            <select value={slotType} onChange={e=>setSlotType(e.target.value)}
+              style={{width:"100%",padding:"10px 8px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",boxSizing:"border-box",cursor:"pointer",marginBottom:14}}>
+              <option value="close">🤝 Close — "Open Slot"</option>
+              <option value="cap">🧢 CAP — "Open slot 🧢"</option>
+            </select>
 
             {/* Date */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
@@ -15333,8 +15342,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
         timeMin: dayStart.toISOString(),
         timeMax: dayEnd.toISOString(),
       });
+      // Close bookings only see CLOSE slots — "Open slot 🧢" is reserved for CAP
+      // appointments. CAP / Cancel Save bookings show every open slot for now.
+      const slotTypeOk = (e)=> (capMode||csMode) ? true : !((e.summary||"").includes("🧢"));
       if(viaBackend){
-        setSlots((viaBackend.items||[]).filter(e=>e.isOpen));
+        setSlots((viaBackend.items||[]).filter(e=>e.isOpen).filter(slotTypeOk));
         setLoadingSlots(false);
         return;
       }
@@ -15353,6 +15365,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       const open = (data.items||[]).filter(e=>
         e.summary&&e.summary.toLowerCase().includes("open slot")
         &&!e.description?.includes("BOOKED:")
+        &&slotTypeOk(e)
       );
       setSlots(open);
     } catch(e){console.error(e);}
