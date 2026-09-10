@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b90";
+const APP_BUILD = "b91";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5923,6 +5923,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   const [assistEditing,setAssistEditing]=useState(false); // view-mode inline assist editor
   const [stageEditing,setStageEditing]=useState(false); // view-mode inline stage editor
   const [manageBooking,setManageBooking]=useState(false); // Manage Booking opened from the Closer Appt ✕
+  const [cbClash,setCbClash]=useState(false); // comeback-over-closer chooser
   const [capChoice,setCapChoice]=useState(false); // Book CAP → choose Closer or Personal
   const [csChoice,setCsChoice]=useState(false); // Book Cancel Save → choose Closer or Personal
   const [closeChoice,setCloseChoice]=useState(false); // Book Close → choose Closer or Personal
@@ -5934,12 +5935,21 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   // the team calendar and drop it from the lead's extra_appointments list. Does
   // NOT touch the primary closer slot or CAP.
   const cancelExtraAppt = async (entry) => {
-    if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
+    const msg = entry.personal
+      ? "Cancel this appointment? It will be removed from your calendar."
+      : "Cancel this appointment? It will be released back to an open slot on the calendar.";
+    if(!window.confirm(msg)) return;
     try {
-      // Release the slot on whichever calendar it actually lives on.
       if(entry.id){
-        const released = await releaseSlotEverywhere(entry.id);
-        if(!released) console.error("Couldn't restore slot to open:", entry.id);
+        if(entry.personal){
+          // Personal-calendar extra (e.g. a comeback booked alongside a closer
+          // slot) — delete the event from the rep's own calendar.
+          try{ await GCal.deletePersonalCB(entry.id); }catch(e){ console.error("Couldn't delete personal event:", e); }
+        } else {
+          // Team-calendar slot — release it back to Open Slot.
+          const released = await releaseSlotEverywhere(entry.id);
+          if(!released) console.error("Couldn't restore slot to open:", entry.id);
+        }
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
       await leadPatch(lead.id, {extra_appointments:next});
@@ -6274,10 +6284,19 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           }}/>
                       </div>
                     )}
-                    {/* Comeback personal button */}
-                    <PersonalApptButton lead={lead} existing={!!(lead.cb_event_id||lead.appointment)} label="↩️ Comeback" onSelect={async(val,cbEventId,intent)=>{
-                      await bookApptStacked({key:"cb",apptField:"appointment",evField:"cb_event_id",tsKey:"main",kind:"Comeback",val,evId:cbEventId,intent,extra:{gcal_event_id:null}});
-                    }}/>
+                    {/* Comeback personal button. When a CLOSER slot holds the main
+                        appointment, booking a comeback used to silently overwrite it and
+                        orphan the team-calendar slot — so open a chooser instead. */}
+                    {lead.gcal_event_id ? (
+                      <button onClick={()=>setCbClash(true)}
+                        style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                        ↩️ Comeback
+                      </button>
+                    ) : (
+                      <PersonalApptButton lead={lead} existing={!!(lead.cb_event_id||lead.appointment)} label="↩️ Comeback" onSelect={async(val,cbEventId,intent)=>{
+                        await bookApptStacked({key:"cb",apptField:"appointment",evField:"cb_event_id",tsKey:"main",kind:"Comeback",val,evId:cbEventId,intent,extra:{gcal_event_id:null}});
+                      }}/>
+                    )}
                     {/* Follow Up (personal) */}
                     <PersonalApptButton lead={lead} existing={!!lead.followup_appointment}
                       label="🔁 Follow Up"
@@ -6641,6 +6660,54 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           {lead.history&&lead.history.length>0 && (
             <HistorySection lead={lead} dark={dark}/>
           )}
+          {cbClash && (
+            <div style={{position:"fixed",inset:0,zIndex:2800}} onClick={()=>setCbClash(false)}>
+              <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}}/>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:22,width:"min(92vw,420px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",color:dark?"#f1f5f9":"#0f172a"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{fontSize:18,fontWeight:800}}>Closer Appointment Booked</div>
+                  <button onClick={()=>setCbClash(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
+                </div>
+                <div style={{border:"1.5px solid #34d399",borderRadius:12,padding:"12px 14px",margin:"10px 0 16px"}}>
+                  <div style={{fontSize:12,color:"#94a3b8",marginBottom:2}}>Currently booked</div>
+                  <div style={{fontWeight:800,fontSize:15}}>{lead.name||"Lead"}</div>
+                  <div style={{fontSize:13,color:"#16a34a",fontWeight:700}}>{lead.appointment}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <PersonalApptButton lead={lead} label="🔁 Change to Personal Appointment" accent="#6b2d4e"
+                    title="↩️ Personal Comeback" confirmLabel="Book Comeback"
+                    onSelect={async(val,cbEventId)=>{
+                      // Release the closer slot FIRST — if that fails, undo the
+                      // just-created personal event so nothing gets out of sync.
+                      const released = await releaseSlotEverywhere(lead.gcal_event_id);
+                      if(!released){
+                        try{ if(cbEventId) await GCal.deletePersonalCB(cbEventId); }catch(e){}
+                        window.alert("Couldn't release the closer slot on the team calendar, so nothing was changed. Try again, or remove the closer appointment first via its ✕.");
+                        return;
+                      }
+                      const extra = {gcal_event_id:null};
+                      if(lead.stage==="AC / Scheduled") extra.stage="Lead: Need Bill/Appointment";
+                      await bookApptStacked({key:"cb",apptField:"appointment",evField:"cb_event_id",tsKey:"main",kind:"Comeback",val,evId:cbEventId,extra});
+                      setCbClash(false);
+                    }}/>
+                  <PersonalApptButton lead={lead} label="➕ Book Another Appointment" accent="#1a2456"
+                    title="↩️ Additional Personal Comeback" confirmLabel="Book Comeback"
+                    onSelect={async(val,cbEventId)=>{
+                      // Keeps the closer slot untouched — the comeback rides along as
+                      // an additional appointment on the rep's own calendar.
+                      const entry={id:cbEventId||makeNoteId(),label:`↩️ Comeback — ${val}`,type:"extra",personal:true,ts:new Date().toISOString()};
+                      const nextExtra=[...(Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]),entry];
+                      handleUpdate({...lead,extra_appointments:nextExtra});
+                      await leadPatch(lead.id,{extra_appointments:nextExtra});
+                      setCbClash(false);
+                    }}/>
+                  <div style={{fontSize:11,color:"#94a3b8",lineHeight:1.5}}>
+                    Change to Personal releases the closer slot back to an Open Slot on the team calendar, then books the comeback on your own calendar. Book Another keeps the closer appointment and adds the comeback alongside it.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {manageBooking && (
             <CalendarEventModal lead={lead} onClose={()=>setManageBooking(false)}
               onUpdate={updated=>{handleUpdate({...lead,...updated});}} creatorName={creatorName}/>
@@ -6895,6 +6962,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   const [editImgOpen,setEditImgOpen]=useState(null); // index of photo shown fullscreen in edit mode
   const [cancelModalOpen,setCancelModalOpen]=useState(false); // ARC cancellation reason popup
   const [manageBooking,setManageBooking]=useState(false); // Manage Booking opened from the Closer Appt ✕
+  const [cbClash,setCbClash]=useState(false); // comeback-over-closer chooser
   // A lead can only be flagged ARC / On Hold / Needs Cancel Save once it has reached
   // VC / SRA or later. Check live stage + remembered flag stages.
   const reachedVC = (() => {
@@ -7253,7 +7321,14 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                       }}/>
                   </div>
                 )}
-                {/* Comeback (personal) → main appointment / cb_event_id */}
+                {/* Comeback (personal) → main appointment / cb_event_id. A booked
+                    CLOSER slot opens the change-vs-another chooser instead. */}
+                {form.gcal_event_id ? (
+                  <button type="button" onClick={()=>setCbClash(true)}
+                    style={{padding:"10px 0",borderRadius:8,border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    ↩️ Comeback
+                  </button>
+                ) : (
                 <PersonalApptButton lead={{...form}} label={form.cb_event_id?"↩️ Change Comeback":"↩️ Comeback"}
                   onSelect={async(val,cbEventId)=>{
                     if(form.cb_event_id && form.cb_event_id!==cbEventId){ try{ await GCal.deletePersonalCB(form.cb_event_id); }catch(e){ console.error(e); } }
@@ -7261,6 +7336,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:nts}));
                     if(form.id){ await leadPatch(form.id, {appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts}); }
                   }}/>
+                )}
                 {/* Follow Up (personal) */}
                 <PersonalApptButton lead={{...form}}
                   label={form.followup_event_id?"🔁 Change Follow Up":"🔁 Follow Up"}
@@ -7407,12 +7483,15 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"8px 10px",borderRadius:8,background:dark?"#0f172a":"#f8fafc",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
                       <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:dark?"#cbd5e1":"#475569"}}>📅 {a.label||"Appointment"}</div>
                       <button type="button" onClick={async()=>{
-                        if(!window.confirm("Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
+                        if(!window.confirm(a.personal ? "Cancel this appointment? It will be removed from your calendar." : "Cancel this appointment? It will be released back to an open slot on the calendar.")) return;
                         try {
-                          // Release the slot on whichever calendar it actually lives on.
                           if(a.id){
-                            const released = await releaseSlotEverywhere(a.id);
-                            if(!released) console.error("Couldn't restore slot to open:", a.id);
+                            if(a.personal){
+                              try{ await GCal.deletePersonalCB(a.id); }catch(e){ console.error("Couldn't delete personal event:", e); }
+                            } else {
+                              const released = await releaseSlotEverywhere(a.id);
+                              if(!released) console.error("Couldn't restore slot to open:", a.id);
+                            }
                           }
                           const next = (Array.isArray(form.extra_appointments)?form.extra_appointments:[]).filter(x=>x.id!==a.id);
                           await leadPatch(form.id, {extra_appointments:next});
@@ -7765,6 +7844,51 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           <ZoomableImage src={form.billPhotos[editImgOpen]} onClose={()=>setEditImgOpen(null)}/>
           <div onClick={()=>setEditImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer",zIndex:2002,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</div>
           <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",color:"#fff",fontSize:13,opacity:0.75,background:"rgba(0,0,0,0.45)",padding:"4px 12px",borderRadius:20,zIndex:2002,whiteSpace:"nowrap"}}>{editImgOpen+1} of {form.billPhotos.length} · pinch or scroll to zoom · double-tap to reset</div>
+        </div>
+      )}
+      {cbClash && (
+        <div style={{position:"fixed",inset:0,zIndex:2800}} onClick={()=>setCbClash(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:22,width:"min(92vw,420px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",color:dark?"#f1f5f9":"#0f172a"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:18,fontWeight:800}}>Closer Appointment Booked</div>
+              <button type="button" onClick={()=>setCbClash(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
+            </div>
+            <div style={{border:"1.5px solid #34d399",borderRadius:12,padding:"12px 14px",margin:"10px 0 16px"}}>
+              <div style={{fontSize:12,color:"#94a3b8",marginBottom:2}}>Currently booked</div>
+              <div style={{fontWeight:800,fontSize:15}}>{form.name||"Lead"}</div>
+              <div style={{fontSize:13,color:"#16a34a",fontWeight:700}}>{form.appointment}</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <PersonalApptButton lead={{...form}} label="🔁 Change to Personal Appointment" accent="#6b2d4e"
+                title="↩️ Personal Comeback" confirmLabel="Book Comeback"
+                onSelect={async(val,cbEventId)=>{
+                  const released = await releaseSlotEverywhere(form.gcal_event_id);
+                  if(!released){
+                    try{ if(cbEventId) await GCal.deletePersonalCB(cbEventId); }catch(e){}
+                    window.alert("Couldn't release the closer slot on the team calendar, so nothing was changed. Try again, or remove the closer appointment first via its ✕.");
+                    return;
+                  }
+                  const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),main:new Date().toISOString()};
+                  const st = form.stage==="AC / Scheduled" ? {stage:"Lead: Need Bill/Appointment"} : {};
+                  setForm(f=>({...f,appointment:val,gcal_event_id:"",cb_event_id:cbEventId||null,appt_ts:nts,...st}));
+                  if(form.id){ await leadPatch(form.id, {appointment:val,gcal_event_id:null,cb_event_id:cbEventId||null,appt_ts:nts,...st}); }
+                  setCbClash(false);
+                }}/>
+              <PersonalApptButton lead={{...form}} label="➕ Book Another Appointment" accent="#1a2456"
+                title="↩️ Additional Personal Comeback" confirmLabel="Book Comeback"
+                onSelect={async(val,cbEventId)=>{
+                  const entry={id:cbEventId||makeNoteId(),label:`↩️ Comeback — ${val}`,type:"extra",personal:true,ts:new Date().toISOString()};
+                  const nextExtra=[...(Array.isArray(form.extra_appointments)?form.extra_appointments:[]),entry];
+                  setForm(f=>({...f,extra_appointments:nextExtra}));
+                  if(form.id){ await leadPatch(form.id, {extra_appointments:nextExtra}); }
+                  setCbClash(false);
+                }}/>
+              <div style={{fontSize:11,color:"#94a3b8",lineHeight:1.5}}>
+                Change to Personal releases the closer slot back to an Open Slot on the team calendar, then books the comeback on your own calendar. Book Another keeps the closer appointment and adds the comeback alongside it.
+              </div>
+            </div>
+          </div>
         </div>
       )}
       {manageBooking && (
@@ -15327,10 +15451,16 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       // Don't sign in up front — only if the backend can't handle the removal.
       const getToken = () => GCal.signIn();
       if(entry.id){
-        const ok = await revertEventToOpenSlot(getToken, entry.id);
-        if(!ok){
-          alert("Couldn't remove this appointment from the calendar — you may not have access to the calendar it's on. It was left on the lead so nothing gets out of sync.");
-          return;
+        if(entry.personal){
+          // Personal-calendar extra — delete from the rep's own calendar instead
+          // of trying to release a team slot.
+          try{ await GCal.deletePersonalCB(entry.id); }catch(e){ console.error("Couldn't delete personal event:", e); }
+        } else {
+          const ok = await revertEventToOpenSlot(getToken, entry.id);
+          if(!ok){
+            alert("Couldn't remove this appointment from the calendar — you may not have access to the calendar it's on. It was left on the lead so nothing gets out of sync.");
+            return;
+          }
         }
       }
       const next = (Array.isArray(lead.extra_appointments)?lead.extra_appointments:[]).filter(a=>a.id!==entry.id);
