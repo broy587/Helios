@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b88";
+const APP_BUILD = "b89";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17069,21 +17069,14 @@ function App() {
           })(0);
         }
       };
-      if (isPrivileged) {
-        // Start the heavy leads query in parallel, but resolve the small team/profile
-        // queries FIRST and set them immediately — so the calendar and team UI work
-        // right away instead of waiting on the full leads payload.
-        const leadsResP = runLeads(null);
-        const [profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
-          sb.from("profiles").select("*"),
-          sb.from("teams").select("*").order("created_at",{ascending:false}),
-          sb.from("team_members").select("*"),
-          sb.from("team_goals").select("*"),
-        ]);
+      // Teams power the Team tab, the Calendar tab's team list, and the closer
+      // booking picker. A dropped teams fetch used to leave all three empty (only
+      // Closer Calendars showing) until a manual reload — so, like profiles, set
+      // what we got and auto-retry in the background until it lands.
+      const applyTeamData = (teamsRes, membersRes, goalsRes)=>{
         if(teamsRes.error) console.error("teams error:",teamsRes.error);
         if(membersRes.error) console.error("members error:",membersRes.error);
         if(goalsRes.error) console.error("goals error:",goalsRes.error);
-        ensureProfiles(profilesRes);
         setTeams(teamsRes.data||[]);
         const grouped={};
         (membersRes.data||[]).forEach(m=>{
@@ -17097,6 +17090,40 @@ function App() {
           goalsGrouped[g.team_id][g.period]=g;
         });
         setTeamGoals(goalsGrouped);
+        if(teamsRes.error || !(teamsRes.data||[]).length){
+          (function retryTeams(n){
+            if(n>5) return;
+            setTimeout(async()=>{
+              try{
+                const [t2,m2,g2] = await Promise.all([
+                  sb.from("teams").select("*").order("created_at",{ascending:false}),
+                  sb.from("team_members").select("*"),
+                  sb.from("team_goals").select("*"),
+                ]);
+                if(!t2.error && (t2.data||[]).length){
+                  applyTeamData(t2, m2.error?{data:[]}:m2, g2.error?{data:[]}:g2);
+                  console.warn("teams recovered on retry", n+1);
+                  return;
+                }
+              }catch(e){}
+              retryTeams(n+1);
+            }, 4000*Math.pow(1.5,n));
+          })(0);
+        }
+      };
+      if (isPrivileged) {
+        // Start the heavy leads query in parallel, but resolve the small team/profile
+        // queries FIRST and set them immediately — so the calendar and team UI work
+        // right away instead of waiting on the full leads payload.
+        const leadsResP = runLeads(null);
+        const [profilesRes,teamsRes,membersRes,goalsRes] = await Promise.all([
+          sb.from("profiles").select("*"),
+          sb.from("teams").select("*").order("created_at",{ascending:false}),
+          sb.from("team_members").select("*"),
+          sb.from("team_goals").select("*"),
+        ]);
+        ensureProfiles(profilesRes);
+        applyTeamData(teamsRes, membersRes, goalsRes);
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
         setLeads(overlayPendingSaves((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)}))));
@@ -17137,23 +17164,8 @@ function App() {
           sb.from("team_members").select("*"),
           sb.from("team_goals").select("*"),
         ]);
-        if(teamsRes.error) console.error("teams error:",teamsRes.error);
-        if(membersRes.error) console.error("members error:",membersRes.error);
-        if(goalsRes.error) console.error("goals error:",goalsRes.error);
         ensureProfiles(profilesRes);
-        setTeams(teamsRes.data||[]);
-        const grouped={};
-        (membersRes.data||[]).forEach(m=>{
-          if(!grouped[m.team_id])grouped[m.team_id]=[];
-          grouped[m.team_id].push(m);
-        });
-        setTeamMembers(grouped);
-        const goalsGrouped={};
-        (goalsRes.data||[]).forEach(g=>{
-          if(!goalsGrouped[g.team_id])goalsGrouped[g.team_id]={};
-          goalsGrouped[g.team_id][g.period]=g;
-        });
-        setTeamGoals(goalsGrouped);
+        applyTeamData(teamsRes, membersRes, goalsRes);
         const leadsRes = await leadsResP;
         if(leadsRes.error) console.error("leads error:",leadsRes.error);
         setLeads(overlayPendingSaves((await applyAcMigration(leadsRes.data||[], u.id)).map(l=>({...l, stage:normalizeStage(l.stage)}))));
