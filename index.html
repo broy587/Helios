@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b97";
+const APP_BUILD = "b100";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -15955,10 +15955,10 @@ function VaultView({currentUser, userId, isOwner, isPrivileged, dark, leads, gma
   };
   const CATEGORIES = [
     {key:"pitches", label:"Starter Kit", icon:"🎒", blurb:"Pitches, scripts & getting-started essentials"},
-    {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"},
+    {key:"playbooks", label:"Templates", icon:"📧", blurb:"Email & text templates, closing & setter materials"},
     {key:"objections", label:"Objection Handling", icon:"🛡️", blurb:"Rebuttals & responses"},
     {key:"sales_material", label:"Sales Material", icon:"💼", blurb:"Flyers, brochures & sales collateral"},
-    {key:"playbooks", label:"Templates", icon:"📧", blurb:"Email & text templates, closing & setter materials"},
+    {key:"videos", label:"Training Videos", icon:"🎬", blurb:"Recorded trainings & demos"},
     {key:"closing_hub", label:"Closing Hub", icon:"🤝", blurb:"Closing techniques, tools & resources"},
     {key:"leadership", label:"Leadership", icon:"🧭", blurb:"Leadership, management & team-building resources"}
   ];
@@ -18058,12 +18058,12 @@ function App() {
 
   const tabs=[
     ["pipeline","Pipeline"],
-    ["recruits","Recruits"],
     ...(onCalendarTeam?[["calendar","Calendar"]]:[]),
-    ["canvass","Canvass"],
+    ["vault","Vault"],
     ["stats","Stats"],
     ["team","Team"],
-    ["vault","Vault"]
+    ["canvass","Canvass"],
+    ["recruits","Recruits"]
   ];
 
   return (
