@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b92";
+const APP_BUILD = "b93";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13803,7 +13803,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         const days = slotRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
         recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
       }
-      await GCal.createMeeting(slotType==="cap" ? "🟦 Open slot 🧢" : "🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, recurrence);
+      await GCal.createMeeting(slotType==="cap" ? "🟧 Open slot 🧢" : "🟦 open slot", startD.toISOString(), endD.toISOString(), calendarId, recurrence);
       setSlotSaving(false);
       setSlotOpen(false);
       resetSlot();
@@ -14406,7 +14406,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                     <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:(canTag||removable)?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:(canTag||removable)?1:0.55}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:canTag?10:0}}>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isOpenSlot?"🟦 Open Slot":(stripMarker(ev.summary)||"(untitled)")}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isOpenSlot?((ev.summary||"").includes("🧢")?"🟧 Open Slot 🧢":"🟦 Open Slot"):(stripMarker(ev.summary)||"(untitled)")}</div>
                           <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
                             {when && <span>{when.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} · {when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>}
                             {recurring && <span title="Repeating event — tagging updates the whole series"> · 🔁 repeats</span>}
@@ -14600,14 +14600,14 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>+ Add Open Slot</div>
               <button onClick={()=>!slotSaving&&setSlotOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>{slotType==="cap"?'"Open slot 🧢"':'"open slot"'}</b> to the <b>{CALENDAR_NAME}</b>.</div>
+            <div style={{fontSize:12,color:dark?"#94a3b8":"#6b2d4e",marginBottom:18}}>Adds a 1.5-hour <b>{slotType==="cap"?'"🟧 Open slot 🧢"':'"open slot"'}</b> to the <b>{CALENDAR_NAME}</b>.</div>
 
             {/* Slot type — Close (default) or CAP */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Slot Type</label>
             <select value={slotType} onChange={e=>setSlotType(e.target.value)}
               style={{width:"100%",padding:"10px 8px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",boxSizing:"border-box",cursor:"pointer",marginBottom:14}}>
               <option value="close">🤝 Close — "Open Slot"</option>
-              <option value="cap">🧢 CAP — "Open slot 🧢"</option>
+              <option value="cap">🧢 CAP — "🟧 Open slot 🧢"</option>
             </select>
 
             {/* Date */}
@@ -15806,14 +15806,18 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
                 const start = new Date(slot.start.dateTime||slot.start.date);
                 const end = new Date(slot.end.dateTime||slot.end.date);
                 const timeStr = `${start.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})} – ${end.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`;
+                // CAP open slots ("Open slot 🧢") read orange — subtle but obvious —
+                // and any leading 🟦 in the title renders as 🟧.
+                const isCap = (slot.summary||"").includes("🧢");
+                const label = isCap ? (slot.summary||"").replace(/🟦/gu,"🟧") : slot.summary;
                 return(
                   <div key={slot.id} onClick={()=>{setSelectedSlot(slot);setView("confirm");}}
-                    style={{padding:"14px 16px",borderRadius:12,border:"1.5px solid #c8b8a2",background:dark?"#0f172a":"#fff",marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    style={{padding:"14px 16px",borderRadius:12,border:`1.5px solid ${isCap?"#fdba74":"#c8b8a2"}`,background:isCap?(dark?"rgba(234,88,12,0.12)":"#fff7ed"):(dark?"#0f172a":"#fff"),marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <div>
                       <div style={{fontWeight:700,color:dark?"#f1f5f9":"#1a2456",fontSize:14}}>{timeStr}</div>
-                      <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{slot.summary}</div>
+                      <div style={{fontSize:12,color:isCap?"#c2410c":"#94a3b8",marginTop:2,fontWeight:isCap?700:400}}>{label}</div>
                     </div>
-                    <div style={{color:"#10b981",fontWeight:700,fontSize:13}}>Open ›</div>
+                    <div style={{color:isCap?"#ea580c":"#10b981",fontWeight:700,fontSize:13}}>Open ›</div>
                   </div>
                 );
               })
