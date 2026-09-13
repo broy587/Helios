@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b101";
+const APP_BUILD = "b103";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6366,7 +6366,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.pto_appointment}
                       label="🔌 PTO Setup"
                       title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
-                      summary={`🔵 PTO Setup - ${lead.name||"Lead"}`} accent="#0284c7" colorId="7"
+                      summary={`🟣 PTO Setup - ${lead.name||"Lead"}`} accent="#8b5cf6" colorId="1"
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"pto",apptField:"pto_appointment",evField:"pto_event_id",tsKey:"pto",kind:"PTO Setup",val,evId,intent});
                       }}/>
@@ -7409,7 +7409,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.pto_event_id?"🔌 Change PTO Setup":"🔌 PTO Setup"}
                   title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
-                  summary={`🔵 PTO Setup - ${form.name||"Lead"}`} accent="#0284c7" colorId="7"
+                  summary={`🟣 PTO Setup - ${form.name||"Lead"}`} accent="#8b5cf6" colorId="1"
                   onSelect={async(val,evId)=>{
                     if(form.pto_event_id && form.pto_event_id!==evId){ try{ await GCal.deletePersonalCB(form.pto_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),pto:new Date().toISOString()};
@@ -17518,7 +17518,7 @@ function App() {
     }
     const changes=[];
     if(existing){
-      const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage",is_arc:"ARC Status"};
+      const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage"};
       for(const [key,label] of Object.entries(fields)){if((existing[key]||"")!==(form[key]||""))changes.push(`${label}: "${existing[key]||"-"}" to "${form[key]||"-"}"`);}
       const pc=(form._photosLoaded?(form._photosBase||[]):[]).length,nc=(form.billPhotos||[]).length;
       if(form._photosLoaded){
@@ -17544,6 +17544,14 @@ function App() {
         }
         for(const x of o){ if(x&&x.id&&!nMap.has(x.id)) changes.push(`${label}: Deleted "${trunc(x.text)}"`); }
       };
+      // Flag moves (ARC / Cancel, On Hold, Needs Cancel Save). The generic diff
+      // above couldn't see these — the DB stores is_arc but the form edits isArc —
+      // so moving an account to cancel never landed in history with a date.
+      const flagDiff=(was, now, label)=>{ if(!!was!==!!now) changes.push(now?`Moved to ${label}`:`${label} removed`); };
+      flagDiff(existing.is_arc, form.isArc, "ARC / Cancel");
+      flagDiff(existing.on_hold, form.onHold, "On Hold");
+      flagDiff(existing.needs_cancel_save, form.needsCancelSave, "Needs Cancel Save");
+      if((existing.cancel_reason||"")!==(form.cancelReason||"")) changes.push(`Cancel reason: "${existing.cancel_reason||"-"}" to "${form.cancelReason||"-"}"`);
       if((existing.on_hold_until||"")!==(form.onHoldUntil||"")) changes.push(`On hold until: "${existing.on_hold_until||"-"}" to "${form.onHoldUntil||"-"}"`);
       logDiff("Setter note", existing.setter_notes_log, form.setterNotesLog);
       logDiff("Closer note", existing.closer_notes_log, form.closerNotesLog, existing.closer_notes);
