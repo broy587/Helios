@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b105";
+const APP_BUILD = "b106";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16972,11 +16972,11 @@ function LeadBankTab({user, profile}) {
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
       {/* Five colored filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
-        {fsel("src","📦","Lead Source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
         {fsel("gen","👤","Lead Generator",BANK_GENERATORS,"#6366f1","#eef2ff","rgba(99,102,241,0.14)","#4338ca","#a5b4fc")}
         {fsel("opp","🏡","Opportunity Type",BANK_OPportunities,"#10b981","#ecfdf5","rgba(16,185,129,0.14)","#047857","#6ee7b7")}
         {fsel("rehash","🔄","Rehash / Recovery",BANK_REHASH,"#f59e0b","#fffbeb","rgba(245,158,11,0.14)","#b45309","#fcd34d")}
         {fsel("fail","🚫","Failure / DQ",BANK_FAILURES,"#ef4444","#fef2f2","rgba(239,68,68,0.14)","#b91c1c","#fca5a5")}
+        {fsel("src","📦","Lead Source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
       </div>
       {anyF && (
         <div style={{maxWidth:760,margin:"0 auto 10px",textAlign:"right"}}>
