@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b103";
+const APP_BUILD = "b104";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16886,6 +16886,307 @@ function SongOfDay({url}) {
   );
 }
 
+// ═══════════════════ LEAD BANK (owner-only "Leads" tab) ═══════════════════
+// A vibrant bank of second-chance / opportunity leads, organized by SOURCE.
+// Separate from the pipeline: rows live in the bank_leads table.
+const BANK_SOURCES = [
+  {key:"rehash",   name:"Rehash & Recovery",      emoji:"🔄", g1:"#f59e0b", g2:"#d97706", blurb:"Old leads, old quotes, no-shows & cancels — worth another pass"},
+  {key:"custopp",  name:"Customer Opportunities", emoji:"🏡", g1:"#10b981", g2:"#059669", blurb:"Past customers, expansions, battery add-ons, movers & high bills"},
+  {key:"failed",   name:"Previous Failures / DQ", emoji:"🚫", g1:"#ef4444", g2:"#b91c1c", blurb:"Couldn't move forward before — credit, roof, HOA, utility…"},
+  {key:"referral", name:"Referrals",              emoji:"🤝", g1:"#3b82f6", g2:"#2563eb", blurb:"Sent our way by customers & contacts"},
+  {key:"selfgen",  name:"Self-Gen / Door",        emoji:"🚪", g1:"#8b5cf6", g2:"#7c3aed", blurb:"Knocked up & self-generated"},
+  {key:"online",   name:"Online / Other",         emoji:"🌐", g1:"#06b6d4", g2:"#0891b2", blurb:"Web, social & everything else"},
+];
+const BANK_GENERATORS = ["Setter","Closer"];
+const BANK_OPportunities = ["Past customer","Existing system","Battery add-on","System expansion","Moving / new homeowner","High utility bill","Contract expiring","Rate change"];
+const BANK_REHASH = ["Old lead","Old quote","No-show","Cancel"];
+const BANK_FAILURES = ["Failed credit","Failed Welcome Call","Failed site survey","Roof issue","HOA issue","Utility / interconnection issue","Ownership mismatch","Uneconomic usage / too little offset"];
+const BANK_SHADING = ["None","Partial","Full"];
+const BANK_ROOF_COND = ["Good","Fair","Poor"];
+const BANK_CREDIT = ["Pass","No hit","Fail","Unknown"];
+const BANK_CONTACT = ["Phone","Email","Text","In person"];
+
+function LeadBankTab({user, profile}) {
+  const dark = useDark();
+  const isOwner = user && user.id === OWNER_ID;
+  const [rows, setRows] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [loadErr, setLoadErr] = React.useState("");
+  const [openSource, setOpenSource] = React.useState(null); // source key or null (landing)
+  const [filters, setFilters] = React.useState({gen:"", opp:"", rehash:"", fail:""});
+  const [modal, setModal] = React.useState(null); // {row} edit | {source} create
+  const load = async ()=>{
+    setLoading(true); setLoadErr("");
+    try{
+      const {data,error} = await sb.from("bank_leads").select("*").order("created_at",{ascending:false});
+      if(error) throw error;
+      setRows(Array.isArray(data)?data:[]);
+    }catch(e){ console.error("bank_leads load:",e); setLoadErr("Couldn't load the lead bank — run the bank_leads SQL if you haven't, then reopen this tab."); }
+    setLoading(false);
+  };
+  React.useEffect(()=>{ if(isOwner) load(); },[isOwner]);
+
+  // ── Locked for everyone but the owner ──
+  if(!isOwner){
+    return (
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:30}}>
+        <div style={{textAlign:"center",maxWidth:340}}>
+          <div style={{fontSize:54,marginBottom:14}}>🔒</div>
+          <div style={{fontSize:18,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>You don't have access to this tab</div>
+          <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.6}}>The Leads bank is owner-only for now. Ask Bronson if you think you should be in here.</div>
+        </div>
+      </div>
+    );
+  }
+
+  const srcOf = (k)=>BANK_SOURCES.find(x=>x.key===k)||BANK_SOURCES[BANK_SOURCES.length-1];
+  const counts = {};
+  rows.forEach(r=>{ counts[r.source]=(counts[r.source]||0)+1; });
+
+  // ── Landing: the big source boxes ──
+  if(!openSource){
+    return (
+      <div style={{flex:1,overflowY:"auto",padding:"18px 16px 40px"}}>
+        <div style={{textAlign:"center",marginBottom:4,fontSize:26,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em"}}>Lead Sources</div>
+        <div style={{textAlign:"center",fontSize:12.5,color:dark?"#94a3b8":"#64748b",marginBottom:18}}>Your bank of opportunities — pick a source to dig in ⛏️</div>
+        {loadErr && <div style={{margin:"0 auto 14px",maxWidth:520,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:14,maxWidth:760,margin:"0 auto"}}>
+          {BANK_SOURCES.map(src=>(
+            <div key={src.key} onClick={()=>{setOpenSource(src.key);setFilters({gen:"",opp:"",rehash:"",fail:""});}}
+              style={{cursor:"pointer",borderRadius:18,padding:"22px 14px 18px",textAlign:"center",background:`linear-gradient(145deg,${src.g1},${src.g2})`,boxShadow:`0 10px 26px -8px ${src.g2}88`,transform:"translateZ(0)",transition:"transform 0.12s",position:"relative",overflow:"hidden"}}
+              onTouchStart={e=>{e.currentTarget.style.transform="scale(0.96)";}} onTouchEnd={e=>{e.currentTarget.style.transform="scale(1)";}}
+              onMouseDown={e=>{e.currentTarget.style.transform="scale(0.96)";}} onMouseUp={e=>{e.currentTarget.style.transform="scale(1)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
+              <div style={{position:"absolute",top:-24,right:-24,width:90,height:90,borderRadius:"50%",background:"rgba(255,255,255,0.12)"}}/>
+              <div style={{fontSize:44,lineHeight:1,marginBottom:10,filter:"drop-shadow(0 4px 6px rgba(0,0,0,0.25))"}}>{src.emoji}</div>
+              <div style={{fontSize:14.5,fontWeight:800,color:"#fff",lineHeight:1.25,marginBottom:8,textShadow:"0 1px 3px rgba(0,0,0,0.25)"}}>{src.name}</div>
+              <div style={{display:"inline-block",background:"rgba(255,255,255,0.25)",borderRadius:20,padding:"2px 11px",fontSize:12,fontWeight:800,color:"#fff"}}>{counts[src.key]||0} lead{(counts[src.key]||0)===1?"":"s"}</div>
+            </div>
+          ))}
+        </div>
+        {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user}/>}
+      </div>
+    );
+  }
+
+  // ── Source opened full screen (filters always visible) ──
+  const src = srcOf(openSource);
+  const F = filters;
+  const visible = rows.filter(r=>r.source===openSource)
+    .filter(r=>!F.gen||r.lead_generator===F.gen)
+    .filter(r=>!F.opp||r.opportunity_type===F.opp)
+    .filter(r=>!F.rehash||r.rehash_type===F.rehash)
+    .filter(r=>!F.fail||r.failure_type===F.fail);
+  const selStyle = {flex:"1 1 150px",minWidth:0,padding:"8px 9px",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer"};
+  const chip=(txt,color,bg)=>(<span key={txt} style={{fontSize:10,fontWeight:800,color,background:bg,borderRadius:12,padding:"2px 8px",whiteSpace:"nowrap"}}>{txt}</span>);
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"14px 14px 40px"}}>
+      {/* Source header */}
+      <div style={{borderRadius:16,padding:"14px 16px",marginBottom:12,background:`linear-gradient(135deg,${src.g1},${src.g2})`,display:"flex",alignItems:"center",gap:12,boxShadow:`0 8px 22px -8px ${src.g2}88`}}>
+        <button onClick={()=>setOpenSource(null)} style={{flexShrink:0,width:36,height:36,borderRadius:10,border:"none",background:"rgba(255,255,255,0.22)",color:"#fff",fontSize:18,fontWeight:800,cursor:"pointer"}}>‹</button>
+        <div style={{fontSize:30,lineHeight:1}}>{src.emoji}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:17,fontWeight:900,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.25)"}}>{src.name}</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{visible.length} of {counts[openSource]||0} showing</div>
+        </div>
+        <button onClick={()=>setModal({source:openSource})}
+          style={{flexShrink:0,padding:"10px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.25)",whiteSpace:"nowrap"}}>+ Add Lead</button>
+      </div>
+      {/* Filters — always visible */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        <select value={F.gen} onChange={e=>setFilters(f=>({...f,gen:e.target.value}))} style={selStyle}>
+          <option value="">👤 Lead Generator — All</option>
+          {BANK_GENERATORS.map(o=><option key={o} value={o}>{o}</option>)}
+        </select>
+        <select value={F.opp} onChange={e=>setFilters(f=>({...f,opp:e.target.value}))} style={selStyle}>
+          <option value="">🏡 Opportunity Type — All</option>
+          {BANK_OPportunities.map(o=><option key={o} value={o}>{o}</option>)}
+        </select>
+        <select value={F.rehash} onChange={e=>setFilters(f=>({...f,rehash:e.target.value}))} style={selStyle}>
+          <option value="">🔄 Rehash / Recovery — All</option>
+          {BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}
+        </select>
+        <select value={F.fail} onChange={e=>setFilters(f=>({...f,fail:e.target.value}))} style={selStyle}>
+          <option value="">🚫 Failure / DQ — All</option>
+          {BANK_FAILURES.map(o=><option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+      {loading ? (
+        <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8",fontSize:13}}>Loading…</div>
+      ) : visible.length===0 ? (
+        <div style={{textAlign:"center",padding:"46px 20px",color:dark?"#64748b":"#94a3b8"}}>
+          <div style={{fontSize:40,marginBottom:10}}>{src.emoji}</div>
+          <div style={{fontSize:14,fontWeight:700}}>Nothing here yet</div>
+          <div style={{fontSize:12,marginTop:4}}>Tap <b>+ Add Lead</b> to drop the first one in.</div>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:640,margin:"0 auto"}}>
+          {visible.map(r=>(
+            <div key={r.id} onClick={()=>setModal({row:r})}
+              style={{cursor:"pointer",borderRadius:13,padding:"12px 14px",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e8e0d2"}`,borderLeft:`5px solid ${src.g1}`,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,minWidth:0,fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Unnamed"}</div>
+                <div style={{fontSize:10.5,color:"#94a3b8",flexShrink:0}}>{r.created_at?new Date(r.created_at).toLocaleDateString():""}</div>
+              </div>
+              {(r.address||r.phone) && <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[r.address,r.phone].filter(Boolean).join(" · ")}</div>}
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
+                {r.lead_generator && chip("👤 "+r.lead_generator,"#4338ca",dark?"rgba(99,102,241,0.18)":"#eef2ff")}
+                {r.opportunity_type && chip("🏡 "+r.opportunity_type,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}
+                {r.rehash_type && chip("🔄 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
+                {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
+                {r.credit && chip("💳 "+r.credit, r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user}/>}
+    </div>
+  );
+}
+
+// Create / edit one bank lead. History (created + every change) sits at the bottom.
+function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
+  const dark = useDark();
+  const existing = modal.row||null;
+  const blank = {source:modal.source||(existing&&existing.source)||"rehash",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_type:"",rehash_type:"",failure_type:""};
+  const [f,setF] = React.useState(existing?{...blank,...existing}:blank);
+  const [saving,setSaving] = React.useState(false);
+  const [showUtil,setShowUtil] = React.useState(false);
+  const [showHist,setShowHist] = React.useState(false);
+  const [confirmDel,setConfirmDel] = React.useState(false);
+  const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
+  const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}; 
+  const lbl={display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",margin:"12px 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"};
+  const pills=(options,key)=>(
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {options.map(o=>{ const on=f[key]===o; return (
+        <button key={o} type="button" onClick={()=>setF(x=>({...x,[key]:on?"":o}))}
+          style={{padding:"7px 12px",borderRadius:16,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{o}</button>
+      );})}
+    </div>
+  );
+  const author=(profile&&(profile.name||profile.email))||(user&&user.email)||"Owner";
+  const save = async ()=>{
+    if(!(f.name||"").trim() && !(f.address||"").trim()){ window.alert("Give it at least a name or an address."); return; }
+    setSaving(true);
+    try{
+      if(existing){
+        const watch={source:"Source",name:"Name",phone:"Phone",email:"Email",address:"Address",utility:"Utility",esiid:"ESIID",meter:"Meter",usage_input:"Usage",cents_kwh:"¢/kWh",annual_kwh:"Annual kWh",average_bill:"Avg bill",notes:"Notes",shading:"Shading",roof_age:"Roof age",roof_life:"Roof life",roof_condition:"Roof condition",credit:"Credit",contact_method:"Contact method",preferred_contact:"Preferred contact",lead_generator:"Lead generator",opportunity_type:"Opportunity type",rehash_type:"Rehash type",failure_type:"Failure / DQ"};
+        const changes=[];
+        Object.entries(watch).forEach(([k,label])=>{ if((existing[k]||"")!==(f[k]||"")) changes.push(`${label}: "${existing[k]||"-"}" to "${f[k]||"-"}"`); });
+        const hist = changes.length ? [{ts:formatTs(),by:author,changes},...(Array.isArray(existing.history)?existing.history:[])] : (existing.history||[]);
+        const upd={...f,history:hist,updated_at:new Date().toISOString()};
+        delete upd.id; delete upd.created_at;
+        const {error}=await sb.from("bank_leads").update(upd).eq("id",existing.id);
+        if(error) throw error;
+        setRows(rs=>rs.map(x=>x.id===existing.id?{...x,...upd,id:existing.id}:x));
+      } else {
+        const row={...f,owner_id:user.id,history:[{ts:formatTs(),by:author,changes:["Lead created"]}]};
+        const {data,error}=await sb.from("bank_leads").insert(row).select().single();
+        if(error) throw error;
+        setRows(rs=>[data,...rs]);
+      }
+      onClose();
+    }catch(e){ console.error("bank lead save:",e); window.alert("Couldn't save: "+((e&&e.message)||"error")); }
+    setSaving(false);
+  };
+  const del = async ()=>{
+    try{
+      const {error}=await sb.from("bank_leads").delete().eq("id",existing.id);
+      if(error) throw error;
+      setRows(rs=>rs.filter(x=>x.id!==existing.id));
+      onClose();
+    }catch(e){ window.alert("Couldn't delete: "+((e&&e.message)||"error")); }
+  };
+  const zone=(bg,bd,bgD,bdD)=>({background:dark?bgD:bg,border:`1.5px solid ${dark?bdD:bd}`,borderRadius:14,padding:"4px 12px 12px",marginBottom:12});
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2600}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>!saving&&onClose()}/>
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+        <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"20px 20px 24px",width:"min(96vw,470px)",maxHeight:"92vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Lead":"➕ New Lead"}</div>
+            <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
+          </div>
+          <label style={{...lbl,marginTop:0}}>Source</label>
+          <select value={f.source} onChange={set("source")} style={{...inp,cursor:"pointer"}}>
+            {BANK_SOURCES.map(sx=><option key={sx.key} value={sx.key}>{sx.emoji} {sx.name}</option>)}
+          </select>
+          <div style={{...zone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)"),marginTop:12}}>
+            <label style={lbl}>Name</label><input value={f.name||""} onChange={set("name")} style={inp} placeholder="Customer name"/>
+            <label style={lbl}>Phone</label><input value={f.phone||""} onChange={set("phone")} style={inp} inputMode="tel" placeholder="(555) 555-5555"/>
+            <label style={lbl}>Email</label><input value={f.email||""} onChange={set("email")} style={inp} inputMode="email" placeholder="name@email.com"/>
+            <label style={lbl}>Address</label><input value={f.address||""} onChange={set("address")} style={inp} placeholder="Street, city, ZIP"/>
+          </div>
+          <div style={zone("#fff7ed","#fed7aa","rgba(234,88,12,0.10)","rgba(234,88,12,0.4)")}>
+            <button type="button" onClick={()=>setShowUtil(v=>!v)} style={{width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>⚡ Utility Info {showUtil?"▲":"▼"}</button>
+            {showUtil && (<div>
+              <label style={lbl}>Utility company</label><input value={f.utility||""} onChange={set("utility")} style={inp}/>
+              <label style={lbl}>ESIID</label><input value={f.esiid||""} onChange={set("esiid")} style={inp}/>
+              <label style={lbl}>Meter #</label><input value={f.meter||""} onChange={set("meter")} style={inp}/>
+              <label style={lbl}>¢ / kWh</label><input value={f.cents_kwh||""} onChange={set("cents_kwh")} style={inp} inputMode="decimal"/>
+              <label style={lbl}>Annual kWh</label><input value={f.annual_kwh||""} onChange={set("annual_kwh")} style={inp} inputMode="numeric"/>
+              <label style={lbl}>Average bill</label><input value={f.average_bill||""} onChange={set("average_bill")} style={inp} inputMode="decimal"/>
+            </div>)}
+          </div>
+          <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
+            <label style={lbl}>📝 Notes</label>
+            <textarea value={f.notes||""} onChange={set("notes")} rows={3} style={{...inp,resize:"vertical"}} placeholder="Situation, context, what happened before…"/>
+            <label style={lbl}>🌳 Shading</label>{pills(BANK_SHADING,"shading")}
+            <label style={lbl}>🏠 Roof — age</label><input value={f.roof_age||""} onChange={set("roof_age")} style={inp} placeholder="e.g. 12 years"/>
+            <label style={lbl}>🏠 Roof — remaining useful life</label><input value={f.roof_life||""} onChange={set("roof_life")} style={inp} placeholder="e.g. 10+ years"/>
+            <label style={lbl}>🏠 Roof — condition</label>{pills(BANK_ROOF_COND,"roof_condition")}
+            <label style={lbl}>💳 Credit</label>{pills(BANK_CREDIT,"credit")}
+            <label style={lbl}>📞 Contact method</label>{pills(BANK_CONTACT,"contact_method")}
+            <label style={lbl}>⭐ Preferred contact method</label>{pills(BANK_CONTACT,"preferred_contact")}
+          </div>
+          <div style={zone("#f0fdf4","#bbf7d0","rgba(22,163,74,0.10)","rgba(34,197,94,0.4)")}>
+            <label style={lbl}>👤 Lead generator</label>
+            <select value={f.lead_generator||""} onChange={set("lead_generator")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_GENERATORS.map(o=><option key={o} value={o}>{o}</option>)}</select>
+            <label style={lbl}>🏡 Customer opportunity type</label>
+            <select value={f.opportunity_type||""} onChange={set("opportunity_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_OPportunities.map(o=><option key={o} value={o}>{o}</option>)}</select>
+            <label style={lbl}>🔄 Rehash / recovery type</label>
+            <select value={f.rehash_type||""} onChange={set("rehash_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}</select>
+            <label style={lbl}>🚫 Previous failure / disqualifier</label>
+            <select value={f.failure_type||""} onChange={set("failure_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_FAILURES.map(o=><option key={o} value={o}>{o}</option>)}</select>
+          </div>
+          {existing && (
+            <div style={{marginBottom:12}}>
+              <button type="button" onClick={()=>setShowHist(v=>!v)} style={{width:"100%",padding:"9px 0",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#94a3b8":"#475569",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>🕒 History {showHist?"▲":"▼"}</button>
+              {showHist && (
+                <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto"}}>
+                  {(Array.isArray(existing.history)?existing.history:[]).length===0 && <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No history yet.</div>}
+                  {(Array.isArray(existing.history)?existing.history:[]).map((h,i)=>(
+                    <div key={i} style={{borderRadius:9,padding:"8px 10px",background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{fontSize:10.5,fontWeight:800,color:dark?"#c7d2fe":"#4338ca"}}>{h.ts}{h.by?` — ${h.by}`:""}</div>
+                      {(h.changes||[]).map((c,j)=><div key={j} style={{fontSize:11.5,color:dark?"#cbd5e1":"#475569",marginTop:2}}>• {c}</div>)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>!saving&&onClose()} style={{flex:1,padding:"11px 0",borderRadius:9,border:"1.5px solid #e2e8f0",background:dark?"transparent":"#f8fafc",color:dark?"#cbd5e1":"#475569",fontWeight:700,cursor:"pointer",fontSize:14}}>Cancel</button>
+            <button onClick={save} disabled={saving} style={{flex:2,padding:"11px 0",borderRadius:9,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,cursor:saving?"default":"pointer",fontSize:14}}>{saving?"Saving…":(existing?"Save Changes":"Add Lead")}</button>
+          </div>
+          {existing && (confirmDel ? (
+            <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.10)":"#fff5f5",border:"1.5px solid #fca5a5"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#b91c1c",marginBottom:8}}>Delete this lead? This cannot be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setConfirmDel(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#475569",fontWeight:700,cursor:"pointer",fontSize:13}}>Cancel</button>
+                <button onClick={del} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:800,cursor:"pointer",fontSize:13}}>Delete</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setConfirmDel(true)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"1.5px solid #fee2e2",background:"transparent",color:"#ef4444",fontWeight:700,cursor:"pointer",fontSize:13}}>🗑️ Delete Lead</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [user,setUser]=useState(null);
   const [profile,setProfile]=useState(null);
@@ -18073,7 +18374,8 @@ function App() {
     ["stats","Stats"],
     ["team","Team"],
     ["canvass","Canvass"],
-    ["recruits","Recruits"]
+    ["recruits","Recruits"],
+    ["leadbank","Leads"]
   ];
 
   return (
@@ -18282,6 +18584,9 @@ function App() {
               onLeadView={(l,action)=>{if(action==="edit")setModal({open:true,lead:l});else if(action==="delete")deleteLead(l);else if(action==="update")setLeads(ls=>ls.map(x=>x.id===l.id?{...x,...l}:x));else setDetailId(typeof l==="string"?l:l.id);}}
             onViewInCanvass={lead=>{setDetailId(null);setTab("canvass");window._canvassJumpLead=lead;setTimeout(()=>{if(window._canvassJumpLead){const l=window._canvassJumpLead;window._canvassJumpLead=null;window._canvassJumpTrigger&&window._canvassJumpTrigger(l);}},300);}}/>
           </>
+        )}
+        {tab==="leadbank"&&(
+          <LeadBankTab user={user} profile={profile}/>
         )}
         {tab==="recruits"&&(
           <RecruitsDashboard
