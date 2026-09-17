@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b104";
+const APP_BUILD = "b105";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16912,8 +16912,8 @@ function LeadBankTab({user, profile}) {
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [loadErr, setLoadErr] = React.useState("");
-  const [openSource, setOpenSource] = React.useState(null); // source key or null (landing)
-  const [filters, setFilters] = React.useState({gen:"", opp:"", rehash:"", fail:""});
+  // One main view: every lead lives here, narrowed by the five colored filters.
+  const [filters, setFilters] = React.useState({src:"", gen:"", opp:"", rehash:"", fail:""});
   const [modal, setModal] = React.useState(null); // {row} edit | {source} create
   const load = async ()=>{
     setLoading(true); setLoadErr("");
@@ -16939,104 +16939,87 @@ function LeadBankTab({user, profile}) {
     );
   }
 
-  const srcOf = (k)=>BANK_SOURCES.find(x=>x.key===k)||BANK_SOURCES[BANK_SOURCES.length-1];
-  const counts = {};
-  rows.forEach(r=>{ counts[r.source]=(counts[r.source]||0)+1; });
-
-  // ── Landing: the big source boxes ──
-  if(!openSource){
-    return (
-      <div style={{flex:1,overflowY:"auto",padding:"18px 16px 40px"}}>
-        <div style={{textAlign:"center",marginBottom:4,fontSize:26,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em"}}>Lead Sources</div>
-        <div style={{textAlign:"center",fontSize:12.5,color:dark?"#94a3b8":"#64748b",marginBottom:18}}>Your bank of opportunities — pick a source to dig in ⛏️</div>
-        {loadErr && <div style={{margin:"0 auto 14px",maxWidth:520,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:14,maxWidth:760,margin:"0 auto"}}>
-          {BANK_SOURCES.map(src=>(
-            <div key={src.key} onClick={()=>{setOpenSource(src.key);setFilters({gen:"",opp:"",rehash:"",fail:""});}}
-              style={{cursor:"pointer",borderRadius:18,padding:"22px 14px 18px",textAlign:"center",background:`linear-gradient(145deg,${src.g1},${src.g2})`,boxShadow:`0 10px 26px -8px ${src.g2}88`,transform:"translateZ(0)",transition:"transform 0.12s",position:"relative",overflow:"hidden"}}
-              onTouchStart={e=>{e.currentTarget.style.transform="scale(0.96)";}} onTouchEnd={e=>{e.currentTarget.style.transform="scale(1)";}}
-              onMouseDown={e=>{e.currentTarget.style.transform="scale(0.96)";}} onMouseUp={e=>{e.currentTarget.style.transform="scale(1)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
-              <div style={{position:"absolute",top:-24,right:-24,width:90,height:90,borderRadius:"50%",background:"rgba(255,255,255,0.12)"}}/>
-              <div style={{fontSize:44,lineHeight:1,marginBottom:10,filter:"drop-shadow(0 4px 6px rgba(0,0,0,0.25))"}}>{src.emoji}</div>
-              <div style={{fontSize:14.5,fontWeight:800,color:"#fff",lineHeight:1.25,marginBottom:8,textShadow:"0 1px 3px rgba(0,0,0,0.25)"}}>{src.name}</div>
-              <div style={{display:"inline-block",background:"rgba(255,255,255,0.25)",borderRadius:20,padding:"2px 11px",fontSize:12,fontWeight:800,color:"#fff"}}>{counts[src.key]||0} lead{(counts[src.key]||0)===1?"":"s"}</div>
-            </div>
-          ))}
-        </div>
-        {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user}/>}
-      </div>
-    );
-  }
-
-  // ── Source opened full screen (filters always visible) ──
-  const src = srcOf(openSource);
+  const srcOf = (k)=>BANK_SOURCES.find(x=>x.key===k)||null;
   const F = filters;
-  const visible = rows.filter(r=>r.source===openSource)
+  const visible = rows
+    .filter(r=>!F.src||r.source===F.src)
     .filter(r=>!F.gen||r.lead_generator===F.gen)
     .filter(r=>!F.opp||r.opportunity_type===F.opp)
     .filter(r=>!F.rehash||r.rehash_type===F.rehash)
     .filter(r=>!F.fail||r.failure_type===F.fail);
-  const selStyle = {flex:"1 1 150px",minWidth:0,padding:"8px 9px",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer"};
-  const chip=(txt,color,bg)=>(<span key={txt} style={{fontSize:10,fontWeight:800,color,background:bg,borderRadius:12,padding:"2px 8px",whiteSpace:"nowrap"}}>{txt}</span>);
+  const anyF = !!(F.src||F.gen||F.opp||F.rehash||F.fail);
+  // Five colored filters — each its own hue + emoji.
+  const selBase={flex:"1 1 155px",minWidth:0,padding:"9px 10px",borderRadius:11,fontSize:12,fontWeight:800,outline:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)"};
+  const fsel=(key,emoji,label,options,accent,bgL,bgD,txtL,txtD,optVal)=>(
+    <select value={F[key]} onChange={e=>setFilters(x=>({...x,[key]:e.target.value}))}
+      style={{...selBase,border:`2px solid ${accent}`,background:dark?bgD:bgL,color:F[key]?(dark?txtD:txtL):(dark?txtD:txtL)}}>
+      <option value="">{emoji} {label} — All</option>
+      {options.map(o=><option key={optVal?optVal(o):o} value={optVal?optVal(o):o}>{typeof o==="object"?`${o.emoji} ${o.name}`:o}</option>)}
+    </select>
+  );
+  const chip=(txt,color,bg)=>(<span style={{fontSize:10,fontWeight:800,color,background:bg,borderRadius:12,padding:"2px 8px",whiteSpace:"nowrap"}}>{txt}</span>);
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"14px 14px 40px"}}>
-      {/* Source header */}
-      <div style={{borderRadius:16,padding:"14px 16px",marginBottom:12,background:`linear-gradient(135deg,${src.g1},${src.g2})`,display:"flex",alignItems:"center",gap:12,boxShadow:`0 8px 22px -8px ${src.g2}88`}}>
-        <button onClick={()=>setOpenSource(null)} style={{flexShrink:0,width:36,height:36,borderRadius:10,border:"none",background:"rgba(255,255,255,0.22)",color:"#fff",fontSize:18,fontWeight:800,cursor:"pointer"}}>‹</button>
-        <div style={{fontSize:30,lineHeight:1}}>{src.emoji}</div>
+    <div style={{flex:1,overflowY:"auto",padding:"16px 14px 40px"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,maxWidth:760,margin:"0 auto 12px"}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:17,fontWeight:900,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.25)"}}>{src.name}</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{visible.length} of {counts[openSource]||0} showing</div>
+          <div style={{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em",lineHeight:1.15}}>Lead Bank</div>
+          <div style={{fontSize:11.5,color:dark?"#94a3b8":"#64748b"}}>{visible.length} of {rows.length} lead{rows.length===1?"":"s"} showing</div>
         </div>
-        <button onClick={()=>setModal({source:openSource})}
-          style={{flexShrink:0,padding:"10px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.25)",whiteSpace:"nowrap"}}>+ Add Lead</button>
+        <button onClick={()=>setModal({source:F.src||"rehash"})}
+          style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
       </div>
-      {/* Filters — always visible */}
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-        <select value={F.gen} onChange={e=>setFilters(f=>({...f,gen:e.target.value}))} style={selStyle}>
-          <option value="">👤 Lead Generator — All</option>
-          {BANK_GENERATORS.map(o=><option key={o} value={o}>{o}</option>)}
-        </select>
-        <select value={F.opp} onChange={e=>setFilters(f=>({...f,opp:e.target.value}))} style={selStyle}>
-          <option value="">🏡 Opportunity Type — All</option>
-          {BANK_OPportunities.map(o=><option key={o} value={o}>{o}</option>)}
-        </select>
-        <select value={F.rehash} onChange={e=>setFilters(f=>({...f,rehash:e.target.value}))} style={selStyle}>
-          <option value="">🔄 Rehash / Recovery — All</option>
-          {BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}
-        </select>
-        <select value={F.fail} onChange={e=>setFilters(f=>({...f,fail:e.target.value}))} style={selStyle}>
-          <option value="">🚫 Failure / DQ — All</option>
-          {BANK_FAILURES.map(o=><option key={o} value={o}>{o}</option>)}
-        </select>
+      {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
+      {/* Five colored filters */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
+        {fsel("src","📦","Lead Source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
+        {fsel("gen","👤","Lead Generator",BANK_GENERATORS,"#6366f1","#eef2ff","rgba(99,102,241,0.14)","#4338ca","#a5b4fc")}
+        {fsel("opp","🏡","Opportunity Type",BANK_OPportunities,"#10b981","#ecfdf5","rgba(16,185,129,0.14)","#047857","#6ee7b7")}
+        {fsel("rehash","🔄","Rehash / Recovery",BANK_REHASH,"#f59e0b","#fffbeb","rgba(245,158,11,0.14)","#b45309","#fcd34d")}
+        {fsel("fail","🚫","Failure / DQ",BANK_FAILURES,"#ef4444","#fef2f2","rgba(239,68,68,0.14)","#b91c1c","#fca5a5")}
       </div>
+      {anyF && (
+        <div style={{maxWidth:760,margin:"0 auto 10px",textAlign:"right"}}>
+          <button onClick={()=>setFilters({src:"",gen:"",opp:"",rehash:"",fail:""})}
+            style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11.5,fontWeight:800,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>Clear all filters</button>
+        </div>
+      )}
       {loading ? (
         <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8",fontSize:13}}>Loading…</div>
+      ) : rows.length===0 ? (
+        <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
+          <div style={{fontSize:44,marginBottom:12}}>🏦</div>
+          <div style={{fontSize:15,fontWeight:800}}>Your bank is empty</div>
+          <div style={{fontSize:12.5,marginTop:4}}>Hit <b>+ Add Lead</b> to drop the first one in.</div>
+        </div>
       ) : visible.length===0 ? (
-        <div style={{textAlign:"center",padding:"46px 20px",color:dark?"#64748b":"#94a3b8"}}>
-          <div style={{fontSize:40,marginBottom:10}}>{src.emoji}</div>
-          <div style={{fontSize:14,fontWeight:700}}>Nothing here yet</div>
-          <div style={{fontSize:12,marginTop:4}}>Tap <b>+ Add Lead</b> to drop the first one in.</div>
+        <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
+          <div style={{fontSize:40,marginBottom:10}}>🔍</div>
+          <div style={{fontSize:14,fontWeight:700}}>No leads match those filters</div>
         </div>
       ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:640,margin:"0 auto"}}>
-          {visible.map(r=>(
-            <div key={r.id} onClick={()=>setModal({row:r})}
-              style={{cursor:"pointer",borderRadius:13,padding:"12px 14px",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e8e0d2"}`,borderLeft:`5px solid ${src.g1}`,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{flex:1,minWidth:0,fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Unnamed"}</div>
-                <div style={{fontSize:10.5,color:"#94a3b8",flexShrink:0}}>{r.created_at?new Date(r.created_at).toLocaleDateString():""}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:760,margin:"0 auto"}}>
+          {visible.map(r=>{
+            const sx = srcOf(r.source);
+            return (
+              <div key={r.id} onClick={()=>setModal({row:r})}
+                style={{cursor:"pointer",borderRadius:13,padding:"12px 14px",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e8e0d2"}`,borderLeft:`5px solid ${sx?sx.g1:"#94a3b8"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,minWidth:0,fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Unnamed"}</div>
+                  <div style={{fontSize:10.5,color:"#94a3b8",flexShrink:0}}>{r.created_at?new Date(r.created_at).toLocaleDateString():""}</div>
+                </div>
+                {(r.address||r.phone) && <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[r.address,r.phone].filter(Boolean).join(" · ")}</div>}
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
+                  {sx && chip(`${sx.emoji} ${sx.name}`, "#fff", `linear-gradient(135deg,${sx.g1},${sx.g2})`)}
+                  {r.lead_generator && chip("👤 "+r.lead_generator,"#4338ca",dark?"rgba(99,102,241,0.18)":"#eef2ff")}
+                  {r.opportunity_type && chip("🏡 "+r.opportunity_type,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}
+                  {r.rehash_type && chip("🔄 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
+                  {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
+                  {r.credit && chip("💳 "+r.credit, r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
+                </div>
               </div>
-              {(r.address||r.phone) && <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[r.address,r.phone].filter(Boolean).join(" · ")}</div>}
-              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
-                {r.lead_generator && chip("👤 "+r.lead_generator,"#4338ca",dark?"rgba(99,102,241,0.18)":"#eef2ff")}
-                {r.opportunity_type && chip("🏡 "+r.opportunity_type,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}
-                {r.rehash_type && chip("🔄 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
-                {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
-                {r.credit && chip("💳 "+r.credit, r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user}/>}
