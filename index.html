@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b114";
+const APP_BUILD = "b117";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16924,10 +16924,12 @@ function LeadBankTab({user, profile, profiles}) {
   const [loading, setLoading] = React.useState(false);
   const [loadErr, setLoadErr] = React.useState("");
   // One main view: every lead lives here, narrowed by the five colored filters.
-  const [filters, setFilters] = React.useState({src:"", gen:"", opp:[], rehash:"", fail:""});
+  const [filters, setFilters] = React.useState({src:"", opp:[], rehash:"", fail:""});
   const [oppOpen, setOppOpen] = React.useState(false); // opportunity-type multi-select sheet
-  const [genOpen, setGenOpen] = React.useState(false); // lead-owner rep picker sheet
-  const [genQ, setGenQ] = React.useState("");          // rep search text
+  const [mats, setMats] = React.useState([]);          // bank_materials rows
+  const [matModal, setMatModal] = React.useState(null); // {row} edit | {source} create
+  const [showLeads, setShowLeads] = React.useState(true); // book toggle: leads
+  const [showMat, setShowMat] = React.useState(true);     // book toggle: material
   const repList = (profiles||[]).filter(pp=>!pp.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
   const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const [modal, setModal] = React.useState(null); // {row} edit | {source} create
@@ -16948,6 +16950,10 @@ function LeadBankTab({user, profile, profiles}) {
         const {data:acc,error:ae} = await sb.from("bank_access").select("*");
         if(!ae) setAccess(Array.isArray(acc)?acc:[]);
       }catch(e2){ console.warn("bank_access load (run the bank_access SQL if you haven't):", e2); }
+      try{
+        const {data:mm,error:me} = await sb.from("bank_materials").select("*").order("created_at",{ascending:false});
+        if(!me) setMats(Array.isArray(mm)?mm:[]);
+      }catch(e3){ console.warn("bank_materials load (run the bank_materials SQL if you haven't):", e3); }
     }catch(e){ console.error("bank_leads load:",e); setLoadErr("Couldn't load the lead bank — run the bank_leads SQL if you haven't, then reopen this tab."); }
     setLoading(false);
   };
@@ -16978,14 +16984,19 @@ function LeadBankTab({user, profile, profiles}) {
   const viewablePeople = isOwner
     ? repList
     : repList.filter(pp=>pp.id===(user&&user.id) || granters.includes(pp.id));
-  const visible = rows
-    .filter(r=>scopeIds.includes(r.owner_id))
-    .filter(r=>!F.src||r.source===F.src)
-    .filter(r=>!F.gen||r.lead_generator===F.gen)
-    .filter(r=>{ if(!F.opp.length) return true; const ts=bankOppsOf(r); return ts.some(t=>F.opp.includes(t)); })
-    .filter(r=>!F.rehash||r.rehash_type===F.rehash)
-    .filter(r=>!F.fail||r.failure_type===F.fail);
-  const anyF = !!(F.src||F.gen||F.opp.length||F.rehash||F.fail);
+  const matchesFilters = (r)=>
+    (!F.src||r.source===F.src)
+    && (!F.opp.length || bankOppsOf(r).some(t=>F.opp.includes(t)))
+    && (!F.rehash||r.rehash_type===F.rehash)
+    && (!F.fail||r.failure_type===F.fail);
+  const visible = rows.filter(r=>scopeIds.includes(r.owner_id)).filter(matchesFilters);
+  const visibleMats = mats.filter(r=>scopeIds.includes(r.owner_id)).filter(matchesFilters);
+  // Books: the Leads / Material toggles decide what the list shows.
+  const items = [
+    ...(showLeads?visible.map(r=>({kind:"lead",r})):[]),
+    ...(showMat?visibleMats.map(r=>({kind:"mat",r})):[]),
+  ].sort((a,b)=>new Date(b.r.created_at||0)-new Date(a.r.created_at||0));
+  const anyF = !!(F.src||F.opp.length||F.rehash||F.fail);
   // Five colored filters — each its own hue + emoji.
   const selBase={flex:"1 1 155px",minWidth:0,height:60,padding:"9px 10px",borderRadius:11,fontSize:12,fontWeight:800,outline:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"};
   const fsel=(key,emoji,label,options,accent,bgL,bgD,txtL,txtD,optVal)=>(
@@ -16999,11 +17010,21 @@ function LeadBankTab({user, profile, profiles}) {
   return (
     <div style={{flex:1,overflowY:"auto",padding:"16px 14px 40px"}}>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:10,maxWidth:760,margin:"0 auto 12px"}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em",lineHeight:1.15}}>Lead Bank</div>
-          <div style={{fontSize:11.5,color:dark?"#94a3b8":"#64748b"}}>{visible.length} of {rows.length} lead{rows.length===1?"":"s"} showing</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,maxWidth:760,margin:"0 auto 12px",flexWrap:"wrap"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em",lineHeight:1.15}}>Leads</div>
+          <div style={{fontSize:11.5,color:dark?"#94a3b8":"#64748b"}}>{items.length} showing</div>
         </div>
+        {/* Book toggles — flip either on/off to show leads, material, both, or none */}
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setShowLeads(v=>!v)}
+            style={{padding:"9px 12px",borderRadius:10,border:`2px solid ${showLeads?(dark?"#94a3b8":"#1a2456"):(dark?"#334155":"#cbd5e1")}`,background:showLeads?(dark?"rgba(148,163,184,0.15)":"#f0f4ff"):(dark?"#0f172a":"#fff"),color:showLeads?(dark?"#f1f5f9":"#1a2456"):"#94a3b8",fontWeight:800,fontSize:12,cursor:"pointer"}}>🗂️ Leads</button>
+          <button onClick={()=>setShowMat(v=>!v)}
+            style={{padding:"9px 12px",borderRadius:10,border:`2px solid ${showMat?"#ca8a04":(dark?"#334155":"#cbd5e1")}`,background:showMat?(dark?"rgba(202,138,4,0.14)":"#fefce8"):(dark?"#0f172a":"#fff"),color:showMat?(dark?"#fcd34d":"#a16207"):"#94a3b8",fontWeight:800,fontSize:12,cursor:"pointer"}}>📎 Material</button>
+        </div>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setMatModal({source:F.src||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||""})}
+          style={{flexShrink:0,padding:"11px 14px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Material</button>
         <button onClick={()=>setModal({source:F.src||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||""})}
           style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
       </div>
@@ -17021,10 +17042,6 @@ function LeadBankTab({user, profile, profiles}) {
       </div>
       {/* Five colored filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
-        <button onClick={()=>{setGenQ("");setGenOpen(true);}}
-          style={{...selBase,border:"2px solid #6366f1",background:dark?"rgba(99,102,241,0.14)":"#eef2ff",color:dark?"#a5b4fc":"#4338ca",textAlign:"left"}}>
-          👤 Lead owner — {F.gen?(repName(F.gen)||"1 selected"):"All"} ›
-        </button>
         <button onClick={()=>setOppOpen(true)}
           style={{...selBase,border:"2px solid #10b981",background:dark?"rgba(16,185,129,0.14)":"#ecfdf5",color:dark?"#6ee7b7":"#047857",textAlign:"left"}}>
           🏡 Opportunity type — {F.opp.length?`${F.opp.length} selected`:"All"} ▾
@@ -17035,27 +17052,53 @@ function LeadBankTab({user, profile, profiles}) {
       </div>
       {anyF && (
         <div style={{maxWidth:760,margin:"0 auto 10px",textAlign:"right"}}>
-          <button onClick={()=>setFilters({src:"",gen:"",opp:[],rehash:"",fail:""})}
+          <button onClick={()=>setFilters({src:"",opp:[],rehash:"",fail:""})}
             style={{background:"none",border:"none",color:"#6b2d4e",fontSize:11.5,fontWeight:800,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>Clear all filters</button>
         </div>
       )}
       {loading ? (
         <div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8",fontSize:13}}>Loading…</div>
-      ) : rows.length===0 ? (
+      ) : (rows.length+mats.length)===0 ? (
         <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
           <div style={{fontSize:44,marginBottom:12}}>🏦</div>
           <div style={{fontSize:15,fontWeight:800}}>Your bank is empty</div>
-          <div style={{fontSize:12.5,marginTop:4}}>Hit <b>+ Add Lead</b> to drop the first one in.</div>
+          <div style={{fontSize:12.5,marginTop:4}}>Hit <b>+ Add Lead</b> or <b>+ Add Material</b> to drop the first thing in.</div>
         </div>
-      ) : visible.length===0 ? (
+      ) : items.length===0 ? (
         <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
           <div style={{fontSize:40,marginBottom:10}}>🔍</div>
-          <div style={{fontSize:14,fontWeight:700}}>No leads match those filters</div>
+          <div style={{fontSize:14,fontWeight:700}}>Nothing to show</div>
+          <div style={{fontSize:12,marginTop:4}}>Check your filters — and the 🗂️ Leads / 📎 Material toggles up top.</div>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:760,margin:"0 auto"}}>
-          {visible.map(r=>{
+          {items.map(it=>{
+            const r = it.r;
             const sx = srcOf(r.source);
+            if(it.kind==="mat"){
+              return (
+                <div key={"m"+r.id} onClick={()=>setMatModal({row:r})}
+                  style={{cursor:"pointer",borderRadius:13,padding:"12px 14px",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e8e0d2"}`,borderLeft:"5px solid #ca8a04",boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,minWidth:0,fontSize:15,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {r.title||"Material"}</div>
+                    <div style={{fontSize:10.5,color:"#94a3b8",flexShrink:0}}>{r.created_at?new Date(r.created_at).toLocaleDateString():""}</div>
+                  </div>
+                  {(Array.isArray(r.photos)&&r.photos.length>0) && (
+                    <div style={{display:"flex",gap:6,marginTop:7}}>
+                      {r.photos.slice(0,4).map((ph,i2)=><img key={i2} src={ph} style={{width:44,height:44,objectFit:"cover",borderRadius:8,border:"1px solid rgba(0,0,0,0.08)"}}/>)}
+                      {r.photos.length>4 && <div style={{width:44,height:44,borderRadius:8,background:dark?"#0f172a":"#f3ede3",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#94a3b8"}}>+{r.photos.length-4}</div>}
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
+                    {(Array.isArray(r.files)&&r.files.length>0)&&chip("📄 "+r.files.length+" file"+(r.files.length===1?"":"s"),"#475569",dark?"rgba(148,163,184,0.15)":"#f8fafc")}
+                    {sx && chip(`${sx.emoji} ${sx.name}`, "#fff", `linear-gradient(135deg,${sx.g1},${sx.g2})`)}
+                    {bankOppsOf(r).map(t=><React.Fragment key={t}>{chip("🏡 "+t,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}</React.Fragment>)}
+                    {r.rehash_type && chip("🪜 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
+                    {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={r.id} onClick={()=>setModal({row:r})}
                 style={{cursor:"pointer",borderRadius:13,padding:"12px 14px",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e8e0d2"}`,borderLeft:`5px solid ${sx?sx.g1:"#94a3b8"}`,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
@@ -17070,7 +17113,7 @@ function LeadBankTab({user, profile, profiles}) {
                   {bankOppsOf(r).map(t=><React.Fragment key={t}>{chip("🏡 "+t,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}</React.Fragment>)}
                   {r.rehash_type && chip("🪜 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
                   {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
-                  {r.credit && chip("💳 "+r.credit, r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
+                  {r.credit && chip("💳 "+r.credit+(r.credit==="Unknown"&&r.credit_rating?` (${r.credit_rating})`:""), r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
                 </div>
               </div>
             );
@@ -17143,27 +17186,6 @@ function LeadBankTab({user, profile, profiles}) {
           </div>
         </div>
       )}
-      {genOpen && (
-        <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setGenOpen(false)}>
-          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
-          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>👤 Lead owner</div>
-            <input autoFocus value={genQ} onChange={e=>setGenQ(e.target.value)} placeholder="🔍 Search reps…"
-              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
-            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"48vh",overflowY:"auto"}}>
-              <div onClick={()=>{setFilters(x=>({...x,gen:""}));setGenOpen(false);}}
-                style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${!F.gen?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:!F.gen?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:800,color:!F.gen?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569")}}>All reps</div>
-              {repList.filter(pp=>{ const q=genQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
-                const on = F.gen===pp.id;
-                return (
-                  <div key={pp.id} onClick={()=>{setFilters(x=>({...x,gen:pp.id}));setGenOpen(false);}}
-                    style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:on?800:600,color:on?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
       {oppOpen && (
         <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setOppOpen(false)}>
           <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
@@ -17186,23 +17208,211 @@ function LeadBankTab({user, profile, profiles}) {
         </div>
       )}
       {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user} profiles={profiles}/>}
+      {matModal && <BankMaterialModal modal={matModal} onClose={()=>setMatModal(null)} setMats={setMats} profile={profile} user={user}/>}
     </div>
   );
 }
 
+// Create / edit one MATERIAL entry (photos + files with the same classification
+// filters as leads). Stored in bank_materials; history at the bottom.
+function BankMaterialModal({modal, onClose, setMats, profile, user}) {
+  const dark = useDark();
+  const existing = modal.row||null;
+  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",title:"",notes:"",photos:[],files:[],opportunity_types:[],rehash_type:"",failure_type:""};
+  const [f,setF] = React.useState(existing?{...blank,...existing,photos:Array.isArray(existing.photos)?existing.photos:[],files:Array.isArray(existing.files)?existing.files:[],opportunity_types:bankOppsOf(existing)}:blank);
+  const [saving,setSaving] = React.useState(false);
+  const [showHist,setShowHist] = React.useState(false);
+  const [confirmDel,setConfirmDel] = React.useState(false);
+  const [oppOpen,setOppOpen] = React.useState(false); // opportunity-type dropdown sheet
+  const photoRef = React.useRef(null);
+  const fileRef = React.useRef(null);
+  const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
+  const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+  const lbl={display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",margin:"12px 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"};
+  // Downscale photos so the row stays light (max 1400px, jpeg).
+  const shrink=(file)=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const img=new Image(); img.onload=()=>{ try{ const M=1400; let w=img.width,h=img.height; if(w>M||h>M){ const k=Math.min(M/w,M/h); w=Math.round(w*k); h=Math.round(h*k);} const c=document.createElement("canvas"); c.width=w;c.height=h; c.getContext("2d").drawImage(img,0,0,w,h); res(c.toDataURL("image/jpeg",0.82)); }catch(e){ rej(e); } }; img.onerror=rej; img.src=r.result; }; r.onerror=rej; r.readAsDataURL(file); });
+  const addPhotos = async (list)=>{
+    for(const file of Array.from(list||[])){
+      try{ const d=await shrink(file); setF(x=>({...x,photos:[...(x.photos||[]),d]})); }
+      catch(e){ console.error("photo add:",e); }
+    }
+  };
+  const addFiles = (list)=>{
+    Array.from(list||[]).forEach(file=>{
+      if(file.size>3*1024*1024){ window.alert(`"${file.name}" is over 3 MB — too big to store here. Compress it or share a link in notes.`); return; }
+      const r=new FileReader();
+      r.onload=()=>setF(x=>({...x,files:[...(x.files||[]),{name:file.name,type:file.type||"",data:r.result}]}));
+      r.readAsDataURL(file);
+    });
+  };
+  const author=(profile&&(profile.name||profile.email))||(user&&user.email)||"Owner";
+  const save = async ()=>{
+    if(!(f.title||"").trim() && (f.photos||[]).length===0 && (f.files||[]).length===0){ window.alert("Give it a title, a photo, or a file first."); return; }
+    setSaving(true);
+    try{
+      if(existing){
+        const watch={source:"Source",title:"Title",notes:"Notes",rehash_type:"Lead stage",failure_type:"Failure / DQ"};
+        const changes=[];
+        Object.entries(watch).forEach(([k,label])=>{ if((existing[k]||"")!==(f[k]||"")) changes.push(`${label}: "${existing[k]||"-"}" to "${f[k]||"-"}"`); });
+        const oldOpps=bankOppsOf(existing).join(", "), newOpps=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).join(", ");
+        if(oldOpps!==newOpps) changes.push(`Opportunity types: "${oldOpps||"-"}" to "${newOpps||"-"}"`);
+        const oP=(Array.isArray(existing.photos)?existing.photos:[]).length, nP=(f.photos||[]).length;
+        if(nP>oP) changes.push(`Photos: Added ${nP-oP}`); else if(nP<oP) changes.push(`Photos: Removed ${oP-nP}`);
+        const oF=(Array.isArray(existing.files)?existing.files:[]).length, nF=(f.files||[]).length;
+        if(nF>oF) changes.push(`Files: Added ${nF-oF}`); else if(nF<oF) changes.push(`Files: Removed ${oF-nF}`);
+        const hist = changes.length ? [{ts:formatTs(),by:author,changes},...(Array.isArray(existing.history)?existing.history:[])] : (existing.history||[]);
+        const upd={...f,history:hist,updated_at:new Date().toISOString()};
+        delete upd.id; delete upd.created_at;
+        const {error}=await sb.from("bank_materials").update(upd).eq("id",existing.id);
+        if(error) throw error;
+        setMats(rs=>rs.map(x=>x.id===existing.id?{...x,...upd,id:existing.id}:x));
+      } else {
+        const row={...f,owner_id:user.id,history:[{ts:formatTs(),by:author,changes:["Material added"]}]};
+        const {data,error}=await sb.from("bank_materials").insert(row).select().single();
+        if(error) throw error;
+        setMats(rs=>[data,...rs]);
+      }
+      onClose();
+    }catch(e){ console.error("material save:",e); window.alert("Couldn't save — run the bank_materials SQL if you haven't. ("+((e&&e.message)||"error")+")"); }
+    setSaving(false);
+  };
+  const del = async ()=>{
+    try{
+      const {error}=await sb.from("bank_materials").delete().eq("id",existing.id);
+      if(error) throw error;
+      setMats(rs=>rs.filter(x=>x.id!==existing.id));
+      onClose();
+    }catch(e){ window.alert("Couldn't delete: "+((e&&e.message)||"error")); }
+  };
+  const zone=(bg,bd,bgD,bdD)=>({background:dark?bgD:bg,border:`1.5px solid ${dark?bdD:bd}`,borderRadius:14,padding:"4px 12px 12px",marginBottom:12});
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2600}}>
+      {oppOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2850}} onClick={()=>setOppOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>🏡 Opportunity type <span style={{fontWeight:600,fontSize:11,color:"#94a3b8"}}>(select all that apply)</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"55vh",overflowY:"auto"}}>
+              {BANK_OPportunities.map(o=>{ const on=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).includes(o); return (
+                <div key={o} onClick={()=>setF(x=>{const cur=Array.isArray(x.opportunity_types)?x.opportunity_types:[];return {...x,opportunity_types:on?cur.filter(v=>v!==o):[...cur,o]};})}
+                  style={{display:"flex",alignItems:"center",gap:9,padding:"9px 11px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#10b981":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(16,185,129,0.14)":"#ecfdf5"):(dark?"#0f172a":"#fff")}}>
+                  <div style={{width:15,height:15,borderRadius:4,border:`2px solid ${on?"#10b981":"rgba(148,163,184,0.6)"}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{on&&<span style={{color:"#fff",fontSize:10,fontWeight:900}}>✓</span>}</div>
+                  <span style={{fontSize:13,fontWeight:on?800:600,color:on?(dark?"#6ee7b7":"#047857"):(dark?"#cbd5e1":"#475569")}}>{o}</span>
+                </div>
+              );})}
+            </div>
+            <button type="button" onClick={()=>setOppOpen(false)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#10b981,#059669)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer"}}>Done</button>
+          </div>
+        </div>
+      )}
+      <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>!saving&&onClose()}/>
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+        <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"20px 20px 24px",width:"min(96vw,470px)",maxHeight:"92vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Material":"📎 New Material"}</div>
+            <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
+          </div>
+          <label style={{...lbl,marginTop:0}}>Title</label>
+          <input value={f.title||""} onChange={set("title")} style={inp} placeholder="What is this material?"/>
+          <div style={{...zone("#fefce8","#fde68a","rgba(202,138,4,0.10)","rgba(202,138,4,0.4)"),marginTop:12}}>
+            <label style={lbl}>📸 Photos {(f.photos||[]).length>0&&<span style={{color:"#ca8a04"}}>({(f.photos||[]).length})</span>}</label>
+            {(f.photos||[]).length>0 && (
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                {(f.photos||[]).map((ph,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={ph} style={{width:74,height:74,objectFit:"cover",borderRadius:10,border:"1px solid rgba(0,0,0,0.1)"}}/>
+                    <button type="button" onClick={()=>setF(x=>({...x,photos:(x.photos||[]).filter((_,j)=>j!==i)}))}
+                      style={{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",border:"none",background:"#ef4444",color:"#fff",fontSize:12,fontWeight:900,cursor:"pointer",lineHeight:1}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{addPhotos(e.target.files); e.target.value="";}}/>
+            <button type="button" onClick={()=>photoRef.current&&photoRef.current.click()}
+              style={{width:"100%",padding:"10px 0",borderRadius:9,border:"1.5px dashed #ca8a04",background:"transparent",color:dark?"#fcd34d":"#a16207",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>+ Add Photos</button>
+          </div>
+          <div style={zone("#f8fafc","#e2e8f0","rgba(148,163,184,0.10)","rgba(148,163,184,0.4)")}>
+            <label style={lbl}>📄 Files {(f.files||[]).length>0&&<span style={{color:"#475569"}}>({(f.files||[]).length})</span>}</label>
+            {(f.files||[]).map((fl,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:9,background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:6}}>
+                <a href={fl.data} download={fl.name} style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:700,color:dark?"#93c5fd":"#2563eb",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"none"}}>📄 {fl.name}</a>
+                <button type="button" onClick={()=>setF(x=>({...x,files:(x.files||[]).filter((_,j)=>j!==i)}))}
+                  style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:800,fontSize:13,cursor:"pointer"}}>✕</button>
+              </div>
+            ))}
+            <input ref={fileRef} type="file" multiple style={{display:"none"}} onChange={e=>{addFiles(e.target.files); e.target.value="";}}/>
+            <button type="button" onClick={()=>fileRef.current&&fileRef.current.click()}
+              style={{width:"100%",padding:"10px 0",borderRadius:9,border:`1.5px dashed ${dark?"#64748b":"#94a3b8"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>+ Add Files</button>
+          </div>
+          <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
+            <label style={lbl}>📝 Notes</label>
+            <textarea value={f.notes||""} onChange={set("notes")} rows={2} style={{...inp,resize:"vertical"}} placeholder="What's this for, where's it from…"/>
+          </div>
+          <div style={zone("#f0fdf4","#bbf7d0","rgba(22,163,74,0.10)","rgba(34,197,94,0.4)")}>
+            <label style={lbl}>📦 Lead source</label>
+            <select value={f.source||""} onChange={set("source")} style={{...inp,cursor:"pointer"}}>
+              {BANK_SOURCES.map(sx=><option key={sx.key} value={sx.key}>{sx.emoji} {sx.name}</option>)}
+            </select>
+            <label style={lbl}>🏡 Customer opportunity type</label>
+            {(()=>{ const sel=Array.isArray(f.opportunity_types)?f.opportunity_types:[]; return (
+              <button type="button" onClick={()=>setOppOpen(true)}
+                style={{...inp,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.length?sel.join(", "):"—"}</span>
+                <span style={{color:"#94a3b8",fontWeight:800,flexShrink:0}}>▾</span>
+              </button>
+            ); })()}
+            <label style={lbl}>🪜 Lead stage</label>
+            <select value={f.rehash_type||""} onChange={set("rehash_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}</select>
+            <label style={lbl}>🚫 Previous failure / disqualifier</label>
+            <select value={f.failure_type||""} onChange={set("failure_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_FAILURES.map(o=><option key={o} value={o}>{o}</option>)}</select>
+          </div>
+          {existing && (
+            <div style={{marginBottom:12}}>
+              <button type="button" onClick={()=>setShowHist(v=>!v)} style={{width:"100%",padding:"9px 0",borderRadius:9,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#94a3b8":"#475569",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>🕒 History {showHist?"▲":"▼"}</button>
+              {showHist && (
+                <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto"}}>
+                  {(Array.isArray(existing.history)?existing.history:[]).length===0 && <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No history yet.</div>}
+                  {(Array.isArray(existing.history)?existing.history:[]).map((h,i)=>(
+                    <div key={i} style={{borderRadius:9,padding:"8px 10px",background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`}}>
+                      <div style={{fontSize:10.5,fontWeight:800,color:dark?"#c7d2fe":"#4338ca"}}>{h.ts}{h.by?` — ${h.by}`:""}</div>
+                      {(h.changes||[]).map((c,j)=><div key={j} style={{fontSize:11.5,color:dark?"#cbd5e1":"#475569",marginTop:2}}>• {c}</div>)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>!saving&&onClose()} style={{flex:1,padding:"11px 0",borderRadius:9,border:"1.5px solid #e2e8f0",background:dark?"transparent":"#f8fafc",color:dark?"#cbd5e1":"#475569",fontWeight:700,cursor:"pointer",fontSize:14}}>Cancel</button>
+            <button onClick={save} disabled={saving} style={{flex:2,padding:"11px 0",borderRadius:9,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,cursor:saving?"default":"pointer",fontSize:14}}>{saving?"Saving…":(existing?"Save Changes":"Add Material")}</button>
+          </div>
+          {existing && (confirmDel ? (
+            <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.10)":"#fff5f5",border:"1.5px solid #fca5a5"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#b91c1c",marginBottom:8}}>Delete this material? This cannot be undone.</div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setConfirmDel(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#475569",fontWeight:700,cursor:"pointer",fontSize:13}}>Cancel</button>
+                <button onClick={del} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:800,cursor:"pointer",fontSize:13}}>Delete</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setConfirmDel(true)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"1.5px solid #fee2e2",background:"transparent",color:"#ef4444",fontWeight:700,cursor:"pointer",fontSize:13}}>🗑️ Delete Material</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 // Create / edit one bank lead. History (created + every change) sits at the bottom.
 function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles}) {
   const dark = useDark();
   const existing = modal.row||null;
-  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
+  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",credit_rating:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
   const [f,setF] = React.useState(existing?{...blank,...existing,opportunity_types:bankOppsOf(existing)}:blank);
   const [saving,setSaving] = React.useState(false);
   const [showUtil,setShowUtil] = React.useState(false);
+  const [oppOpen,setOppOpen] = React.useState(false); // opportunity-type dropdown sheet
   const [showHist,setShowHist] = React.useState(false);
   const [confirmDel,setConfirmDel] = React.useState(false);
-  const [repOpen,setRepOpen] = React.useState(false); // lead-owner picker sheet
-  const [repQ,setRepQ] = React.useState("");
-  const repList = (profiles||[]).filter(pp=>!pp.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
   const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}; 
@@ -17221,7 +17431,7 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
     setSaving(true);
     try{
       if(existing){
-        const watch={source:"Source",name:"Name",phone:"Phone",email:"Email",address:"Address",utility:"Utility",esiid:"ESIID",meter:"Meter",usage_input:"Usage",cents_kwh:"¢/kWh",annual_kwh:"Annual kWh",average_bill:"Avg bill",notes:"Notes",shading:"Shading",roof_age:"Roof age",roof_life:"Roof life",roof_condition:"Roof condition",credit:"Credit",contact_method:"Contact method",preferred_contact:"Preferred contact",rehash_type:"Lead stage",failure_type:"Failure / DQ"};
+        const watch={source:"Source",name:"Name",phone:"Phone",email:"Email",address:"Address",utility:"Utility",esiid:"ESIID",meter:"Meter",usage_input:"Usage",cents_kwh:"¢/kWh",annual_kwh:"Annual kWh",average_bill:"Avg bill",notes:"Notes",shading:"Shading",roof_age:"Roof age",roof_life:"Roof life",roof_condition:"Roof condition",credit:"Credit",credit_rating:"Credit rating",contact_method:"Contact method used",preferred_contact:"Preferred contact",rehash_type:"Lead stage",failure_type:"Failure / DQ"};
         const changes=[];
         Object.entries(watch).forEach(([k,label])=>{ if((existing[k]||"")!==(f[k]||"")) changes.push(`${label}: "${existing[k]||"-"}" to "${f[k]||"-"}"`); });
         const oldOpps=bankOppsOf(existing).join(", "), newOpps=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).join(", ");
@@ -17234,7 +17444,7 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
         if(error) throw error;
         setRows(rs=>rs.map(x=>x.id===existing.id?{...x,...upd,id:existing.id}:x));
       } else {
-        const row={...f,owner_id:user.id,history:[{ts:formatTs(),by:author,changes:["Lead created"]}]};
+        const row={...f,owner_id:user.id,lead_generator:user.id,history:[{ts:formatTs(),by:author,changes:["Lead created"]}]};
         const {data,error}=await sb.from("bank_leads").insert(row).select().single();
         if(error) throw error;
         setRows(rs=>[data,...rs]);
@@ -17254,32 +17464,35 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
   const zone=(bg,bd,bgD,bdD)=>({background:dark?bgD:bg,border:`1.5px solid ${dark?bdD:bd}`,borderRadius:14,padding:"4px 12px 12px",marginBottom:12});
   return (
     <div style={{position:"fixed",inset:0,zIndex:2600}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>!saving&&onClose()}/>
-      {repOpen && (
-        <div style={{position:"fixed",inset:0,zIndex:2800}} onClick={()=>setRepOpen(false)}>
+      {oppOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2850}} onClick={()=>setOppOpen(false)}>
           <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
           <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>👤 Lead owner</div>
-            <input autoFocus value={repQ} onChange={e=>setRepQ(e.target.value)} placeholder="🔍 Search reps…"
-              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
-            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"48vh",overflowY:"auto"}}>
-              <div onClick={()=>{setF(x=>({...x,lead_generator:""}));setRepOpen(false);}}
-                style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",fontSize:13,fontWeight:700,color:dark?"#94a3b8":"#64748b"}}>— None —</div>
-              {repList.filter(pp=>{ const q=repQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
-                const on = f.lead_generator===pp.id;
-                return (
-                  <div key={pp.id} onClick={()=>{setF(x=>({...x,lead_generator:pp.id}));setRepOpen(false);}}
-                    style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:on?800:600,color:on?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</div>
-                );
-              })}
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>🏡 Opportunity type <span style={{fontWeight:600,fontSize:11,color:"#94a3b8"}}>(select all that apply)</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"55vh",overflowY:"auto"}}>
+              {BANK_OPportunities.map(o=>{ const on=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).includes(o); return (
+                <div key={o} onClick={()=>setF(x=>{const cur=Array.isArray(x.opportunity_types)?x.opportunity_types:[];return {...x,opportunity_types:on?cur.filter(v=>v!==o):[...cur,o]};})}
+                  style={{display:"flex",alignItems:"center",gap:9,padding:"9px 11px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#10b981":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(16,185,129,0.14)":"#ecfdf5"):(dark?"#0f172a":"#fff")}}>
+                  <div style={{width:15,height:15,borderRadius:4,border:`2px solid ${on?"#10b981":"rgba(148,163,184,0.6)"}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{on&&<span style={{color:"#fff",fontSize:10,fontWeight:900}}>✓</span>}</div>
+                  <span style={{fontSize:13,fontWeight:on?800:600,color:on?(dark?"#6ee7b7":"#047857"):(dark?"#cbd5e1":"#475569")}}>{o}</span>
+                </div>
+              );})}
             </div>
+            <button type="button" onClick={()=>setOppOpen(false)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#10b981,#059669)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer"}}>Done</button>
           </div>
         </div>
       )}
+      <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>!saving&&onClose()}/>
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"20px 20px 24px",width:"min(96vw,470px)",maxHeight:"92vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Lead":"➕ New Lead"}</div>
+            <div>
+              <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Lead":"➕ New Lead"}</div>
+              <div style={{display:"flex",alignItems:"center",gap:5,marginTop:3,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
+                <span style={{fontSize:13}}>👤</span>
+                <span>Owner: <b style={{color:dark?"#e2e8f0":"#1a2456"}}>{repName(existing?(existing.lead_generator||existing.owner_id):(user&&user.id))||"—"}</b></span>
+              </div>
+            </div>
             <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
           </div>
           <label style={{...lbl,marginTop:0}}>Source</label>
@@ -17307,27 +17520,33 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
             <label style={lbl}>📝 Notes</label>
             <textarea value={f.notes||""} onChange={set("notes")} rows={3} style={{...inp,resize:"vertical"}} placeholder="Situation, context, what happened before…"/>
             <label style={lbl}>🌳 Shading</label>{pills(BANK_SHADING,"shading")}
-            <label style={lbl}>🏠 Roof — age</label><input value={f.roof_age||""} onChange={set("roof_age")} style={inp} placeholder="e.g. 12 years"/>
-            <label style={lbl}>🏠 Roof — remaining useful life</label><input value={f.roof_life||""} onChange={set("roof_life")} style={inp} placeholder="e.g. 10+ years"/>
+            <label style={lbl}>🏠 Roof — age</label>
+            <select value={f.roof_age||""} onChange={set("roof_age")} style={{...inp,cursor:"pointer"}}>
+              <option value="">—</option>
+              {Array.from({length:51},(_,n)=><option key={n} value={`${n} years`}>{n} year{n===1?"":"s"}</option>)}
+            </select>
+            <label style={lbl}>🏠 Roof — remaining useful life</label>
+            <select value={f.roof_life||""} onChange={set("roof_life")} style={{...inp,cursor:"pointer"}}>
+              <option value="">—</option>
+              {Array.from({length:51},(_,n)=><option key={n} value={`${n} years`}>{n} year{n===1?"":"s"}</option>)}
+            </select>
             <label style={lbl}>🏠 Roof — condition</label>{pills(BANK_ROOF_COND,"roof_condition")}
             <label style={lbl}>💳 Credit</label>{pills(BANK_CREDIT,"credit")}
-            <label style={lbl}>📞 Contact method</label>{pills(BANK_CONTACT,"contact_method")}
+            {f.credit==="Unknown" && (
+              <input value={f.credit_rating||""} onChange={set("credit_rating")} style={{...inp,marginTop:8}} placeholder="Type their credit rating…"/>
+            )}
+            <label style={lbl}>📞 Contact method used</label>{pills(BANK_CONTACT,"contact_method")}
             <label style={lbl}>⭐ Preferred contact method</label>{pills(BANK_CONTACT,"preferred_contact")}
           </div>
           <div style={zone("#f0fdf4","#bbf7d0","rgba(22,163,74,0.10)","rgba(34,197,94,0.4)")}>
-            <label style={lbl}>👤 Lead owner</label>
-            <button type="button" onClick={()=>{setRepQ("");setRepOpen(true);}}
-              style={{...inp,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{repName(f.lead_generator)||f.lead_generator||"Select rep"}</span>
-              <span style={{color:"#94a3b8",fontWeight:800}}>›</span>
-            </button>
-            <label style={lbl}>🏡 Customer opportunity type <span style={{textTransform:"none",fontWeight:600,color:"#94a3b8"}}>(select all that apply)</span></label>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {BANK_OPportunities.map(o=>{ const on=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).includes(o); return (
-                <button key={o} type="button" onClick={()=>setF(x=>{const cur=Array.isArray(x.opportunity_types)?x.opportunity_types:[];return {...x,opportunity_types:on?cur.filter(v=>v!==o):[...cur,o]};})}
-                  style={{padding:"7px 12px",borderRadius:16,border:`1.5px solid ${on?"#10b981":(dark?"#334155":"#e2e8f0")}`,background:on?"#065f46":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{o}</button>
-              );})}
-            </div>
+            <label style={lbl}>🏡 Customer opportunity type</label>
+            {(()=>{ const sel=Array.isArray(f.opportunity_types)?f.opportunity_types:[]; return (
+              <button type="button" onClick={()=>setOppOpen(true)}
+                style={{...inp,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sel.length?sel.join(", "):"—"}</span>
+                <span style={{color:"#94a3b8",fontWeight:800,flexShrink:0}}>▾</span>
+              </button>
+            ); })()}
             <label style={lbl}>🪜 Lead stage</label>
             <select value={f.rehash_type||""} onChange={set("rehash_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}</select>
             <label style={lbl}>🚫 Previous failure / disqualifier</label>
