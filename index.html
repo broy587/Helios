@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b118";
+const APP_BUILD = "b119";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16981,8 +16981,10 @@ function LeadBankTab({user, profile, profiles}) {
   const effSel = (viewSel||[]).filter(id=> id && (!allowedIds || allowedIds.has(id)));
   const scopeIds = effSel.length ? effSel : [user&&user.id];
   const myGrantees = access.filter(a=>a && a.granter_id===(user&&user.id)).map(a=>a.grantee_id);
+  // Owner's Viewing list: only people who can actually HAVE leads here — managers
+  // (and the owner) for now, since they're the only ones who can enter this tab.
   const viewablePeople = isOwner
-    ? repList
+    ? repList.filter(pp=>pp.id===(user&&user.id) || pp.role==="manager")
     : repList.filter(pp=>pp.id===(user&&user.id) || granters.includes(pp.id));
   const matchesFilters = (r)=>
     (!F.src||r.source===F.src)
