@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b106";
+const APP_BUILD = "b109";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16890,12 +16890,18 @@ function SongOfDay({url}) {
 // A vibrant bank of second-chance / opportunity leads, organized by SOURCE.
 // Separate from the pipeline: rows live in the bank_leads table.
 const BANK_SOURCES = [
-  {key:"rehash",   name:"Rehash & Recovery",      emoji:"🔄", g1:"#f59e0b", g2:"#d97706", blurb:"Old leads, old quotes, no-shows & cancels — worth another pass"},
-  {key:"custopp",  name:"Customer Opportunities", emoji:"🏡", g1:"#10b981", g2:"#059669", blurb:"Past customers, expansions, battery add-ons, movers & high bills"},
-  {key:"failed",   name:"Previous Failures / DQ", emoji:"🚫", g1:"#ef4444", g2:"#b91c1c", blurb:"Couldn't move forward before — credit, roof, HOA, utility…"},
-  {key:"referral", name:"Referrals",              emoji:"🤝", g1:"#3b82f6", g2:"#2563eb", blurb:"Sent our way by customers & contacts"},
-  {key:"selfgen",  name:"Self-Gen / Door",        emoji:"🚪", g1:"#8b5cf6", g2:"#7c3aed", blurb:"Knocked up & self-generated"},
-  {key:"online",   name:"Online / Other",         emoji:"🌐", g1:"#06b6d4", g2:"#0891b2", blurb:"Web, social & everything else"},
+  {key:"purchased_lead", name:"Purchased Lead",               emoji:"💰", g1:"#0ea5e9", g2:"#0284c7"},
+  {key:"purchased_ads",  name:"Purchased Ads",                emoji:"📢", g1:"#f43f5e", g2:"#e11d48"},
+  {key:"partner",        name:"Partner / Dealer Leads",       emoji:"🤝", g1:"#3b82f6", g2:"#2563eb"},
+  {key:"company",        name:"Our Company Leads",            emoji:"🏢", g1:"#6366f1", g2:"#4f46e5"},
+  {key:"door",           name:"Door Knock",                   emoji:"🚪", g1:"#8b5cf6", g2:"#7c3aed"},
+  {key:"callcenter",     name:"Call Center",                  emoji:"📞", g1:"#06b6d4", g2:"#0891b2"},
+  {key:"referral",       name:"Referral / Word of Mouth",     emoji:"🗣️", g1:"#10b981", g2:"#059669"},
+  {key:"social",         name:"Social Media",                 emoji:"📱", g1:"#ec4899", g2:"#db2777"},
+  {key:"online",         name:"Website / Online",             emoji:"🌐", g1:"#14b8a6", g2:"#0d9488"},
+  {key:"event",          name:"Event / Home Show",            emoji:"🎪", g1:"#f59e0b", g2:"#d97706"},
+  {key:"neighborhood",   name:"Neighborhood / Nearby Install",emoji:"🏘️", g1:"#84cc16", g2:"#65a30d"},
+  {key:"other",          name:"Other / Unknown",              emoji:"❓", g1:"#94a3b8", g2:"#64748b"},
 ];
 const BANK_GENERATORS = ["Setter","Closer"];
 const BANK_OPportunities = ["Past customer","Existing system","Battery add-on","System expansion","Moving / new homeowner","High utility bill","Contract expiring","Rate change"];
@@ -16966,7 +16972,7 @@ function LeadBankTab({user, profile}) {
           <div style={{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,#f97316,#ec4899,#8b5cf6)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em",lineHeight:1.15}}>Lead Bank</div>
           <div style={{fontSize:11.5,color:dark?"#94a3b8":"#64748b"}}>{visible.length} of {rows.length} lead{rows.length===1?"":"s"} showing</div>
         </div>
-        <button onClick={()=>setModal({source:F.src||"rehash"})}
+        <button onClick={()=>setModal({source:F.src||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||""})}
           style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
       </div>
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
@@ -17031,7 +17037,7 @@ function LeadBankTab({user, profile}) {
 function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
   const dark = useDark();
   const existing = modal.row||null;
-  const blank = {source:modal.source||(existing&&existing.source)||"rehash",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_type:"",rehash_type:"",failure_type:""};
+  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_type:"",rehash_type:"",failure_type:""};
   const [f,setF] = React.useState(existing?{...blank,...existing}:blank);
   const [saving,setSaving] = React.useState(false);
   const [showUtil,setShowUtil] = React.useState(false);
