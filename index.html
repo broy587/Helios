@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b113";
+const APP_BUILD = "b114";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16918,6 +16918,8 @@ const BANK_CONTACT = ["Phone","Email","Text","In person"];
 function LeadBankTab({user, profile, profiles}) {
   const dark = useDark();
   const isOwner = user && user.id === OWNER_ID;
+  const bankRole = (profile && profile.role) || "";
+  const canView = isOwner || bankRole === "manager"; // reps stay locked out for now, even with a grant
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [loadErr, setLoadErr] = React.useState("");
@@ -16929,25 +16931,36 @@ function LeadBankTab({user, profile, profiles}) {
   const repList = (profiles||[]).filter(pp=>!pp.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
   const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const [modal, setModal] = React.useState(null); // {row} edit | {source} create
+  const [access, setAccess] = React.useState([]);  // bank_access rows: {granter_id, grantee_id}
+  const [viewSel, setViewSel] = React.useState([user && user.id]); // whose leads are showing (owner ids)
+  const [viewOpen, setViewOpen] = React.useState(false);
+  const [viewQ, setViewQ] = React.useState("");
+  const [accOpen, setAccOpen] = React.useState(false);
+  const [accQ, setAccQ] = React.useState("");
+  const [accBusy, setAccBusy] = React.useState("");
   const load = async ()=>{
     setLoading(true); setLoadErr("");
     try{
       const {data,error} = await sb.from("bank_leads").select("*").order("created_at",{ascending:false});
       if(error) throw error;
       setRows(Array.isArray(data)?data:[]);
+      try{
+        const {data:acc,error:ae} = await sb.from("bank_access").select("*");
+        if(!ae) setAccess(Array.isArray(acc)?acc:[]);
+      }catch(e2){ console.warn("bank_access load (run the bank_access SQL if you haven't):", e2); }
     }catch(e){ console.error("bank_leads load:",e); setLoadErr("Couldn't load the lead bank — run the bank_leads SQL if you haven't, then reopen this tab."); }
     setLoading(false);
   };
-  React.useEffect(()=>{ if(isOwner) load(); },[isOwner]);
+  React.useEffect(()=>{ if(canView) load(); },[canView]);
 
   // ── Locked for everyone but the owner ──
-  if(!isOwner){
+  if(!canView){
     return (
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:30}}>
         <div style={{textAlign:"center",maxWidth:340}}>
           <div style={{fontSize:54,marginBottom:14}}>🔒</div>
           <div style={{fontSize:18,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>You don't have access to this tab</div>
-          <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.6}}>The Leads bank is owner-only for now. Ask Bronson if you think you should be in here.</div>
+          <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.6}}>The Leads bank is for the owner and managers right now. Ask Bronson if you think you should be in here.</div>
         </div>
       </div>
     );
@@ -16955,7 +16968,18 @@ function LeadBankTab({user, profile, profiles}) {
 
   const srcOf = (k)=>BANK_SOURCES.find(x=>x.key===k)||null;
   const F = filters;
+  // ── Whose leads can this viewer see? Owner: everyone. Others: themselves plus
+  // anyone who explicitly granted them access (person→person, role doesn't matter).
+  const granters = access.filter(a=>a && a.grantee_id===(user&&user.id)).map(a=>a.granter_id);
+  const allowedIds = isOwner ? null : new Set([user&&user.id, ...granters].filter(Boolean));
+  const effSel = (viewSel||[]).filter(id=> id && (!allowedIds || allowedIds.has(id)));
+  const scopeIds = effSel.length ? effSel : [user&&user.id];
+  const myGrantees = access.filter(a=>a && a.granter_id===(user&&user.id)).map(a=>a.grantee_id);
+  const viewablePeople = isOwner
+    ? repList
+    : repList.filter(pp=>pp.id===(user&&user.id) || granters.includes(pp.id));
   const visible = rows
+    .filter(r=>scopeIds.includes(r.owner_id))
     .filter(r=>!F.src||r.source===F.src)
     .filter(r=>!F.gen||r.lead_generator===F.gen)
     .filter(r=>{ if(!F.opp.length) return true; const ts=bankOppsOf(r); return ts.some(t=>F.opp.includes(t)); })
@@ -16984,6 +17008,17 @@ function LeadBankTab({user, profile, profiles}) {
           style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
       </div>
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
+      {/* Viewing scope + access grants */}
+      <div style={{display:"flex",gap:8,maxWidth:760,margin:"0 auto 10px"}}>
+        <button onClick={()=>{setViewQ("");setViewOpen(true);}}
+          style={{flex:1,minWidth:0,height:48,padding:"0 14px",borderRadius:11,border:`2px solid ${dark?"#475569":"#1a2456"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontWeight:800,fontSize:12.5,cursor:"pointer",textAlign:"left",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          👥 Viewing — {scopeIds.length===1&&scopeIds[0]===(user&&user.id)?"My leads":`${scopeIds.length} selected`} ›
+        </button>
+        <button onClick={()=>{setAccQ("");setAccOpen(true);}}
+          style={{flexShrink:0,height:48,padding:"0 14px",borderRadius:11,border:"2px solid #ca8a04",background:dark?"rgba(202,138,4,0.14)":"#fefce8",color:dark?"#fcd34d":"#a16207",fontWeight:800,fontSize:12.5,cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)"}}>
+          🔑 Access
+        </button>
+      </div>
       {/* Five colored filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
         <button onClick={()=>{setGenQ("");setGenOpen(true);}}
@@ -17040,6 +17075,72 @@ function LeadBankTab({user, profile, profiles}) {
               </div>
             );
           })}
+        </div>
+      )}
+      {viewOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setViewOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:2}}>👥 Viewing leads</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Pick whose leads show — select any number.</div>
+            {viewablePeople.length>6 && <input value={viewQ} onChange={e=>setViewQ(e.target.value)} placeholder="🔍 Search…"
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>}
+            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"46vh",overflowY:"auto"}}>
+              {viewablePeople.filter(pp=>{ const q=viewQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
+                const on = scopeIds.includes(pp.id);
+                const me = pp.id===(user&&user.id);
+                return (
+                  <div key={pp.id} onClick={()=>setViewSel(sel=>{ const cur=(sel||[]).filter(id=>id&&(!allowedIds||allowedIds.has(id))); return cur.includes(pp.id)?cur.filter(v=>v!==pp.id):[...cur,pp.id]; })}
+                    style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#1a2456":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(148,163,184,0.14)":"#f0f4ff"):(dark?"#0f172a":"#fff")}}>
+                    <div style={{width:15,height:15,borderRadius:4,border:`2px solid ${on?(dark?"#94a3b8":"#1a2456"):"rgba(148,163,184,0.6)"}`,background:on?(dark?"#94a3b8":"#1a2456"):"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{on&&<span style={{color:dark?"#0f172a":"#fff",fontSize:10,fontWeight:900}}>✓</span>}</div>
+                    <span style={{fontSize:13,fontWeight:on?800:600,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{me?"⭐ My leads":(pp.name||pp.email)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={()=>setViewOpen(false)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer"}}>Done</button>
+          </div>
+        </div>
+      )}
+      {accOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setAccOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:2}}>🔑 Access to MY leads</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:10,lineHeight:1.5}}>People you check can see your leads in their Viewing list. Reps can't open the Leads tab yet — their access saves for when it unlocks.</div>
+            <input value={accQ} onChange={e=>setAccQ(e.target.value)} placeholder="🔍 Search anyone…"
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
+            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"46vh",overflowY:"auto"}}>
+              {repList.filter(pp=>pp.id!==(user&&user.id)).filter(pp=>{ const q=accQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
+                const on = myGrantees.includes(pp.id);
+                const busy = accBusy===pp.id;
+                return (
+                  <div key={pp.id} onClick={async()=>{
+                      if(busy) return;
+                      setAccBusy(pp.id);
+                      try{
+                        if(on){
+                          const {error}=await sb.from("bank_access").delete().eq("granter_id",user.id).eq("grantee_id",pp.id);
+                          if(error) throw error;
+                          setAccess(a=>a.filter(x=>!(x.granter_id===user.id&&x.grantee_id===pp.id)));
+                        } else {
+                          const {data,error}=await sb.from("bank_access").insert({granter_id:user.id,grantee_id:pp.id}).select().single();
+                          if(error) throw error;
+                          setAccess(a=>[...a,data]);
+                        }
+                      }catch(e){ window.alert("Couldn't update access — run the bank_access SQL if you haven't. ("+((e&&e.message)||"error")+")"); }
+                      setAccBusy("");
+                    }}
+                    style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",borderRadius:10,cursor:"pointer",opacity:busy?0.6:1,border:`1.5px solid ${on?"#ca8a04":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(202,138,4,0.14)":"#fefce8"):(dark?"#0f172a":"#fff")}}>
+                    <div style={{width:15,height:15,borderRadius:4,border:`2px solid ${on?"#ca8a04":"rgba(148,163,184,0.6)"}`,background:on?"#ca8a04":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{on&&<span style={{color:"#fff",fontSize:10,fontWeight:900}}>✓</span>}</div>
+                    <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:on?800:600,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</span>
+                    <span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{(pp.role||"").replace("_"," ")}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <button onClick={()=>setAccOpen(false)} style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#ca8a04,#a16207)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer"}}>Done</button>
+          </div>
         </div>
       )}
       {genOpen && (
