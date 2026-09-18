@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b119";
+const APP_BUILD = "b120";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17025,9 +17025,9 @@ function LeadBankTab({user, profile, profiles}) {
             style={{padding:"9px 12px",borderRadius:10,border:`2px solid ${showMat?"#ca8a04":(dark?"#334155":"#cbd5e1")}`,background:showMat?(dark?"rgba(202,138,4,0.14)":"#fefce8"):(dark?"#0f172a":"#fff"),color:showMat?(dark?"#fcd34d":"#a16207"):"#94a3b8",fontWeight:800,fontSize:12,cursor:"pointer"}}>📎 Material</button>
         </div>
         <div style={{flex:1}}/>
-        <button onClick={()=>setMatModal({source:F.src||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||""})}
+        <button onClick={()=>setMatModal({source:F.src||""})}
           style={{flexShrink:0,padding:"11px 14px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Material</button>
-        <button onClick={()=>setModal({source:F.src||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||""})}
+        <button onClick={()=>setModal({source:F.src||""})}
           style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
       </div>
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
@@ -17220,7 +17220,7 @@ function LeadBankTab({user, profile, profiles}) {
 function BankMaterialModal({modal, onClose, setMats, profile, user}) {
   const dark = useDark();
   const existing = modal.row||null;
-  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",title:"",notes:"",photos:[],files:[],opportunity_types:[],rehash_type:"",failure_type:""};
+  const blank = {source:modal.source||(existing&&existing.source)||"",title:"",notes:"",photos:[],files:[],opportunity_types:[],rehash_type:"",failure_type:""};
   const [f,setF] = React.useState(existing?{...blank,...existing,photos:Array.isArray(existing.photos)?existing.photos:[],files:Array.isArray(existing.files)?existing.files:[],opportunity_types:bankOppsOf(existing)}:blank);
   const [saving,setSaving] = React.useState(false);
   const [showHist,setShowHist] = React.useState(false);
@@ -17353,6 +17353,7 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
           <div style={zone("#f0fdf4","#bbf7d0","rgba(22,163,74,0.10)","rgba(34,197,94,0.4)")}>
             <label style={lbl}>📦 Lead source</label>
             <select value={f.source||""} onChange={set("source")} style={{...inp,cursor:"pointer"}}>
+              <option value="">— None —</option>
               {BANK_SOURCES.map(sx=><option key={sx.key} value={sx.key}>{sx.emoji} {sx.name}</option>)}
             </select>
             <label style={lbl}>🏡 Customer opportunity type</label>
@@ -17408,7 +17409,7 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
 function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles}) {
   const dark = useDark();
   const existing = modal.row||null;
-  const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",credit_rating:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
+  const blank = {source:modal.source||(existing&&existing.source)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",credit_rating:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
   const [f,setF] = React.useState(existing?{...blank,...existing,opportunity_types:bankOppsOf(existing)}:blank);
   const [saving,setSaving] = React.useState(false);
   const [showUtil,setShowUtil] = React.useState(false);
@@ -17499,7 +17500,8 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
           </div>
           <label style={{...lbl,marginTop:0}}>Source</label>
           <select value={f.source} onChange={set("source")} style={{...inp,cursor:"pointer"}}>
-            {BANK_SOURCES.map(sx=><option key={sx.key} value={sx.key}>{sx.emoji} {sx.name}</option>)}
+            <option value="">— None —</option>
+              {BANK_SOURCES.map(sx=><option key={sx.key} value={sx.key}>{sx.emoji} {sx.name}</option>)}
           </select>
           <div style={{...zone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)"),marginTop:12}}>
             <label style={lbl}>Name</label><input value={f.name||""} onChange={set("name")} style={inp} placeholder="Customer name"/>
