@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b117";
+const APP_BUILD = "b118";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17042,13 +17042,13 @@ function LeadBankTab({user, profile, profiles}) {
       </div>
       {/* Five colored filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
+        {fsel("src","📦","Lead source",BANK_SOURCES,"#3b82f6","#eff6ff","rgba(59,130,246,0.14)","#2563eb","#93c5fd",(o)=>o.key)}
         <button onClick={()=>setOppOpen(true)}
           style={{...selBase,border:"2px solid #10b981",background:dark?"rgba(16,185,129,0.14)":"#ecfdf5",color:dark?"#6ee7b7":"#047857",textAlign:"left"}}>
           🏡 Opportunity type — {F.opp.length?`${F.opp.length} selected`:"All"} ▾
         </button>
         {fsel("rehash","🪜","Lead stage",BANK_REHASH,"#f59e0b","#fffbeb","rgba(245,158,11,0.14)","#b45309","#fcd34d")}
         {fsel("fail","🚫","Failure / DQ",BANK_FAILURES,"#ef4444","#fef2f2","rgba(239,68,68,0.14)","#b91c1c","#fca5a5")}
-        {fsel("src","📦","Lead source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
       </div>
       {anyF && (
         <div style={{maxWidth:760,margin:"0 auto 10px",textAlign:"right"}}>
