@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b112";
+const APP_BUILD = "b113";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16890,31 +16890,32 @@ function SongOfDay({url}) {
 // A vibrant bank of second-chance / opportunity leads, organized by SOURCE.
 // Separate from the pipeline: rows live in the bank_leads table.
 const BANK_SOURCES = [
-  {key:"purchased_lead", name:"Purchased Lead",               emoji:"💰", g1:"#0ea5e9", g2:"#0284c7"},
-  {key:"purchased_ads",  name:"Purchased Ads",                emoji:"📢", g1:"#f43f5e", g2:"#e11d48"},
-  {key:"partner",        name:"Partner / Dealer Leads",       emoji:"🤝", g1:"#3b82f6", g2:"#2563eb"},
-  {key:"company",        name:"Our Company Leads",            emoji:"🏢", g1:"#6366f1", g2:"#4f46e5"},
-  {key:"door",           name:"Door Knock",                   emoji:"🚪", g1:"#8b5cf6", g2:"#7c3aed"},
-  {key:"callcenter",     name:"Call Center",                  emoji:"📞", g1:"#06b6d4", g2:"#0891b2"},
-  {key:"referral",       name:"Referral / Word of Mouth",     emoji:"🗣️", g1:"#10b981", g2:"#059669"},
-  {key:"social",         name:"Social Media",                 emoji:"📱", g1:"#ec4899", g2:"#db2777"},
-  {key:"online",         name:"Website / Online",             emoji:"🌐", g1:"#14b8a6", g2:"#0d9488"},
-  {key:"event",          name:"Event / Home Show",            emoji:"🎪", g1:"#f59e0b", g2:"#d97706"},
-  {key:"neighborhood",   name:"Neighborhood / Nearby Install",emoji:"🏘️", g1:"#84cc16", g2:"#65a30d"},
-  {key:"other",          name:"Other / Unknown",              emoji:"❓", g1:"#94a3b8", g2:"#64748b"},
+  {key:"purchased_lead", name:"Purchased lead",               emoji:"💰", g1:"#0ea5e9", g2:"#0284c7"},
+  {key:"purchased_ads",  name:"Purchased ads",                emoji:"📢", g1:"#f43f5e", g2:"#e11d48"},
+  {key:"partner",        name:"Partner / dealer leads",       emoji:"🤝", g1:"#3b82f6", g2:"#2563eb"},
+  {key:"company",        name:"Our company leads",            emoji:"🏢", g1:"#6366f1", g2:"#4f46e5"},
+  {key:"door",           name:"Door knock",                   emoji:"🚪", g1:"#8b5cf6", g2:"#7c3aed"},
+  {key:"callcenter",     name:"Call center",                  emoji:"📞", g1:"#06b6d4", g2:"#0891b2"},
+  {key:"referral",       name:"Referral / word of mouth",     emoji:"🗣️", g1:"#10b981", g2:"#059669"},
+  {key:"social",         name:"Social media",                 emoji:"📱", g1:"#ec4899", g2:"#db2777"},
+  {key:"online",         name:"Website / online",             emoji:"🌐", g1:"#14b8a6", g2:"#0d9488"},
+  {key:"event",          name:"Event / home show",            emoji:"🎪", g1:"#f59e0b", g2:"#d97706"},
+  {key:"neighborhood",   name:"Neighborhood / nearby install",emoji:"🏘️", g1:"#84cc16", g2:"#65a30d"},
+  {key:"other",          name:"Other / unknown",              emoji:"❓", g1:"#94a3b8", g2:"#64748b"},
 ];
 const BANK_GENERATORS = ["Setter","Closer"];
-const BANK_OPportunities = ["Past customer","Existing System Roof Available","Existing System No Roof Available","Moving / new homeowner","High utility bill","Utility contract expiring","Recent rate change"];
+const BANK_OPportunities = ["Past customer","Existing system / roof available","Existing system / no roof available","Moving / new homeowner","High utility bill","Power bill contract expiring","Recent rate increase"];
 // A lead's opportunity types (multi-select; falls back to the old single-value column).
 const bankOppsOf = (r)=>Array.isArray(r&&r.opportunity_types)?r.opportunity_types:((r&&r.opportunity_type)?[r.opportunity_type]:[]);
-const BANK_REHASH = ["Old lead","Old quote","No-show","Cancel"];
-const BANK_FAILURES = ["Failed credit","Failed Welcome Call","Failed site survey","Roof issue","HOA issue","Utility / interconnection issue","Ownership mismatch","Uneconomic usage / too little offset"];
+// "Lead stage" (stored in the rehash_type column) — where this lead sits in its journey.
+const BANK_REHASH = ["Created","Not now","Not interested","Follow up","Scheduled","No show / no contact","No show / in contact","Stale / no reschedule","No close / no offer","No close / offer given","Closed","CAP / final results","Permitting","Permits in / install scheduled","Installed","PTO / REP ✔️"];
+const BANK_FAILURES = ["Failed credit","Failed welcome call","Failed site survey","Roof issue","HOA issue","Utility / interconnection issue","Ownership mismatch","Uneconomic usage / too little offset"];
 const BANK_SHADING = ["None","Partial","Full"];
 const BANK_ROOF_COND = ["Good","Fair","Poor"];
 const BANK_CREDIT = ["Pass","No hit","Fail","Unknown"];
 const BANK_CONTACT = ["Phone","Email","Text","In person"];
 
-function LeadBankTab({user, profile}) {
+function LeadBankTab({user, profile, profiles}) {
   const dark = useDark();
   const isOwner = user && user.id === OWNER_ID;
   const [rows, setRows] = React.useState([]);
@@ -16923,6 +16924,10 @@ function LeadBankTab({user, profile}) {
   // One main view: every lead lives here, narrowed by the five colored filters.
   const [filters, setFilters] = React.useState({src:"", gen:"", opp:[], rehash:"", fail:""});
   const [oppOpen, setOppOpen] = React.useState(false); // opportunity-type multi-select sheet
+  const [genOpen, setGenOpen] = React.useState(false); // lead-owner rep picker sheet
+  const [genQ, setGenQ] = React.useState("");          // rep search text
+  const repList = (profiles||[]).filter(pp=>!pp.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const [modal, setModal] = React.useState(null); // {row} edit | {source} create
   const load = async ()=>{
     setLoading(true); setLoadErr("");
@@ -16981,14 +16986,17 @@ function LeadBankTab({user, profile}) {
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
       {/* Five colored filters */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",maxWidth:760,margin:"0 auto 10px"}}>
-        {fsel("gen","👤","Lead Generator",BANK_GENERATORS,"#6366f1","#eef2ff","rgba(99,102,241,0.14)","#4338ca","#a5b4fc")}
+        <button onClick={()=>{setGenQ("");setGenOpen(true);}}
+          style={{...selBase,border:"2px solid #6366f1",background:dark?"rgba(99,102,241,0.14)":"#eef2ff",color:dark?"#a5b4fc":"#4338ca",textAlign:"left"}}>
+          👤 Lead owner — {F.gen?(repName(F.gen)||"1 selected"):"All"} ›
+        </button>
         <button onClick={()=>setOppOpen(true)}
           style={{...selBase,border:"2px solid #10b981",background:dark?"rgba(16,185,129,0.14)":"#ecfdf5",color:dark?"#6ee7b7":"#047857",textAlign:"left"}}>
-          🏡 Opportunity Type — {F.opp.length?`${F.opp.length} selected`:"All"} ▾
+          🏡 Opportunity type — {F.opp.length?`${F.opp.length} selected`:"All"} ▾
         </button>
-        {fsel("rehash","🔄","Rehash / Recovery",BANK_REHASH,"#f59e0b","#fffbeb","rgba(245,158,11,0.14)","#b45309","#fcd34d")}
+        {fsel("rehash","🪜","Lead stage",BANK_REHASH,"#f59e0b","#fffbeb","rgba(245,158,11,0.14)","#b45309","#fcd34d")}
         {fsel("fail","🚫","Failure / DQ",BANK_FAILURES,"#ef4444","#fef2f2","rgba(239,68,68,0.14)","#b91c1c","#fca5a5")}
-        {fsel("src","📦","Lead Source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
+        {fsel("src","📦","Lead source",BANK_SOURCES,"#8b5cf6","#f5f3ff","rgba(139,92,246,0.14)","#6d28d9","#c4b5fd",(o)=>o.key)}
       </div>
       {anyF && (
         <div style={{maxWidth:760,margin:"0 auto 10px",textAlign:"right"}}>
@@ -17023,9 +17031,9 @@ function LeadBankTab({user, profile}) {
                 {(r.address||r.phone) && <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[r.address,r.phone].filter(Boolean).join(" · ")}</div>}
                 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
                   {sx && chip(`${sx.emoji} ${sx.name}`, "#fff", `linear-gradient(135deg,${sx.g1},${sx.g2})`)}
-                  {r.lead_generator && chip("👤 "+r.lead_generator,"#4338ca",dark?"rgba(99,102,241,0.18)":"#eef2ff")}
+                  {r.lead_generator && chip("👤 "+(repName(r.lead_generator)||r.lead_generator),"#4338ca",dark?"rgba(99,102,241,0.18)":"#eef2ff")}
                   {bankOppsOf(r).map(t=><React.Fragment key={t}>{chip("🏡 "+t,"#047857",dark?"rgba(16,185,129,0.16)":"#ecfdf5")}</React.Fragment>)}
-                  {r.rehash_type && chip("🔄 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
+                  {r.rehash_type && chip("🪜 "+r.rehash_type,"#b45309",dark?"rgba(245,158,11,0.16)":"#fffbeb")}
                   {r.failure_type && chip("🚫 "+r.failure_type,"#b91c1c",dark?"rgba(239,68,68,0.14)":"#fef2f2")}
                   {r.credit && chip("💳 "+r.credit, r.credit==="Pass"?"#047857":r.credit==="Fail"?"#b91c1c":"#475569", dark?"rgba(148,163,184,0.15)":"#f8fafc")}
                 </div>
@@ -17034,11 +17042,32 @@ function LeadBankTab({user, profile}) {
           })}
         </div>
       )}
+      {genOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setGenOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>👤 Lead owner</div>
+            <input autoFocus value={genQ} onChange={e=>setGenQ(e.target.value)} placeholder="🔍 Search reps…"
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
+            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"48vh",overflowY:"auto"}}>
+              <div onClick={()=>{setFilters(x=>({...x,gen:""}));setGenOpen(false);}}
+                style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${!F.gen?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:!F.gen?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:800,color:!F.gen?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569")}}>All reps</div>
+              {repList.filter(pp=>{ const q=genQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
+                const on = F.gen===pp.id;
+                return (
+                  <div key={pp.id} onClick={()=>{setFilters(x=>({...x,gen:pp.id}));setGenOpen(false);}}
+                    style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:on?800:600,color:on?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {oppOpen && (
         <div style={{position:"fixed",inset:0,zIndex:2700}} onClick={()=>setOppOpen(false)}>
           <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
           <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>🏡 Opportunity Type <span style={{fontWeight:600,fontSize:11,color:"#94a3b8"}}>(pick any — leads matching ANY show)</span></div>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>🏡 Opportunity type <span style={{fontWeight:600,fontSize:11,color:"#94a3b8"}}>(pick any — leads matching ANY show)</span></div>
             <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"55vh",overflowY:"auto"}}>
               {BANK_OPportunities.map(o=>{ const on=F.opp.includes(o); return (
                 <div key={o} onClick={()=>setFilters(x=>({...x,opp:on?x.opp.filter(v=>v!==o):[...x.opp,o]}))}
@@ -17055,13 +17084,13 @@ function LeadBankTab({user, profile}) {
           </div>
         </div>
       )}
-      {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user}/>}
+      {modal && <BankLeadModal modal={modal} onClose={()=>setModal(null)} rows={rows} setRows={setRows} profile={profile} user={user} profiles={profiles}/>}
     </div>
   );
 }
 
 // Create / edit one bank lead. History (created + every change) sits at the bottom.
-function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
+function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles}) {
   const dark = useDark();
   const existing = modal.row||null;
   const blank = {source:modal.source||(existing&&existing.source)||(BANK_SOURCES[0]&&BANK_SOURCES[0].key)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
@@ -17070,6 +17099,10 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
   const [showUtil,setShowUtil] = React.useState(false);
   const [showHist,setShowHist] = React.useState(false);
   const [confirmDel,setConfirmDel] = React.useState(false);
+  const [repOpen,setRepOpen] = React.useState(false); // lead-owner picker sheet
+  const [repQ,setRepQ] = React.useState("");
+  const repList = (profiles||[]).filter(pp=>!pp.deleted_at).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}; 
   const lbl={display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",margin:"12px 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"};
@@ -17087,11 +17120,12 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
     setSaving(true);
     try{
       if(existing){
-        const watch={source:"Source",name:"Name",phone:"Phone",email:"Email",address:"Address",utility:"Utility",esiid:"ESIID",meter:"Meter",usage_input:"Usage",cents_kwh:"¢/kWh",annual_kwh:"Annual kWh",average_bill:"Avg bill",notes:"Notes",shading:"Shading",roof_age:"Roof age",roof_life:"Roof life",roof_condition:"Roof condition",credit:"Credit",contact_method:"Contact method",preferred_contact:"Preferred contact",lead_generator:"Lead generator",rehash_type:"Rehash type",failure_type:"Failure / DQ"};
+        const watch={source:"Source",name:"Name",phone:"Phone",email:"Email",address:"Address",utility:"Utility",esiid:"ESIID",meter:"Meter",usage_input:"Usage",cents_kwh:"¢/kWh",annual_kwh:"Annual kWh",average_bill:"Avg bill",notes:"Notes",shading:"Shading",roof_age:"Roof age",roof_life:"Roof life",roof_condition:"Roof condition",credit:"Credit",contact_method:"Contact method",preferred_contact:"Preferred contact",rehash_type:"Lead stage",failure_type:"Failure / DQ"};
         const changes=[];
         Object.entries(watch).forEach(([k,label])=>{ if((existing[k]||"")!==(f[k]||"")) changes.push(`${label}: "${existing[k]||"-"}" to "${f[k]||"-"}"`); });
         const oldOpps=bankOppsOf(existing).join(", "), newOpps=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).join(", ");
         if(oldOpps!==newOpps) changes.push(`Opportunity types: "${oldOpps||"-"}" to "${newOpps||"-"}"`);
+        if((existing.lead_generator||"")!==(f.lead_generator||"")) changes.push(`Lead owner: "${repName(existing.lead_generator)||existing.lead_generator||"-"}" to "${repName(f.lead_generator)||f.lead_generator||"-"}"`);
         const hist = changes.length ? [{ts:formatTs(),by:author,changes},...(Array.isArray(existing.history)?existing.history:[])] : (existing.history||[]);
         const upd={...f,history:hist,updated_at:new Date().toISOString()};
         delete upd.id; delete upd.created_at;
@@ -17120,6 +17154,27 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
   return (
     <div style={{position:"fixed",inset:0,zIndex:2600}}>
       <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.6)"}} onClick={()=>!saving&&onClose()}/>
+      {repOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:2800}} onClick={()=>setRepOpen(false)}>
+          <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+          <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:10}}>👤 Lead owner</div>
+            <input autoFocus value={repQ} onChange={e=>setRepQ(e.target.value)} placeholder="🔍 Search reps…"
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
+            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"48vh",overflowY:"auto"}}>
+              <div onClick={()=>{setF(x=>({...x,lead_generator:""}));setRepOpen(false);}}
+                style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",fontSize:13,fontWeight:700,color:dark?"#94a3b8":"#64748b"}}>— None —</div>
+              {repList.filter(pp=>{ const q=repQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>{
+                const on = f.lead_generator===pp.id;
+                return (
+                  <div key={pp.id} onClick={()=>{setF(x=>({...x,lead_generator:pp.id}));setRepOpen(false);}}
+                    style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${on?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"rgba(99,102,241,0.14)":"#eef2ff"):(dark?"#0f172a":"#fff"),fontSize:13,fontWeight:on?800:600,color:on?(dark?"#a5b4fc":"#4338ca"):(dark?"#cbd5e1":"#475569"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"20px 20px 24px",width:"min(96vw,470px)",maxHeight:"92vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -17159,8 +17214,12 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
             <label style={lbl}>⭐ Preferred contact method</label>{pills(BANK_CONTACT,"preferred_contact")}
           </div>
           <div style={zone("#f0fdf4","#bbf7d0","rgba(22,163,74,0.10)","rgba(34,197,94,0.4)")}>
-            <label style={lbl}>👤 Lead generator</label>
-            <select value={f.lead_generator||""} onChange={set("lead_generator")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_GENERATORS.map(o=><option key={o} value={o}>{o}</option>)}</select>
+            <label style={lbl}>👤 Lead owner</label>
+            <button type="button" onClick={()=>{setRepQ("");setRepOpen(true);}}
+              style={{...inp,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{repName(f.lead_generator)||f.lead_generator||"Select rep"}</span>
+              <span style={{color:"#94a3b8",fontWeight:800}}>›</span>
+            </button>
             <label style={lbl}>🏡 Customer opportunity type <span style={{textTransform:"none",fontWeight:600,color:"#94a3b8"}}>(select all that apply)</span></label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {BANK_OPportunities.map(o=>{ const on=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).includes(o); return (
@@ -17168,7 +17227,7 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user}) {
                   style={{padding:"7px 12px",borderRadius:16,border:`1.5px solid ${on?"#10b981":(dark?"#334155":"#e2e8f0")}`,background:on?"#065f46":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>{o}</button>
               );})}
             </div>
-            <label style={lbl}>🔄 Rehash / recovery type</label>
+            <label style={lbl}>🪜 Lead stage</label>
             <select value={f.rehash_type||""} onChange={set("rehash_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_REHASH.map(o=><option key={o} value={o}>{o}</option>)}</select>
             <label style={lbl}>🚫 Previous failure / disqualifier</label>
             <select value={f.failure_type||""} onChange={set("failure_type")} style={{...inp,cursor:"pointer"}}><option value="">—</option>{BANK_FAILURES.map(o=><option key={o} value={o}>{o}</option>)}</select>
@@ -18609,7 +18668,7 @@ function App() {
           </>
         )}
         {tab==="leadbank"&&(
-          <LeadBankTab user={user} profile={profile}/>
+          <LeadBankTab user={user} profile={profile} profiles={profiles}/>
         )}
         {tab==="recruits"&&(
           <RecruitsDashboard
