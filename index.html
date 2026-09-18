@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b111";
+const APP_BUILD = "b112";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -16958,7 +16958,7 @@ function LeadBankTab({user, profile}) {
     .filter(r=>!F.fail||r.failure_type===F.fail);
   const anyF = !!(F.src||F.gen||F.opp.length||F.rehash||F.fail);
   // Five colored filters — each its own hue + emoji.
-  const selBase={flex:"1 1 155px",minWidth:0,minHeight:56,padding:"9px 10px",borderRadius:11,fontSize:12,fontWeight:800,outline:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",boxSizing:"border-box"};
+  const selBase={flex:"1 1 155px",minWidth:0,height:60,padding:"9px 10px",borderRadius:11,fontSize:12,fontWeight:800,outline:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"};
   const fsel=(key,emoji,label,options,accent,bgL,bgD,txtL,txtD,optVal)=>(
     <select value={F[key]} onChange={e=>setFilters(x=>({...x,[key]:e.target.value}))}
       style={{...selBase,border:`2px solid ${accent}`,background:dark?bgD:bgL,color:F[key]?(dark?txtD:txtL):(dark?txtD:txtL)}}>
