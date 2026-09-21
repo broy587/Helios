@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b122";
+const APP_BUILD = "b126";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4937,6 +4937,8 @@ const RAPPORT_TEXT_FIELDS = [
 // Years in home is its own picker (renders as a wheel/dial on phones):
 // <6 months, 1 year, 2 years … 30 years, >30 years.
 const YEARS_IN_HOME_OPTIONS = ["<6 months", ...Array.from({length:30},(_,i)=>`${i+1} year${i===0?"":"s"}`), ">30 years"];
+// Customer age is its own dial too: 18–100.
+const CUSTOMER_AGE_OPTIONS = Array.from({length:83},(_,i)=>String(i+18));
 const RAPPORT_YESNO_FIELDS = [
   {key:"military",    label:"Military/Veteran"},
   {key:"retired",     label:"Retired"},
@@ -4956,6 +4958,7 @@ function rapportIsEmpty(r){
   if(!r || typeof r!=="object") return true;
   if(RAPPORT_TEXT_FIELDS.some(f=>String(r[f.key]||"").trim())) return false;
   if(String(r.years_in_home||"").trim()) return false;
+  if(String(r.customer_age||"").trim()) return false;
   if(RAPPORT_YESNO_FIELDS.some(f=>r[f.key]==="Yes"||r[f.key]==="No")) return false;
   if(RAPPORT_MULTI_FIELDS.some(f=>Array.isArray(r[f.key])&&r[f.key].length>0)) return false;
   if(String(r.sign_reasons_other||"").trim()) return false;
@@ -5000,10 +5003,11 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
 
   const filledText = RAPPORT_TEXT_FIELDS.filter(f=>String(val[f.key]||"").trim());
   const yearsVal = String(val.years_in_home||"").trim();
+  const ageVal = String(val.customer_age||"").trim();
   const filledYesNo = RAPPORT_YESNO_FIELDS.filter(f=>val[f.key]==="Yes"||val[f.key]==="No");
   const filledMulti = RAPPORT_MULTI_FIELDS.filter(f=>Array.isArray(val[f.key])&&val[f.key].length>0);
   const hasNotes = !!String(val.notes||"").trim();
-  const filledCount = filledText.length + (yearsVal?1:0) + filledYesNo.length + filledMulti.length + (hasNotes?1:0);
+  const filledCount = filledText.length + (yearsVal?1:0) + (ageVal?1:0) + filledYesNo.length + filledMulti.length + (hasNotes?1:0);
   // View mode with nothing recorded → render nothing at all.
   if(readOnly && filledCount===0) return null;
 
@@ -5035,6 +5039,12 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
             <div>
               <div style={lbl}>Years in home</div>
               <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{yearsVal}</div>
+            </div>
+          )}
+          {ageVal && (
+            <div>
+              <div style={lbl}>Customer age</div>
+              <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b"}}>{ageVal}</div>
             </div>
           )}
           {filledYesNo.length>0 && (
@@ -5079,6 +5089,15 @@ function RapportSection({value, onChange, readOnly, leadId, collapsible=true}) {
               {/* Keep a legacy free-typed value visible/selectable if it predates the picker */}
               {yearsVal && !YEARS_IN_HOME_OPTIONS.includes(yearsVal) && <option value={yearsVal}>{yearsVal}</option>}
               {YEARS_IN_HOME_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Customer age</label>
+            <select value={ageVal} onChange={e=>setField("customer_age", e.target.value, false)}
+              style={{...inp,cursor:"pointer"}}>
+              <option value="">—</option>
+              {ageVal && !CUSTOMER_AGE_OPTIONS.includes(ageVal) && <option value={ageVal}>{ageVal}</option>}
+              {CUSTOMER_AGE_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           {RAPPORT_YESNO_FIELDS.map(f=>(
@@ -8546,6 +8565,7 @@ function analyzeConversions(leads, opts) {
   // entered (blank/none are excluded entirely, not counted as $0). Tracked both
   // for installed leads (Install stage or beyond) and for all leads.
   let commSum = 0, commCount = 0, instSum = 0, instCount = 0;
+  let instInRange = 0, instCommPersonal = 0, instCommAssist = 0; // installed total + personal/assist split
   for (const l of (leads||[])) {
     const raw = l.commission;
     if (raw == null || String(raw).trim() === "") continue;
@@ -8556,7 +8576,14 @@ function analyzeConversions(leads, opts) {
     // (not pulled into an ARC / On Hold / Needs-Cancel-Save pile).
     if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) {
       instSum += num; instCount++;
+      if (splitAssist && viewerId) {
+        if (l.owner_id === viewerId) instCommPersonal += num;
+        else if (l.assist_id === viewerId) instCommAssist += num * 0.5;
+      }
     }
+  }
+  for (const l of (leads||[])) {
+    if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) instInRange++;
   }
   const avgCommission = commCount > 0 ? commSum / commCount : null;
   const avgCommissionInstalled = instCount > 0 ? instSum / instCount : null;
@@ -8595,6 +8622,7 @@ function analyzeConversions(leads, opts) {
     avgCommission, commCount, avgCommissionInstalled, instCount,
     pipeCommSum, pipeCommCount, pipeInRange,
     pipeCommPersonal, pipeCommAssist, pipeCommSplit: splitAssist && !!viewerId,
+    instCommSum: instSum, instInRange, instCommPersonal, instCommAssist,
     ac: [
       {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
       {label:"Got contact info", pct:pct(countAc("Contact Info"), acPool.length), n:countAc("Contact Info")},
@@ -9411,6 +9439,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           const out=[];
           RAPPORT_TEXT_FIELDS.forEach(f=>{ if(String(r[f.key]||"").trim()) out.push([f.label, String(r[f.key]).trim()]); });
           if(String(r.years_in_home||"").trim()) out.push(["Years in home", r.years_in_home]);
+          if(String(r.customer_age||"").trim()) out.push(["Customer age", r.customer_age]);
           RAPPORT_YESNO_FIELDS.forEach(f=>{ if(r[f.key]==="Yes"||r[f.key]==="No") out.push([f.label, r[f.key]]); });
           RAPPORT_MULTI_FIELDS.forEach(f=>{ if(Array.isArray(r[f.key])&&r[f.key].length) out.push([f.label, r[f.key].map(o=>(o==="Other"&&f.otherKey&&String(r[f.otherKey]||"").trim())?("Other — "+String(r[f.otherKey]).trim()):o).join(", ")]); });
           if(String(r.notes||"").trim()) out.push(["Rapport notes", r.notes]);
@@ -9732,6 +9761,40 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
                         <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
                         <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.pipeCommPersonal+c.pipeCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Commission installed — total commission for accounts sitting in Install / PTO */}
+                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:12}}>
+                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission Installed</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Install - PTO</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
+                        {c.instInRange>0
+                          ? `${c.instInRange} account${c.instInRange===1?"":"s"} in Install / PTO${c.instCount<c.instInRange?` · ${c.instCount} with commission entered`:""}`
+                          : "No accounts in Install / PTO"}
+                      </div>
+                    </div>
+                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+                      {c.instCount>0?c.instCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
+                    </div>
+                  </div>
+                  {c.pipeCommSplit && (
+                    <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% of your own)</span></span>
+                        <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.instCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split)</span></span>
+                        <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.instCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
+                        <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
+                        <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.instCommPersonal+c.instCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                     </div>
                   )}
@@ -17026,9 +17089,9 @@ function LeadBankTab({user, profile, profiles}) {
         </div>
         <div style={{flex:1}}/>
         <button onClick={()=>setMatModal({source:F.src||""})}
-          style={{flexShrink:0,padding:"11px 14px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Material</button>
+          style={{flexShrink:0,padding:"11px 14px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Material</button>
         <button onClick={()=>setModal({source:F.src||""})}
-          style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Add Lead</button>
+          style={{flexShrink:0,padding:"11px 16px",borderRadius:11,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,fontSize:13.5,cursor:"pointer",boxShadow:"0 6px 16px -4px rgba(234,88,12,0.6)",whiteSpace:"nowrap"}}>+ Lead</button>
       </div>
       {loadErr && <div style={{margin:"0 auto 12px",maxWidth:760,padding:"10px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.12)":"#fff5f5",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12.5,fontWeight:600}}>{loadErr}</div>}
       {/* Viewing scope + access grants */}
@@ -17064,7 +17127,7 @@ function LeadBankTab({user, profile, profiles}) {
         <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
           <div style={{fontSize:44,marginBottom:12}}>🏦</div>
           <div style={{fontSize:15,fontWeight:800}}>Your bank is empty</div>
-          <div style={{fontSize:12.5,marginTop:4}}>Hit <b>+ Add Lead</b> or <b>+ Add Material</b> to drop the first thing in.</div>
+          <div style={{fontSize:12.5,marginTop:4}}>Hit <b>+ Lead</b> or <b>+ Material</b> to drop the first thing in.</div>
         </div>
       ) : items.length===0 ? (
         <div style={{textAlign:"center",padding:"50px 20px",color:dark?"#64748b":"#94a3b8"}}>
@@ -17418,8 +17481,8 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
 function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles}) {
   const dark = useDark();
   const existing = modal.row||null;
-  const blank = {source:modal.source||(existing&&existing.source)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",credit_rating:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:""};
-  const [f,setF] = React.useState(existing?{...blank,...existing,opportunity_types:bankOppsOf(existing)}:blank);
+  const blank = {source:modal.source||(existing&&existing.source)||"",name:"",phone:"",email:"",address:"",utility:"",esiid:"",meter:"",usage_input:"",cents_kwh:"",annual_kwh:"",average_bill:"",notes:"",shading:"",roof_age:"",roof_life:"",roof_condition:"",credit:"",credit_rating:"",contact_method:"",preferred_contact:"",lead_generator:"",opportunity_types:[],rehash_type:"",failure_type:"",photos:[],files:[]};
+  const [f,setF] = React.useState(existing?{...blank,...existing,opportunity_types:bankOppsOf(existing),photos:Array.isArray(existing.photos)?existing.photos:[],files:Array.isArray(existing.files)?existing.files:[]}:blank);
   const [saving,setSaving] = React.useState(false);
   const [showUtil,setShowUtil] = React.useState(false);
   const [oppOpen,setOppOpen] = React.useState(false); // opportunity-type dropdown sheet
@@ -17430,6 +17493,25 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
   const [xferQ,setXferQ] = React.useState("");
   const [xferTo,setXferTo] = React.useState(null);      // create mode: who the lead is being created for
   const repListAll = (profiles||[]).filter(pp=>!pp.deleted_at && pp.id!==(user&&user.id)).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  const [imgOpen,setImgOpen] = React.useState(null);  // fullscreen photo viewer (index)
+  const photoRef = React.useRef(null);
+  const fileRef = React.useRef(null);
+  // Downscale photos so the row stays light (max 1400px, jpeg).
+  const shrink=(file)=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const img=new Image(); img.onload=()=>{ try{ const M=1400; let w=img.width,h=img.height; if(w>M||h>M){ const k=Math.min(M/w,M/h); w=Math.round(w*k); h=Math.round(h*k);} const c=document.createElement("canvas"); c.width=w;c.height=h; c.getContext("2d").drawImage(img,0,0,w,h); res(c.toDataURL("image/jpeg",0.82)); }catch(e){ rej(e); } }; img.onerror=rej; img.src=r.result; }; r.onerror=rej; r.readAsDataURL(file); });
+  const addPhotos = async (list)=>{
+    for(const file of Array.from(list||[])){
+      try{ const d=await shrink(file); setF(x=>({...x,photos:[...(x.photos||[]),d]})); }
+      catch(e){ console.error("photo add:",e); }
+    }
+  };
+  const addFiles = (list)=>{
+    Array.from(list||[]).forEach(file=>{
+      if(file.size>3*1024*1024){ window.alert(`"${file.name}" is over 3 MB — too big to store here. Compress it or share a link in notes.`); return; }
+      const r=new FileReader();
+      r.onload=()=>setF(x=>({...x,files:[...(x.files||[]),{name:file.name,type:file.type||"",data:r.result}]}));
+      r.readAsDataURL(file);
+    });
+  };
   const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}; 
   const lbl={display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",margin:"12px 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"};
@@ -17453,6 +17535,10 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
         const oldOpps=bankOppsOf(existing).join(", "), newOpps=(Array.isArray(f.opportunity_types)?f.opportunity_types:[]).join(", ");
         if(oldOpps!==newOpps) changes.push(`Opportunity types: "${oldOpps||"-"}" to "${newOpps||"-"}"`);
         if((existing.lead_generator||"")!==(f.lead_generator||"")) changes.push(`Lead owner: "${repName(existing.lead_generator)||existing.lead_generator||"-"}" to "${repName(f.lead_generator)||f.lead_generator||"-"}"`);
+        const oP=(Array.isArray(existing.photos)?existing.photos:[]).length, nP=(f.photos||[]).length;
+        if(nP>oP) changes.push(`Photos: Added ${nP-oP}`); else if(nP<oP) changes.push(`Photos: Removed ${oP-nP}`);
+        const oF=(Array.isArray(existing.files)?existing.files:[]).length, nF=(f.files||[]).length;
+        if(nF>oF) changes.push(`Files: Added ${nF-oF}`); else if(nF<oF) changes.push(`Files: Removed ${oF-nF}`);
         const hist = changes.length ? [{ts:formatTs(),by:author,changes},...(Array.isArray(existing.history)?existing.history:[])] : (existing.history||[]);
         const upd={...f,history:hist,updated_at:new Date().toISOString()};
         delete upd.id; delete upd.created_at;
@@ -17512,6 +17598,13 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
             </div>
             <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
           </div>
+          {imgOpen!==null && (f.photos||[])[imgOpen] && (
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:3000}}>
+              <ZoomableImage src={f.photos[imgOpen]} onClose={()=>setImgOpen(null)}/>
+              <div onClick={()=>setImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer",zIndex:3002,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</div>
+              <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",color:"#fff",fontSize:13,opacity:0.75,background:"rgba(0,0,0,0.45)",padding:"4px 12px",borderRadius:20,zIndex:3002,whiteSpace:"nowrap"}}>{imgOpen+1} of {(f.photos||[]).length} · pinch or scroll to zoom</div>
+            </div>
+          )}
           <label style={{...lbl,marginTop:0}}>Source</label>
           <select value={f.source} onChange={set("source")} style={{...inp,cursor:"pointer"}}>
             <option value="">— None —</option>
@@ -17527,12 +17620,58 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
             <button type="button" onClick={()=>setShowUtil(v=>!v)} style={{width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>⚡ Utility Info {showUtil?"▲":"▼"}</button>
             {showUtil && (<div>
               <label style={lbl}>Utility company</label><input value={f.utility||""} onChange={set("utility")} style={inp}/>
-              <label style={lbl}>ESIID</label><input value={f.esiid||""} onChange={set("esiid")} style={inp}/>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <label style={lbl}>ESIID</label>
+                <a href="https://www.energybot.com/esid-lookup.html?utm_term=&utm_source=adwords&utm_medium=ppc&utm_term=&utm_campaign=%5BRetargeting%5D+PMax&utm_source=adwords&utm_medium=ppc&hsa_acc=9462382895&hsa_cam=20249176212&hsa_grp=&hsa_ad=&hsa_src=x&hsa_tgt=&hsa_kw=&hsa_mt=&hsa_net=adwords&hsa_ver=3&gad_source=1&gclid=CjwKCAiAqY6tBhAtEiwAHeRopZUuKS74AGtLuIeJglQ8gp8FUwm4qALUvFuEmmzWqMAj07VO3NWjwRoCl5cQAvD_BwE"
+                  target="_blank" rel="noreferrer"
+                  style={{fontSize:11,fontWeight:700,color:"#1a2456",background:"#e8e2f0",padding:"2px 8px",borderRadius:6,textDecoration:"none",flexShrink:0}}>
+                  🔍 Lookup
+                </a>
+              </div>
+              <input value={f.esiid||""} onChange={set("esiid")} style={inp}/>
               <label style={lbl}>Meter #</label><input value={f.meter||""} onChange={set("meter")} style={inp}/>
               <label style={lbl}>¢ / kWh</label><input value={f.cents_kwh||""} onChange={set("cents_kwh")} style={inp} inputMode="decimal"/>
               <label style={lbl}>Annual kWh</label><input value={f.annual_kwh||""} onChange={set("annual_kwh")} style={inp} inputMode="numeric"/>
               <label style={lbl}>Average bill</label><input value={f.average_bill||""} onChange={set("average_bill")} style={inp} inputMode="decimal"/>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
+                <label style={{...lbl,margin:0}}>Smart Meter Texas</label>
+                <button type="button" onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+                  style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+                  Open ›
+                </button>
+              </div>
             </div>)}
+          </div>
+          <div style={zone("#fefce8","#fde68a","rgba(202,138,4,0.10)","rgba(202,138,4,0.4)")}>
+            <label style={lbl}>📸 Photos {(f.photos||[]).length>0&&<span style={{color:"#ca8a04"}}>({(f.photos||[]).length})</span>}</label>
+            {(f.photos||[]).length>0 && (
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                {(f.photos||[]).map((ph,i)=>(
+                  <div key={i} style={{position:"relative"}}>
+                    <img src={ph} onClick={()=>setImgOpen(i)} title="Tap to view"
+                      style={{width:74,height:74,objectFit:"cover",borderRadius:10,border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}}/>
+                    <button type="button" onClick={()=>setF(x=>({...x,photos:(x.photos||[]).filter((_,j)=>j!==i)}))}
+                      style={{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",border:"none",background:"#ef4444",color:"#fff",fontSize:12,fontWeight:900,cursor:"pointer",lineHeight:1}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input ref={photoRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{addPhotos(e.target.files); e.target.value="";}}/>
+            <button type="button" onClick={()=>photoRef.current&&photoRef.current.click()}
+              style={{width:"100%",padding:"10px 0",borderRadius:9,border:"1.5px dashed #ca8a04",background:"transparent",color:dark?"#fcd34d":"#a16207",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>+ Add Photos</button>
+          </div>
+          <div style={zone("#f8fafc","#e2e8f0","rgba(148,163,184,0.10)","rgba(148,163,184,0.4)")}>
+            <label style={lbl}>📄 Files {(f.files||[]).length>0&&<span style={{color:"#475569"}}>({(f.files||[]).length})</span>}</label>
+            {(f.files||[]).map((fl,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:9,background:dark?"#0f172a":"#fff",border:`1px solid ${dark?"#334155":"#e2e8f0"}`,marginBottom:6}}>
+                <a href={fl.data} download={fl.name} style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:700,color:dark?"#93c5fd":"#2563eb",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"none"}}>📄 {fl.name}</a>
+                <button type="button" onClick={()=>setF(x=>({...x,files:(x.files||[]).filter((_,j)=>j!==i)}))}
+                  style={{flexShrink:0,background:"none",border:"none",color:"#b91c1c",fontWeight:800,fontSize:13,cursor:"pointer"}}>✕</button>
+              </div>
+            ))}
+            <input ref={fileRef} type="file" multiple style={{display:"none"}} onChange={e=>{addFiles(e.target.files); e.target.value="";}}/>
+            <button type="button" onClick={()=>fileRef.current&&fileRef.current.click()}
+              style={{width:"100%",padding:"10px 0",borderRadius:9,border:`1.5px dashed ${dark?"#64748b":"#94a3b8"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>+ Add Files</button>
           </div>
           <div style={zone("#eff6ff","#bfdbfe","rgba(37,99,235,0.10)","rgba(59,130,246,0.4)")}>
             <label style={lbl}>📝 Notes</label>
