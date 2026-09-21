@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b120";
+const APP_BUILD = "b122";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17226,6 +17226,7 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
   const [showHist,setShowHist] = React.useState(false);
   const [confirmDel,setConfirmDel] = React.useState(false);
   const [oppOpen,setOppOpen] = React.useState(false); // opportunity-type dropdown sheet
+  const [imgOpen,setImgOpen] = React.useState(null);  // fullscreen photo viewer (index)
   const photoRef = React.useRef(null);
   const fileRef = React.useRef(null);
   const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
@@ -17312,6 +17313,13 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
         <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"20px 20px 24px",width:"min(96vw,470px)",maxHeight:"92vh",overflowY:"auto",pointerEvents:"all",color:dark?"#f1f5f9":"#0f172a",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Material":"📎 New Material"}</div>
+          {imgOpen!==null && (f.photos||[])[imgOpen] && (
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:3000}}>
+              <ZoomableImage src={f.photos[imgOpen]} onClose={()=>setImgOpen(null)}/>
+              <div onClick={()=>setImgOpen(null)} style={{position:"absolute",top:16,right:20,color:"#fff",fontSize:28,cursor:"pointer",zIndex:3002,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</div>
+              <div style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",color:"#fff",fontSize:13,opacity:0.75,background:"rgba(0,0,0,0.45)",padding:"4px 12px",borderRadius:20,zIndex:3002,whiteSpace:"nowrap"}}>{imgOpen+1} of {(f.photos||[]).length} · pinch or scroll to zoom</div>
+            </div>
+          )}
             <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
           </div>
           <label style={{...lbl,marginTop:0}}>Title</label>
@@ -17322,7 +17330,8 @@ function BankMaterialModal({modal, onClose, setMats, profile, user}) {
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
                 {(f.photos||[]).map((ph,i)=>(
                   <div key={i} style={{position:"relative"}}>
-                    <img src={ph} style={{width:74,height:74,objectFit:"cover",borderRadius:10,border:"1px solid rgba(0,0,0,0.1)"}}/>
+                    <img src={ph} onClick={()=>setImgOpen(i)} title="Tap to view"
+                      style={{width:74,height:74,objectFit:"cover",borderRadius:10,border:"1px solid rgba(0,0,0,0.1)",cursor:"pointer"}}/>
                     <button type="button" onClick={()=>setF(x=>({...x,photos:(x.photos||[]).filter((_,j)=>j!==i)}))}
                       style={{position:"absolute",top:-6,right:-6,width:22,height:22,borderRadius:"50%",border:"none",background:"#ef4444",color:"#fff",fontSize:12,fontWeight:900,cursor:"pointer",lineHeight:1}}>✕</button>
                   </div>
@@ -17417,6 +17426,10 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
   const [showHist,setShowHist] = React.useState(false);
   const [confirmDel,setConfirmDel] = React.useState(false);
   const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
+  const [xferOpen,setXferOpen] = React.useState(false); // transfer rep picker
+  const [xferQ,setXferQ] = React.useState("");
+  const [xferTo,setXferTo] = React.useState(null);      // create mode: who the lead is being created for
+  const repListAll = (profiles||[]).filter(pp=>!pp.deleted_at && pp.id!==(user&&user.id)).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
   const set=(k)=>(e)=>setF(x=>({...x,[k]:e.target.value}));
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"}; 
   const lbl={display:"block",fontSize:11,fontWeight:700,color:"#94a3b8",margin:"12px 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"};
@@ -17447,7 +17460,8 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
         if(error) throw error;
         setRows(rs=>rs.map(x=>x.id===existing.id?{...x,...upd,id:existing.id}:x));
       } else {
-        const row={...f,owner_id:user.id,lead_generator:user.id,history:[{ts:formatTs(),by:author,changes:["Lead created"]}]};
+        const tgt = xferTo || user.id;
+        const row={...f,owner_id:tgt,lead_generator:tgt,history:[{ts:formatTs(),by:author,changes:[tgt!==user.id?`Lead created (for ${repName(tgt)||"another rep"})`:"Lead created"]}]};
         const {data,error}=await sb.from("bank_leads").insert(row).select().single();
         if(error) throw error;
         setRows(rs=>[data,...rs]);
@@ -17493,7 +17507,7 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
               <div style={{fontSize:18,fontWeight:900}}>{existing?"Edit Lead":"➕ New Lead"}</div>
               <div style={{display:"flex",alignItems:"center",gap:5,marginTop:3,fontSize:12,color:dark?"#94a3b8":"#64748b"}}>
                 <span style={{fontSize:13}}>👤</span>
-                <span>Owner: <b style={{color:dark?"#e2e8f0":"#1a2456"}}>{repName(existing?(existing.lead_generator||existing.owner_id):(user&&user.id))||"—"}</b></span>
+                <span>Owner: <b style={{color:dark?"#e2e8f0":"#1a2456"}}>{repName(existing?(existing.lead_generator||existing.owner_id):(xferTo||(user&&user.id)))||"—"}</b></span>
               </div>
             </div>
             <button onClick={()=>!saving&&onClose()} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer",lineHeight:1}}>✕</button>
@@ -17576,6 +17590,43 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
             <button onClick={()=>!saving&&onClose()} style={{flex:1,padding:"11px 0",borderRadius:9,border:"1.5px solid #e2e8f0",background:dark?"transparent":"#f8fafc",color:dark?"#cbd5e1":"#475569",fontWeight:700,cursor:"pointer",fontSize:14}}>Cancel</button>
             <button onClick={save} disabled={saving} style={{flex:2,padding:"11px 0",borderRadius:9,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:800,cursor:saving?"default":"pointer",fontSize:14}}>{saving?"Saving…":(existing?"Save Changes":"Add Lead")}</button>
           </div>
+          <button type="button" onClick={()=>{setXferQ("");setXferOpen(true);}}
+            style={{width:"100%",marginTop:12,padding:"10px 0",borderRadius:9,border:"1.5px solid #3b82f6",background:"transparent",color:"#3b82f6",fontWeight:800,cursor:"pointer",fontSize:13}}>
+            🔁 Transfer Lead{xferTo&&!existing?` — to ${repName(xferTo)||"…"} on save`:""}
+          </button>
+          {xferOpen && (
+            <div style={{position:"fixed",inset:0,zIndex:2850}} onClick={()=>setXferOpen(false)}>
+              <div style={{position:"absolute",inset:0,background:"rgba(15,23,42,0.55)"}}/>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:"18px",width:"min(92vw,380px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+                <div style={{fontSize:15,fontWeight:900,color:dark?"#f1f5f9":"#1a2456",marginBottom:2}}>🔁 Transfer lead to…</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:10,lineHeight:1.5}}>The lead moves entirely to them — it leaves your bank and only comes back if they transfer it to you.</div>
+                <input autoFocus value={xferQ} onChange={e=>setXferQ(e.target.value)} placeholder="🔍 Search anyone…"
+                  style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,outline:"none",marginBottom:10}}/>
+                <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:"46vh",overflowY:"auto"}}>
+                  {repListAll.filter(pp=>{ const q=xferQ.trim().toLowerCase(); if(!q) return true; return ((pp.name||"")+" "+(pp.email||"")).toLowerCase().includes(q); }).map(pp=>(
+                    <div key={pp.id} onClick={async()=>{
+                        const nm = pp.name||pp.email;
+                        const warn = (pp.role!=="manager" && pp.id!==OWNER_ID) ? "\n\nHeads up: reps can't open the Leads tab yet, so it'll sit parked in their bank until that unlocks." : "";
+                        if(!existing){ setXferTo(pp.id); setXferOpen(false); return; }
+                        if(!window.confirm(`Transfer this lead to ${nm}? It moves entirely to their Leads tab — you can't get it back unless they transfer it back.${warn}`)) return;
+                        try{
+                          const entry={ts:formatTs(),by:author,changes:[`Transferred to ${nm}`]};
+                          const hist=[entry,...(Array.isArray(existing.history)?existing.history:[])];
+                          const {error}=await sb.from("bank_leads").update({owner_id:pp.id,lead_generator:pp.id,history:hist,updated_at:new Date().toISOString()}).eq("id",existing.id);
+                          if(error) throw error;
+                          setRows(rs=>rs.map(x=>x.id===existing.id?{...x,owner_id:pp.id,lead_generator:pp.id,history:hist}:x));
+                          setXferOpen(false); onClose();
+                        }catch(e){ window.alert("Couldn't transfer: "+((e&&e.message)||"error")); }
+                      }}
+                      style={{display:"flex",alignItems:"center",gap:9,padding:"10px 12px",borderRadius:10,cursor:"pointer",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff"}}>
+                      <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pp.name||pp.email}</span>
+                      <span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{(pp.role||"").replace("_"," ")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {existing && (confirmDel ? (
             <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:dark?"rgba(239,68,68,0.10)":"#fff5f5",border:"1.5px solid #fca5a5"}}>
               <div style={{fontSize:13,fontWeight:700,color:"#b91c1c",marginBottom:8}}>Delete this lead? This cannot be undone.</div>
