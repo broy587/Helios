@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b126";
+const APP_BUILD = "b127";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -11384,30 +11384,49 @@ function geoCacheLoad(){
   catch(e){ __geoCache = {}; }
   return __geoCache;
 }
+let __geoSaveT = null;
 function geoCacheSave(){
-  try{ localStorage.setItem("pp_geocode_cache_v1", JSON.stringify(__geoCache)); }catch(e){}
+  // Debounced — a first "All reps" load resolves hundreds of geocodes in a burst,
+  // and serializing the whole cache to localStorage per address was pure jank.
+  clearTimeout(__geoSaveT);
+  __geoSaveT = setTimeout(()=>{ try{ localStorage.setItem("pp_geocode_cache_v1", JSON.stringify(__geoCache)); }catch(e){} }, 800);
 }
+// One shared Geocoder + a small concurrency gate. Switching Viewing to
+// "All reps" can queue hundreds of fresh addresses at once; unthrottled, every
+// request fired together, hammered OVER_QUERY_LIMIT and stuttered the map.
+let __geocoder = null;
+let __geoActive = 0; const __geoWaiters = [];
+const __geoSlot = () => new Promise(res=>{ if(__geoActive<5){ __geoActive++; res(); } else __geoWaiters.push(res); });
+const __geoRelease = () => { const w=__geoWaiters.shift(); if(w) w(); else __geoActive--; };
 async function gmapsGeocode(address){
   const key = (address||"").trim().toLowerCase();
   if(!key) return null;
   const cache = geoCacheLoad();
   if(cache[key]) return cache[key];
   if(!(window.google && window.google.maps)) return null;
-  const out = await new Promise((resolve)=>{
-    try{
-      new window.google.maps.Geocoder().geocode({address}, (results, status)=>{
-        if(status==="OK" && results && results[0]){
-          const l = results[0].geometry.location;
-          resolve({lat:l.lat(), lng:l.lng()});
-        } else {
-          if(status!=="ZERO_RESULTS") console.error("Geocode failed:", status, address);
-          resolve(null);
-        }
-      });
-    }catch(e){ console.error("Geocode error:", e); resolve(null); }
-  });
-  if(out){ cache[key]=out; geoCacheSave(); }
-  return out;
+  await __geoSlot();
+  try{
+    if(cache[key]) return cache[key]; // a queued twin already resolved it
+    if(!__geocoder) __geocoder = new window.google.maps.Geocoder();
+    const ask = () => new Promise((resolve)=>{
+      try{
+        __geocoder.geocode({address}, (results, status)=>{
+          if(status==="OK" && results && results[0]){
+            const l = results[0].geometry.location;
+            resolve({ok:{lat:l.lat(), lng:l.lng()}, status});
+          } else resolve({ok:null, status});
+        });
+      }catch(e){ console.error("Geocode error:", e); resolve({ok:null, status:"ERROR"}); }
+    });
+    let r = await ask();
+    if(!r.ok && (r.status==="OVER_QUERY_LIMIT" || r.status==="UNKNOWN_ERROR")){
+      await new Promise(res=>setTimeout(res, 1500)); // back off once, then retry
+      r = await ask();
+    }
+    if(!r.ok && r.status!=="ZERO_RESULTS") console.error("Geocode failed:", r.status, address);
+    if(r.ok){ cache[key]=r.ok; geoCacheSave(); }
+    return r.ok;
+  } finally { __geoRelease(); }
 }
 // Reverse geocode (lat/lng → street address). Used to upgrade pins that were
 // dropped offline with coordinate placeholders once service returns.
@@ -12533,27 +12552,35 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // render effect above (it re-runs on activeFilters change), so we don't touch
     // markersRef here — doing so would fight that effect and re-show filtered pins.
 
-    // Filter pipeline lead markers
+    // Filter pipeline lead markers — DIFFED. With hundreds of markers showing
+    // (All reps / Mine + Assisted), unconditionally calling setIcon/setLabel/
+    // setMap on every marker made the whole map flicker and stutter every time
+    // leads refreshed. Each marker now carries its last-painted visual key and
+    // only pins that actually changed touch the map at all.
     leadMarkersRef.current.forEach(m=>{
       const lead = m._leadRef || (leads&&leads.find(l=>{
         if(!l.address) return false;
         return m.getTitle()===l.name||m.getTitle()===l.address;
       }));
-      // Repaint the pin so it shows the generic lead bolt with no filter, or the
-      // specific stage/pile icon when filtering.
       if(lead){
         const vis = leadPinVisual(lead, activeFilters, pfxOn);
-        const cur = m.getIcon() || {};
-        m.setIcon({...cur, path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:vis.color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2.5});
-        m.setLabel({text:vis.emoji, fontSize:"14px"});
+        const visKey = vis.color+"|"+vis.emoji;
+        if(m._visKey!==visKey){
+          const cur = m.getIcon() || {};
+          m.setIcon({...cur, path:window.google.maps.SymbolPath.CIRCLE, scale:14, fillColor:vis.color, fillOpacity:0.9, strokeColor:"#fff", strokeWeight:2.5});
+          m.setLabel({text:vis.emoji, fontSize:"14px"});
+          m._visKey = visKey;
+        }
       }
-      if(!hasFilter){m.setMap(mapInstanceRef.current);return;}
-      m.setMap(leadMatchesCanvassFilters(lead, activeFilters, pfx) ? mapInstanceRef.current : null);
+      const shouldShow = !hasFilter || leadMatchesCanvassFilters(lead, activeFilters, pfx);
+      const target = shouldShow ? mapInstanceRef.current : null;
+      if((m.getMap()||null)!==target) m.setMap(target);
     });
 
-    // Hide/show OSM building bubbles based on filter
+    // Hide/show OSM building bubbles based on filter (only when state changes)
     buildingMarkersRef.current.forEach(m=>{
-      m.setMap(hasFilter?null:mapInstanceRef.current);
+      const target = hasFilter?null:mapInstanceRef.current;
+      if((m.getMap()||null)!==target) m.setMap(target);
     });
   },[activeFilters, pfxKey, (leads||[]).map(l=>l.id+":"+l.stage+(l.priority?"P":"")+(l.is_arc?"A":"")+(l.on_hold?"H":"")+(l.needs_cancel_save?"N":"")+(l.temperature||"")+":"+(l.updated_at||"")).join(","), mapLoaded]); // content-keyed — the raw leads/homes arrays are fresh objects every render and were repainting every marker on every render
 
@@ -12624,10 +12651,11 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // Which leads SHOULD have their own marker: has an address, and no canvass
     // home pin already owns that address.
     const want = new Map();
+    const lowerHomes = (homes||[]).map(h=>h.address?h.address.toLowerCase():"").filter(Boolean);
     (leads||[]).forEach(lead=>{
       if(!(lead.address&&lead.address.trim())) return;
       const key = lead.address.split(",")[0].toLowerCase().trim();
-      const alreadyPinned = (homes||[]).some(h=>h.address&&h.address.toLowerCase().includes(key));
+      const alreadyPinned = lowerHomes.some(a=>a.includes(key));
       if(alreadyPinned) return;
       want.set(lead.id, lead);
     });
@@ -12666,6 +12694,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           title:lead.name||lead.address,
           zIndex:10,
           _leadRef:lead, _leadId:lead.id, _addr:lead.address,
+          _visKey:vis.color+"|"+vis.emoji,
         });
         marker.addListener("click",()=>{
           // Read through _leadRef so the popup always shows CURRENT lead data
@@ -12763,11 +12792,15 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     // Leads created from a canvass pin never get their own lead marker (the pin
     // "owns" that address), so without this, stage filtering hid every pin.
     const stagePileActive = hasFilter && (activeFilters.some(f=>f.startsWith("stage:")||f.startsWith("pile:")||f==="priority"||f.startsWith("pf:")) || pfxOn);
+    // Pre-lowered lead addresses once per pass — the per-home find was
+    // re-lowercasing every lead address for every home (O(homes × leads)).
+    const lowerLeads = stagePileActive ? (leads||[]).filter(l=>l.address).map(l=>({l, a:l.address.toLowerCase()})) : null;
     const findLinkedLead = (home) => {
-      if(!home.address) return null;
+      if(!home.address||!lowerLeads) return null;
       const key = home.address.split(",")[0].toLowerCase().trim();
       if(!key) return null;
-      return (leads||[]).find(l=>l.address && l.address.toLowerCase().includes(key)) || null;
+      const hit = lowerLeads.find(x=>x.a.includes(key));
+      return hit ? hit.l : null;
     };
     homes.forEach(home=>{
       if(!home.lat||!home.lng)return;
