@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b128";
+const APP_BUILD = "b129";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8601,7 +8601,10 @@ function analyzeConversions(leads, opts) {
     if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) {
       instSum += num; instCount++;
       if (splitAssist && viewerId) {
-        if (l.owner_id === viewerId) instCommPersonal += num;
+        if (l.owner_id === viewerId) {
+          if (l.assist_id && l.assist_id !== viewerId) instCommAssist += num * 0.5;
+          else instCommPersonal += num;
+        }
         else if (l.assist_id === viewerId) instCommAssist += num * 0.5;
       }
     }
@@ -8634,7 +8637,12 @@ function analyzeConversions(leads, opts) {
     // Commission split: when the viewer is only the ASSIST on this account (and
     // split mode is on), they earn 50%; when they OWN it, they earn the full 100%.
     if (splitAssist && viewerId) {
-      if (l.owner_id === viewerId) pipeCommPersonal += num;
+      if (l.owner_id === viewerId) {
+        // Owner with an assist attached is ALSO on a 50% split — putting someone
+        // on assist means giving up half. Only solo accounts count at 100%.
+        if (l.assist_id && l.assist_id !== viewerId) pipeCommAssist += num * 0.5;
+        else pipeCommPersonal += num;
+      }
       else if (l.assist_id === viewerId) pipeCommAssist += num * 0.5;
     }
   }
@@ -9775,11 +9783,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   {c.pipeCommSplit && (
                     <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% of your own)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — your own, no assist)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.pipeCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — yours with an assist, or assisting)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.pipeCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
@@ -9809,11 +9817,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   {c.pipeCommSplit && (
                     <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% of your own)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — your own, no assist)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.instCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — yours with an assist, or assisting)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.instCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
