@@ -496,11 +496,28 @@ async function canvassHomeSave(row){
 // If the backend is unavailable, callers fall back to the older browser-based
 // Google sign-in path (kept during rollout) so booking never hard-stops.
 const CalendarBackend = {
-  _down: false,          // set true after a backend failure (per page load)
-  enabled(){ return !this._down; },
-  async call(action, body){
-    const { data:{ session } } = await sb.auth.getSession();
+  // A backend failure used to flip a permanent "down" flag for the whole page
+  // load — one blip (bad signal for a second, a cold start, an expired session
+  // right after reopening the app) and EVERY booking after that asked for a
+  // Google sign-in. Now failures only pause the backend for a short cooldown,
+  // transient errors retry once, and a missing session waits for the token
+  // refresh instead of instantly bailing to the sign-in path.
+  _downUntil: 0,         // timestamp (ms): backend paused until then after a failure
+  enabled(){ return Date.now() >= this._downUntil; },
+  _pause(){ this._downUntil = Date.now() + 60*1000; },
+  async _session(){
+    let { data:{ session } } = await sb.auth.getSession();
+    if(!session?.access_token){
+      // Right after the app resumes, the Supabase token refresh can still be in
+      // flight. Give it a moment and look again before declaring NO_SESSION.
+      await new Promise(r=>setTimeout(r, 1500));
+      ({ data:{ session } } = await sb.auth.getSession());
+    }
     if(!session?.access_token) throw new Error("NO_SESSION");
+    return session;
+  },
+  async call(action, body){
+    const session = await this._session();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/calendar`, {
       method:"POST",
       headers:{
@@ -513,30 +530,35 @@ const CalendarBackend = {
     let out = {};
     try { out = await res.json(); } catch(e){}
     if(!res.ok){
-      // 5xx / missing function → treat as backend down so we can fall back.
-      if(res.status>=500 || res.status===404) this._down = true;
+      // 5xx / missing function → pause the backend briefly so we can fall back.
+      if(res.status>=500 || res.status===404) this._pause();
       throw new Error(out.error || `Calendar backend error (${res.status})`);
     }
     return out;
   },
-  // Wrapper: try the backend, fall back to the legacy path on infrastructure
-  // failures (not on genuine "you can't do that" errors).
+  // Wrapper: try the backend (with one retry on transient failures), fall back
+  // to the legacy sign-in path only when it truly can't be reached — never on
+  // genuine "you can't do that" errors, which are surfaced to the caller.
   async tryCall(action, body){
     if(!this.enabled()) return null;
-    try { return await this.call(action, body); }
-    catch(e){
-      const msg = String(e.message||e);
-      // Network/infrastructure failures → fall back to the Google sign-in path.
-      // Browsers word these differently: Chrome "Failed to fetch",
-      // Safari/iOS "Load failed", Firefox "NetworkError".
-      const networkish = /failed to fetch|load failed|networkerror|network request failed|timed out|timeout|cors|not configured|failed to send a request/i.test(msg);
-      if(msg==="NO_SESSION" || this._down || networkish){
-        this._down = true;
-        console.warn("Calendar backend unavailable, falling back to Google sign-in:", msg);
-        return null;
+    const isNetworkish = (msg) => /failed to fetch|load failed|networkerror|network request failed|timed out|timeout|cors|not configured|failed to send a request/i.test(msg);
+    for(let attempt=0; attempt<2; attempt++){
+      try { return await this.call(action, body); }
+      catch(e){
+        const msg = String(e.message||e);
+        // Network/infrastructure failures → retry once, then fall back.
+        // Browsers word these differently: Chrome "Failed to fetch",
+        // Safari/iOS "Load failed", Firefox "NetworkError".
+        if(msg==="NO_SESSION" || isNetworkish(msg) || !this.enabled()){
+          if(attempt===0){ await new Promise(r=>setTimeout(r, 900)); continue; }
+          if(msg!=="NO_SESSION") this._pause(); // a session gap isn't a backend outage
+          console.warn("Calendar backend unavailable, falling back to Google sign-in:", msg);
+          return null;
+        }
+        throw e; // a real, actionable error — surface it
       }
-      throw e; // a real, actionable error — surface it
     }
+    return null;
   },
 };
 
@@ -571,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b132";
+const APP_BUILD = "b134";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -15184,11 +15206,9 @@ const TeamCalendars = {
     }catch(e){}
   },
   // Per-calendar booking requirements: the calendar being booked decides.
-  // Requirements gate reps / self-gen / closers; managers and the owner are
-  // exempt (same rule as team requirements).
+  // EVERYONE follows them — reps, self-gen, closers, managers AND the owner.
+  // (Managers and the owner used to be exempt; removed at the owner's request.)
   acReqForCalendarId(calendarId){
-    const role = this.currentRole || "";
-    if(role !== "rep" && role !== "self_gen" && role !== "closer") return {items:[], count:0};
     const hit = (this.teams||[]).find(t=>t && t.calendarId===calendarId)
              || (this.cachedTeams()||[]).find(t=>t && t.calendarId===calendarId);
     if(!hit) return {items:[], count:0};
