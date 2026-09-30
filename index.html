@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b147";
+const APP_BUILD = "b149";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9753,7 +9753,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const fmtUSD = (n)=> n==null ? "—" : n.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
         const convRangeLabel = convDrOn ? [pipeFilters.after||"…", pipeFilters.before||"…"].join(" → ") : "";
         const exportCsv = ()=>{
-          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","pto_appointment","checkin_appointment","site_survey_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
+          const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","follow_up_agreed","follow_up_date","pto_appointment","checkin_appointment","site_survey_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
           const esc = (s)=>{
             let v = (s===null||s===undefined) ? "" : s;
             if(Array.isArray(v)) v = v.map(x=>(x&&typeof x==="object")?JSON.stringify(x):x).join("; ");
@@ -9778,7 +9778,30 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             if(k==="lead_files") v = fileNames(l);
             return esc(v);
           }),esc(noteText(l)),esc(histText(l))].join(","));
-          const csv = [header,...rows].join("\n");
+          // ── Conversions Report block at the top of the file — the exact same
+          // numbers as the on-screen report / Conversions button at export time. ──
+          const rl = [];
+          const R=(a,b)=>rl.push([esc(a),esc(b)].join(","));
+          R("CONVERSIONS REPORT", new Date().toLocaleString());
+          R("Date range", convDrOn?convRangeLabel:"none (current board)");
+          R("How it counts","Movement-based, not creation-based: with a date range filtered, an account credits a stage by WHEN IT WAS MOVED INTO that stage — creation date is irrelevant. It must still sit at or past the stage: moved backward, its stage date is wiped and it stops counting everywhere; moved forward again, it counts fresh from the new move date. Commission In The Pipe is the one exception — always a right-now snapshot of VC/SRA through Install Scheduled.");
+          R("AC / Setter accounts"+(conv.movedWindow?" (reached AC in range)":""), conv.acTotal);
+          R("Avg AC score", conv.avgScore==null?"—":conv.avgScore.toFixed(1)+"/10");
+          conv.ac.forEach(m=>R("AC — "+m.label, m.pct==null?"—":`${m.pct}% (${m.n}/${conv.acTotal})`));
+          R("VC or after accounts"+(conv.movedWindow?" (reached VC in range)":""), conv.vcTotal);
+          conv.vc.forEach(m=>R("VC — "+m.label, m.pct==null?"—":`${m.pct}% (${m.n}/${m.total!=null?m.total:conv.vcTotal})`));
+          conv.funnel.forEach(m=>R("Funnel — "+m.label, `${m.pct==null?"—":m.pct+"%"} (${m.n}/${m.of})`));
+          R("Gift card dropped", conv.giftCard.dropped);
+          R("Gift card to Install", `${conv.giftCard.toInstall} (${conv.giftCard.pct==null?"—":conv.giftCard.pct+"%"})`);
+          R("Avg commission — "+(conv.movedWindow?"installed in range":"installed"), `${fmtUSD(conv.avgCommissionInstalled)} (${conv.instCount} with commission)`);
+          R("Avg commission — all leads in view", `${fmtUSD(conv.avgCommission)} (${conv.commCount} with commission)`);
+          R("Commission in the pipe (VC/SRA - Install Scheduled)", `${conv.pipeCommCount>0?fmtUSD(conv.pipeCommSum):"—"} (${conv.pipeInRange} in pipe)`);
+          R("Commission installed"+(conv.movedWindow?" (reached Install in range)":" (Install - PTO)"), `${conv.instCount>0?fmtUSD(conv.instCommSum):"—"} (${conv.instInRange} installed)`);
+          if(conv.pipeCommSplit){
+            R("Pipe split — Personal / Assisted / Total", `${fmtUSD(conv.pipeCommPersonal)} / ${fmtUSD(conv.pipeCommAssist)} / ${fmtUSD(conv.pipeCommPersonal+conv.pipeCommAssist)}`);
+            R("Installed split — Personal / Assisted / Total", `${fmtUSD(conv.instCommPersonal)} / ${fmtUSD(conv.instCommAssist)} / ${fmtUSD(conv.instCommPersonal+conv.instCommAssist)}`);
+          }
+          const csv = [...rl,"",header,...rows].join("\n");
           const blob = new Blob([csv],{type:"text/csv"});
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a"); a.href=url; a.download=`lead-audit-${new Date().toISOString().slice(0,10)}.csv`; a.click();
