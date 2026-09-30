@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b136";
+const APP_BUILD = "b137";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9734,7 +9734,9 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         // type, dates, archive mode…) already applied.
         const c = analyzeConversions(leads||[], {
           viewerId: commUser?.id,
-          splitAssist: (commPipelineFilter==="mine" && commShowAssisted)
+          // Always split on My Pipeline: an owner who put someone on assist is on
+          // a 50% split whether or not the 🤝 Assisted toggle is on.
+          splitAssist: commPipelineFilter==="mine"
         });
         const Bar = ({label, pct, n, total})=>(
           <div style={{marginBottom:12}}>
