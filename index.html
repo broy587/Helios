@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b131";
+const APP_BUILD = "b132";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -7970,7 +7970,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   );
 }
 
-function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
+function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles,meId}) {
   const dark=useDark();
   const colors=getStageColor(lead.stage);
   const cardRef=React.useRef(null);
@@ -8154,9 +8154,13 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles}) {
           return <div style={{fontSize:10,color:"#b45309",fontWeight:700,marginBottom:2}}>⏸️ On hold until {disp}</div>;
         })()}
         {lead.assist_id && (()=>{
-          const a=(profiles||[]).find(p=>p.id===lead.assist_id);
-          if(!a) return null;
-          return <div style={{fontSize:10,color:"#0369a1",fontWeight:700,marginBottom:2}}>🤝 Assist: {a.name||a.email}</div>;
+          // When the viewer IS the assist, "Assist: (themselves)" says nothing —
+          // show them who OWNS the account instead. Everyone else (incl. the
+          // owner) still sees the assist's name.
+          const viewerIsAssist = meId && lead.assist_id===meId && lead.owner_id!==meId;
+          const p=(profiles||[]).find(x=>x.id===(viewerIsAssist?lead.owner_id:lead.assist_id));
+          if(!p) return null;
+          return <div style={{fontSize:10,color:"#0369a1",fontWeight:700,marginBottom:2}}>{viewerIsAssist?"👤 Owner: ":"🤝 Assist: "}{p.name||p.email}</div>;
         })()}
         {(lead.soft_solid||lead.confirmed) && (
           <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -9118,7 +9122,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {stageLeads.length===0?(
                   <div style={{textAlign:"center",color:isOver?colors.border:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10,fontWeight:isOver?700:400}}>Drop here</div>
                 ):stageLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} profiles={profiles} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id}/>
+                  <LeadCard key={lead.id} lead={lead} profiles={profiles} meId={commUser?.id} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={handleTouchDragStart} isDragging={dragId===lead.id}/>
                 ))}
               </div>
             </div>
@@ -9140,7 +9144,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {ncsLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads need a cancel save</div>
                 ):ncsLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} profiles={profiles} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                  <LeadCard key={lead.id} lead={lead} profiles={profiles} meId={commUser?.id} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
             </div>
@@ -9161,7 +9165,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {holdLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No leads on hold</div>
                 ):holdLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} profiles={profiles} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                  <LeadCard key={lead.id} lead={lead} profiles={profiles} meId={commUser?.id} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
             </div>
@@ -9181,7 +9185,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {arcLeads.length===0?(
                   <div style={{textAlign:"center",color:dark?"#475569":"#cbd5e1",fontSize:12,paddingTop:20,paddingBottom:10}}>No cancelled leads</div>
                 ):arcLeads.map(lead=>(
-                  <LeadCard key={lead.id} lead={lead} profiles={profiles} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
+                  <LeadCard key={lead.id} lead={lead} profiles={profiles} meId={commUser?.id} onView={l=>{if(!dragId)setDetailId(l.id);}} onTouchDragStart={()=>{}} isDragging={false}/>
                 ))}
               </div>
             </div>
