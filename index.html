@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b146";
+const APP_BUILD = "b147";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9741,6 +9741,17 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Meta", [["Owner",repName(l.owner_id)],["Assist (50% split)",l.assist_id?repName(l.assist_id):""],["Files",fileNames(l)],["Created",fmtDate(l.created_at)],["Updated",fmtDate(l.updated_at)]]],
           ["Flag reasons", [["Cancel reason",l.cancel_reason],["Cancel tags",l.cancel_tags],["On hold reason",l.on_hold_reason],["On hold until",l.on_hold_until?fmtDate(l.on_hold_until):""],["Cancel Save reasoning",l.ncs_reason]]],
         ]);
+        // ── Conversions report — mirrors the 📊 Conversions modal EXACTLY, same
+        // inputs, same movement-window behavior under a date-range filter. ──
+        const convDrOn = !!(pipeFilters && (pipeFilters.after || pipeFilters.before));
+        const convMovedRange = convDrOn ? {
+          start: pipeFilters.after ? new Date(pipeFilters.after+"T00:00:00") : new Date(0),
+          end: pipeFilters.before ? new Date(pipeFilters.before+"T23:59:59.999") : new Date(8640000000000000),
+        } : null;
+        const convMovedPool = convDrOn ? (leadsAll||[]).filter(x=>matchesPipelineFilters(x, {...pipeFilters, after:"", before:""})) : null;
+        const conv = analyzeConversions(leads||[], { viewerId: commUser?.id, splitAssist: commPipelineFilter==="mine", movedRange: convMovedRange, movedPool: convMovedPool });
+        const fmtUSD = (n)=> n==null ? "—" : n.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
+        const convRangeLabel = convDrOn ? [pipeFilters.after||"…", pipeFilters.before||"…"].join(" → ") : "";
         const exportCsv = ()=>{
           const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","pto_appointment","checkin_appointment","site_survey_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
           const esc = (s)=>{
@@ -9806,6 +9817,39 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </div>
               </div>
               <div style={{overflowY:"auto",padding:"12px 16px 28px"}}>
+                {/* ── 📊 Conversions Report — everything from the Conversions section ── */}
+                <div style={{background:dark?"#1e293b":"#fff",border:"1.5px solid #6b2d4e",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+                  <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                    <div style={{fontWeight:800,fontSize:15,color:dark?"#f1f5f9":"#1a2456"}}>📊 Conversions Report</div>
+                    {convDrOn && <span style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>date range: {convRangeLabel}</span>}
+                  </div>
+                  <div style={{fontSize:12,lineHeight:1.6,color:dark?"#cbd5e1":"#475569",background:dark?"#0f172a":"#f0f9ff",border:`1px solid ${dark?"#334155":"#bae6fd"}`,borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+                    <b style={{color:dark?"#f1f5f9":"#0f172a"}}>How this report counts:</b> these numbers are <b>movement-based, not creation-based</b>. When a date range is filtered on the pipeline, an account is credited to a stage by <b>when it was moved into that stage</b> — not when the account was created. An account created months ago that moved to Permitting during the filtered range counts as a Permit for that range. Three rules keep it honest: <b>(1)</b> the move into the stage must have happened inside the date range; <b>(2)</b> the account must <b>still</b> sit at that stage or past it — the moment it's moved backward to an earlier stage, its stage date is wiped and it stops counting everywhere; <b>(3)</b> if it later moves forward into the stage again, it counts fresh from the <b>new</b> move date, not the original one. AC / Setter and VC-or-after pool accounts that reached AC (or VC) inside the range; the AC-to-Install funnel compares how many accounts entered each stage during the range; and the installed commission totals only include accounts that reached Install inside the range and are still installed. Commission In The Pipe is the one exception — it's always a right-now snapshot of what's sitting between VC / SRA and Install Scheduled. With no date range filtered, the report simply reflects the accounts currently on the board and their current stages.
+                  </div>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>AC / Setter · {conv.acTotal} account{conv.acTotal===1?"":"s"}{conv.movedWindow?" (reached AC in range)":""} · avg score {conv.avgScore==null?"—":conv.avgScore.toFixed(1)}/10</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"3px 12px",marginBottom:10}}>
+                    {conv.ac.map(m=><div key={m.label} style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>{m.label}: </span><b>{m.pct==null?"—":`${m.pct}% (${m.n}/${conv.acTotal})`}</b></div>)}
+                  </div>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>VC or after · {conv.vcTotal} account{conv.vcTotal===1?"":"s"}{conv.movedWindow?" (reached VC in range)":""}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"3px 12px",marginBottom:10}}>
+                    {conv.vc.map(m=><div key={m.label} style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>{m.label}: </span><b>{m.pct==null?"—":`${m.pct}% (${m.n}/${m.total!=null?m.total:conv.vcTotal})`}</b></div>)}
+                  </div>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>AC to Install Conversions{conv.movedWindow?" (moved into stage within range)":""}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:"3px 12px",marginBottom:10}}>
+                    {conv.funnel.map(m=><div key={m.label} style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>{m.label}: </span><b>{m.pct==null?"—":`${m.pct}%`} ({m.n}/{m.of})</b></div>)}
+                  </div>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>🎁 Gift Card Drop-off</div>
+                  <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155",marginBottom:10}}>{conv.giftCard.dropped} dropped off · {conv.giftCard.toInstall} to Install · <b>{conv.giftCard.pct==null?"—":conv.giftCard.pct+"%"}</b></div>
+                  <div style={{fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Commission</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"3px 12px"}}>
+                    <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>Avg — {conv.movedWindow?"installed in range":"installed"}: </span><b>{fmtUSD(conv.avgCommissionInstalled)}</b> ({conv.instCount})</div>
+                    <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>Avg — all leads in view: </span><b>{fmtUSD(conv.avgCommission)}</b> ({conv.commCount})</div>
+                    <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>In the pipe (VC/SRA → Install Sched.): </span><b>{conv.pipeCommCount>0?fmtUSD(conv.pipeCommSum):"—"}</b> ({conv.pipeInRange} in pipe)</div>
+                    <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>Installed{conv.movedWindow?" (reached Install in range)":" (Install - PTO)"}: </span><b>{conv.instCount>0?fmtUSD(conv.instCommSum):"—"}</b> ({conv.instInRange} installed)</div>
+                    {conv.pipeCommSplit && <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>Pipe split — Personal / 🤝 Assisted / Total: </span><b>{fmtUSD(conv.pipeCommPersonal)} / {fmtUSD(conv.pipeCommAssist)} / {fmtUSD(conv.pipeCommPersonal+conv.pipeCommAssist)}</b></div>}
+                    {conv.pipeCommSplit && <div style={{fontSize:12,color:dark?"#cbd5e1":"#334155"}}><span style={{color:"#94a3b8"}}>Installed split — Personal / 🤝 Assisted / Total: </span><b>{fmtUSD(conv.instCommPersonal)} / {fmtUSD(conv.instCommAssist)} / {fmtUSD(conv.instCommPersonal+conv.instCommAssist)}</b></div>}
+                  </div>
+                </div>
                 {pool.length===0 ? (
                   <div style={{textAlign:"center",color:"#94a3b8",fontSize:13,padding:"28px 0"}}>No leads in these stages.</div>
                 ) : pool.map(l=>(
