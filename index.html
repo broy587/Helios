@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b137";
+const APP_BUILD = "b138";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8301,6 +8301,14 @@ function pfMissingUtility(l){
 function pfMissingSold(l){
   return ["system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex"].some(f=>!pfNonEmpty(l[f]));
 }
+// "Includes" = at least ONE of the section's fields is filled out (not the
+// strict inverse of "missing", which fires when at least one is EMPTY).
+function pfHasUtility(l){
+  return ["utility","esiid","meter","cents_kwh","annual_kwh","average_bill"].some(f=>pfNonEmpty(l[f]));
+}
+function pfHasSold(l){
+  return ["system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex"].some(f=>pfNonEmpty(l[f]));
+}
 function pfHasAppt(l){
   return pfNonEmpty(l.appointment) || pfNonEmpty(l.cap_appointment) || pfNonEmpty(l.cs_appointment) || pfNonEmpty(l.install_appointment) || pfNonEmpty(l.followup_appointment) || pfNonEmpty(l.close_appointment) || pfNonEmpty(l.pto_appointment) || pfNonEmpty(l.checkin_appointment) || pfNonEmpty(l.site_survey_appointment) ||
     (Array.isArray(l.extra_appointments) && l.extra_appointments.length>0);
@@ -8347,7 +8355,9 @@ const PIPELINE_FILTER_DEFS = [
     test:l=>deriveCloserChecklist(l).includes(item),
   })),
   {key:"missing_utility", group:"Utility and sold system info", label:"Missing utility info",     test:pfMissingUtility},
+  {key:"has_utility",     group:"Utility and sold system info", label:"Includes utility info",    test:pfHasUtility},
   {key:"missing_sold",    group:"Utility and sold system info", label:"Missing sold system info", test:pfMissingSold},
+  {key:"has_sold",        group:"Utility and sold system info", label:"Includes sold system info",test:pfHasSold},
 ];
 const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Utility and sold system info"];
 
