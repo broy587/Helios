@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b141";
+const APP_BUILD = "b143";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -1629,7 +1629,10 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
   const myPitchesInRange = range ? myPitches.filter(p=>{const t=new Date(p.created_at);return t>=range.start&&t<=range.end;}) : myPitches;
   const pct = (a,b) => b>0?Math.round((a/b)*100)+"%":"-";
   // Helper: milestone count with time range
-  const mc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
+  // statCountInRange (NOT milestoneCountInRange): "Install" must mean the
+  // LITERAL Install stage, matching the leaderboard, commitment trackers and
+  // conversions — Install Scheduled accounts were inflating the Install card.
+  const mc = (leadsArr, milestone) => statCountInRange(leadsArr, milestone, range);
 
   const isPrivileged = currentUser.role==="manager" || currentUser.role==="owner" || currentUser.role==="closer";
   // Teams this user belongs to (for scoping non-privileged/team-stat views).
@@ -1689,7 +1692,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
   };
   const teamPitches = getTeamPitches();
   const teamPitchesInRange = range ? teamPitches.filter(p=>{const t=new Date(p.created_at);return t>=range.start&&t<=range.end;}) : teamPitches;
-  const tmc = (leadsArr, milestone) => milestoneCountInRange(leadsArr, milestone, range);
+  const tmc = (leadsArr, milestone) => statCountInRange(leadsArr, milestone, range); // literal Install — same rule as mc above
 
   // Stat-card colors: red until the commitment target (from the Commitment tracker)
   // is met, then green. Quarter ranges compare to the quarterly commitment; all
@@ -1912,7 +1915,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           <StatCard label="VC" value={mc(myLeads,"VC")} hit={hitP(mc(myLeads,"VC"),"vc_commit")}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-          <StatCard label="CAP" value={mc(myLeads,"CAP")} hit={hitP(mc(myLeads,"CAP"),"cap_commit")}/>
+          <StatCard label="Permits" value={mc(myLeads,"Permits")} hit={hitP(mc(myLeads,"Permits"),"cap_commit")}/>
           <StatCard label="Install" value={mc(myLeads,"Install")} hit={hitP(mc(myLeads,"Install"),"install_commit")}/>
           <StatCard label="PTO" value={mc(myLeads,"PTO")} hit={hitP(mc(myLeads,"PTO"),"pto_commit")}/>
         </div>
@@ -1925,7 +1928,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
           <StatCard label="AC" value={mc(myAssistLeads,"AC")} hit={hitA(mc(myAssistLeads,"AC"),"assist_ac_commit")}/>
           <StatCard label="VC" value={mc(myAssistLeads,"VC")} hit={hitA(mc(myAssistLeads,"VC"),"assist_vc_commit")}/>
-          <StatCard label="CAP" value={mc(myAssistLeads,"CAP")} hit={hitA(mc(myAssistLeads,"CAP"),"assist_cap_commit")}/>
+          <StatCard label="Permits" value={mc(myAssistLeads,"Permits")} hit={hitA(mc(myAssistLeads,"Permits"),"assist_cap_commit")}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
           <StatCard label="Install" value={mc(myAssistLeads,"Install")} hit={hitA(mc(myAssistLeads,"Install"),"assist_install_commit")}/>
@@ -1953,7 +1956,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
             <StatCard label="VC" value={tmc(teamLeads,"VC")} hit={hitT(tmc(teamLeads,"VC"),"vc_commit")}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
-            <StatCard label="CAP" value={tmc(teamLeads,"CAP")} hit={hitT(tmc(teamLeads,"CAP"),"cap_commit")}/>
+            <StatCard label="Permits" value={tmc(teamLeads,"Permits")} hit={hitT(tmc(teamLeads,"Permits"),"cap_commit")}/>
             <StatCard label="Install" value={tmc(teamLeads,"Install")} hit={hitT(tmc(teamLeads,"Install"),"install_commit")}/>
             <StatCard label="PTO" value={tmc(teamLeads,"PTO")} hit={hitT(tmc(teamLeads,"PTO"),"pto_commit")}/>
           </div>
@@ -1982,8 +1985,8 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           const rInRange = leadsInRange(rLeads, range);
           const rAC = milestoneCountInRange(rLeads,"AC",range);
           const rVC = milestoneCountInRange(rLeads,"VC",range);
-          const rCAP = milestoneCountInRange(rLeads,"CAP",range);
-          const rInstall = milestoneCountInRange(rLeads,"Install",range);
+          const rCAP = statCountInRange(rLeads,"Permits",range);
+          const rInstall = statCountInRange(rLeads,"Install",range); // literal Install, matching everything else
           const rPTO = milestoneCountInRange(rLeads,"PTO",range);
           const cardBg = dark?"#1e293b":"#fff";
           const statBg = dark?"#0f172a":"#f8fafc";
@@ -2036,7 +2039,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
                       <div style={{fontSize:20,fontWeight:800,color:"#8b5cf6"}}>{rCAP}</div>
-                      <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>CAP</div>
+                      <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>Permits</div>
                     </div>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
                       <div style={{fontSize:20,fontWeight:800,color:"#10b981"}}>{rInstall}</div>
@@ -2121,13 +2124,13 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemb
 
   const weeklyAC = statCountInRange(memberLeads,"AC",weekRange);
   const weeklyVC = statCountInRange(memberLeads,"VC",weekRange);
-  const weeklyCAP = statCountInRange(memberLeads,"CAP",weekRange);
+  const weeklyCAP = statCountInRange(memberLeads,"Permits",weekRange);
   const weeklyInstall = statCountInRange(memberLeads,"Install",weekRange);
   const weeklyPTO = statCountInRange(memberLeads,"PTO",weekRange);
 
   const quarterlyAC = statCountInRange(memberLeads,"AC",quarterRange);
   const quarterlyVC = statCountInRange(memberLeads,"VC",quarterRange);
-  const quarterlyCAP = statCountInRange(memberLeads,"CAP",quarterRange);
+  const quarterlyCAP = statCountInRange(memberLeads,"Permits",quarterRange);
   const quarterlyInstall = statCountInRange(memberLeads,"Install",quarterRange);
   const quarterlyPTO = statCountInRange(memberLeads,"PTO",quarterRange);
 
@@ -2201,7 +2204,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemb
           <GoalBar label="Pitches" current={pitchesCount} goal={goal.pitches_goal||0} color="#ef4444"/>
           <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
-          <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
+          <GoalBar label="Permits" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
           <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
           <GoalBar label="PTO" current={pto} goal={goal.pto_goal||0} color="#f59e0b"/>
         </div>
@@ -2221,7 +2224,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemb
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","Permits","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -2256,7 +2259,7 @@ function GoalsSection({teamId, teamGoals, setTeamGoals, leads, pitches, teamMemb
 // Work exactly like the goal trackers but track a separate "commitment" target
 // stored in the *_commit columns of the same goal tables.
 const COMMIT_INPUT_STYLE = {width:"100%",padding:"11px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:15,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-const COMMIT_ROWS = [["pitches_commit","Pitches","#ef4444"],["ac_commit","AC","#3b82f6"],["vc_commit","VC","#6366f1"],["cap_commit","CAP","#8b5cf6"],["install_commit","Install","#10b981"],["pto_commit","PTO","#f59e0b"]];
+const COMMIT_ROWS = [["pitches_commit","Pitches","#ef4444"],["ac_commit","AC","#3b82f6"],["vc_commit","VC","#6366f1"],["cap_commit","Permits","#8b5cf6"],["install_commit","Install","#10b981"],["pto_commit","PTO","#f59e0b"]];
 
 function pitchesInRangeFor(pitches, ownerIds, rng){
   const set = Array.isArray(ownerIds) ? new Set(ownerIds) : new Set([ownerIds]);
@@ -2335,7 +2338,7 @@ function PersonalCommitmentSection({targetUserId, personalGoals, setPersonalGoal
     {label:"Pitches",current:pitchesInRangeFor(pitches,targetUserId,rng),goal:row.pitches_commit||0,color:"#ef4444"},
     {label:"AC",current:statCountInRange(myLeads,"AC",rng),goal:row.ac_commit||0,color:"#3b82f6"},
     {label:"VC",current:statCountInRange(myLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
-    {label:"CAP",current:statCountInRange(myLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
+    {label:"Permits",current:statCountInRange(myLeads,"Permits",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
     {label:"Install",current:statCountInRange(myLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
     {label:"PTO",current:statCountInRange(myLeads,"PTO",rng),goal:row.pto_commit||0,color:"#f59e0b"},
   ];
@@ -2365,8 +2368,8 @@ function PersonalCommitmentSection({targetUserId, personalGoals, setPersonalGoal
 // assist counts here; owning an account and ADDING an assist stays in the
 // rep's PERSONAL numbers, never in their assist numbers. Targets live on the
 // same personal_goals row (assist_* columns).
-const ASSIST_COMMIT_ROWS = [["assist_ac_commit","AC","#3b82f6"],["assist_vc_commit","VC","#6366f1"],["assist_cap_commit","CAP","#8b5cf6"],["assist_install_commit","Install","#10b981"],["assist_pto_commit","PTO","#f59e0b"]];
-const ASSIST_GOAL_ROWS   = [["assist_ac_goal","AC","#3b82f6"],["assist_vc_goal","VC","#6366f1"],["assist_cap_goal","CAP","#8b5cf6"],["assist_install_goal","Install","#10b981"],["assist_pto_goal","PTO","#f59e0b"]];
+const ASSIST_COMMIT_ROWS = [["assist_ac_commit","AC","#3b82f6"],["assist_vc_commit","VC","#6366f1"],["assist_cap_commit","Permits","#8b5cf6"],["assist_install_commit","Install","#10b981"],["assist_pto_commit","PTO","#f59e0b"]];
+const ASSIST_GOAL_ROWS   = [["assist_ac_goal","AC","#3b82f6"],["assist_vc_goal","VC","#6366f1"],["assist_cap_goal","Permits","#8b5cf6"],["assist_install_goal","Install","#10b981"],["assist_pto_goal","PTO","#f59e0b"]];
 function AssistTrackerSection({title, kind, fields, targetUserId, personalGoals, setPersonalGoals, leads, canEdit}) {
   const dark=useDark();
   const [period,setPeriod]=useState("weekly");
@@ -2414,7 +2417,7 @@ function TeamCommitmentSection({teamId, teamGoals, setTeamGoals, leads, pitches,
     {label:"Pitches",current:pitchesInRangeFor(pitches,teamMemberIds,rng),goal:row.pitches_commit||0,color:"#ef4444"},
     {label:"AC",current:statCountInRange(memberLeads,"AC",rng),goal:row.ac_commit||0,color:"#3b82f6"},
     {label:"VC",current:statCountInRange(memberLeads,"VC",rng),goal:row.vc_commit||0,color:"#6366f1"},
-    {label:"CAP",current:statCountInRange(memberLeads,"CAP",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
+    {label:"Permits",current:statCountInRange(memberLeads,"Permits",rng),goal:row.cap_commit||0,color:"#8b5cf6"},
     {label:"Install",current:statCountInRange(memberLeads,"Install",rng),goal:row.install_commit||0,color:"#10b981"},
     {label:"PTO",current:statCountInRange(memberLeads,"PTO",rng),goal:row.pto_commit||0,color:"#f59e0b"},
   ];
@@ -2462,12 +2465,12 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
 
   const weeklyAC = statCountInRange(myLeads,"AC",weekRange);
   const weeklyVC = statCountInRange(myLeads,"VC",weekRange);
-  const weeklyCAP = statCountInRange(myLeads,"CAP",weekRange);
+  const weeklyCAP = statCountInRange(myLeads,"Permits",weekRange);
   const weeklyInstall = statCountInRange(myLeads,"Install",weekRange);
   const weeklyPTO = statCountInRange(myLeads,"PTO",weekRange);
   const quarterlyAC = statCountInRange(myLeads,"AC",quarterRange);
   const quarterlyVC = statCountInRange(myLeads,"VC",quarterRange);
-  const quarterlyCAP = statCountInRange(myLeads,"CAP",quarterRange);
+  const quarterlyCAP = statCountInRange(myLeads,"Permits",quarterRange);
   const quarterlyInstall = statCountInRange(myLeads,"Install",quarterRange);
   const quarterlyPTO = statCountInRange(myLeads,"PTO",quarterRange);
 
@@ -2544,7 +2547,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
           <GoalBar label="Pitches" current={pitchesCount} goal={goal.pitches_goal||0} color="#ef4444"/>
           <GoalBar label="AC" current={ac} goal={goal.ac_goal||0} color="#3b82f6"/>
           <GoalBar label="VC" current={vc} goal={goal.vc_goal||0} color="#6366f1"/>
-          <GoalBar label="CAP" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
+          <GoalBar label="Permits" current={cap} goal={goal.cap_goal||0} color="#8b5cf6"/>
           <GoalBar label="Install" current={inst} goal={goal.install_goal||0} color="#10b981"/>
           <GoalBar label="PTO" current={pto} goal={goal.pto_goal||0} color="#f59e0b"/>
         </div>
@@ -2563,7 +2566,7 @@ function PersonalGoalsSection({targetUserId, personalGoals, setPersonalGoals, le
               </div>
               <button onClick={()=>setEditing(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","CAP","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
+            {[["pitches_goal","Pitches","#ef4444"],["ac_goal","AC","#3b82f6"],["vc_goal","VC","#6366f1"],["cap_goal","Permits","#8b5cf6"],["install_goal","Install","#10b981"],["pto_goal","PTO","#f59e0b"]].map(([k,l,c])=>(
               <div key={k} style={{marginBottom:14}}>
                 <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{l} Goal</label>
                 <input
@@ -2610,7 +2613,7 @@ function TeamOverviewCard({team, teamMembers, teamGoals, leads, onClick}) {
   const metrics = [
     {label:"AC", current:statCountInRange(memberLeads,"AC",rng), goal:goal.ac_goal||0, color:"#3b82f6"},
     {label:"VC", current:statCountInRange(memberLeads,"VC",rng), goal:goal.vc_goal||0, color:"#6366f1"},
-    {label:"CAP", current:statCountInRange(memberLeads,"CAP",rng), goal:goal.cap_goal||0, color:"#8b5cf6"},
+    {label:"Permits", current:statCountInRange(memberLeads,"Permits",rng), goal:goal.cap_goal||0, color:"#8b5cf6"},
     {label:"Install", current:statCountInRange(memberLeads,"Install",rng), goal:goal.install_goal||0, color:"#10b981"},
     {label:"PTO", current:statCountInRange(memberLeads,"PTO",rng), goal:goal.pto_goal||0, color:"#f59e0b"},
   ];
