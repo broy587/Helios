@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b134";
+const APP_BUILD = "b136";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6685,8 +6685,16 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           {lead.needs_cancel_save && (
             <div style={{marginBottom:16,background:dark?"#312e81":"#eef2ff",border:"1.5px solid #a5b4fc",borderRadius:12,padding:"14px 16px"}}>
               <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>🛟 Cancel Save Reasoning</div>
-              {lead.ncs_reason ? <div style={{fontSize:14,color:dark?"#c7d2fe":"#3730a3",whiteSpace:"pre-wrap",lineHeight:1.5}}>{lead.ncs_reason}</div>
-                : <div style={{fontSize:13,color:"#94a3b8",fontStyle:"italic"}}>No reasoning entered yet — tap Edit to add one.</div>}
+              {(lead.cancel_reason||lead.ncs_reason) ? <div style={{fontSize:14,color:dark?"#c7d2fe":"#3730a3",whiteSpace:"pre-wrap",lineHeight:1.5,marginBottom:(Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length)?10:0}}>{lead.cancel_reason||lead.ncs_reason}</div>
+                : <div style={{fontSize:13,color:"#94a3b8",fontStyle:"italic",marginBottom:(Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length)?10:0}}>No reasoning entered yet — tap Edit to add one.</div>}
+              {Array.isArray(lead.cancel_tags)&&lead.cancel_tags.length>0 && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {lead.cancel_tags.map(t=><span key={t} style={{fontSize:12,fontWeight:700,color:dark?"#c7d2fe":"#4338ca",background:dark?"#1e1b4b":"#fff",border:"1px solid #c7d2fe",borderRadius:16,padding:"3px 10px"}}>{t}</span>)}
+                </div>
+              )}
+              {lead.ncs_reason && lead.cancel_reason && lead.ncs_reason!==lead.cancel_reason && (
+                <div style={{marginTop:10,fontSize:12,color:"#94a3b8",whiteSpace:"pre-wrap"}}>📜 Earlier cancel-save note: {lead.ncs_reason}</div>
+              )}
             </div>
           )}
           {lead.on_hold && (
@@ -7690,7 +7698,9 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
         )}
         {/* Commission — sits right below the Closers VC Checklist, hidden behind
-            "Presenting" until 👁 View is tapped */}
+            "Presenting" until 👁 View is tapped. Saved leads only — the create
+            form doesn't show it; everything is the same once the lead exists. */}
+        {form.id && (
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:showComm?4:0}}>
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>{showComm ? "Commission" : "Presenting"}</label>
@@ -7709,6 +7719,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           </div>
           )}
         </div>
+        )}
         </div>
         {/* Creating a NEW lead stops at Objections — VC checklist, commission,
             sold system, flags, stage and assist all apply to saved leads only. */}
@@ -7766,9 +7777,27 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
           )}
           {form.needsCancelSave && (
             <div style={{marginTop:12}}>
-              <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",marginBottom:6}}>Reasoning</div>
-              <textarea value={form.ncsReason||""} onChange={e=>setForm(f=>({...f,ncsReason:e.target.value}))} placeholder="Reason this account needs a cancel save…" rows={3}
+              {/* SHARED with ARC / Cancel: same note + same reason chips, one set of
+                  fields — whatever's entered here shows under ARC and vice versa. */}
+              <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",marginBottom:6}}>Reasoning <span style={{fontWeight:600,color:"#94a3b8"}}>(shared with ARC / Cancel)</span></div>
+              <textarea value={form.cancelReason||""} onChange={e=>setForm(f=>({...f,cancelReason:e.target.value}))} placeholder="Reason this account needs a cancel save…" rows={3}
                 style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#6366f1":"#a5b4fc"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"}}/>
+              <div style={{fontSize:12,fontWeight:800,color:dark?"#c7d2fe":"#4338ca",marginTop:10}}>Reasons for cancelation</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Select all that apply — carries over to ARC / Cancel</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {CANCEL_REASONS.map(t=>{
+                  const on = Array.isArray(form.cancelTags)&&form.cancelTags.includes(t);
+                  return (
+                    <button key={t} type="button" onClick={()=>setForm(f=>{ const cur=Array.isArray(f.cancelTags)?f.cancelTags:[]; return {...f,cancelTags:cur.includes(t)?cur.filter(x=>x!==t):[...cur,t]}; })}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",borderRadius:16,border:`1.5px solid ${on?"#6366f1":(dark?"#334155":"#e2e8f0")}`,background:on?(dark?"#312e81":"#fff"):(dark?"#0f172a":"#fff"),color:on?(dark?"#c7d2fe":"#4338ca"):(dark?"#94a3b8":"#475569"),fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      <span style={{fontSize:12}}>{on?"✓":"＋"}</span>{t}
+                    </button>
+                  );
+                })}
+              </div>
+              {form.ncsReason && form.ncsReason!==form.cancelReason && (
+                <div style={{marginTop:10,fontSize:12,color:"#94a3b8",background:dark?"#0f172a":"#fff",border:`1px dashed ${dark?"#334155":"#c7d2fe"}`,borderRadius:8,padding:"8px 10px",whiteSpace:"pre-wrap"}}>📜 Earlier cancel-save note: {form.ncsReason}</div>
+              )}
             </div>
           )}
         </div>
@@ -7982,10 +8011,10 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         />
       )}
       {ncsModalOpen && (
-        <ReasoningModal title="Reasoning" accent="#6366f1"
-          initialReason={form.ncsReason}
+        <CancelReasonModal
+          initialReason={form.cancelReason} initialTags={form.cancelTags}
           onClose={()=>setNcsModalOpen(false)}
-          onSave={(reason)=>{ setForm(f=>({...f,ncsReason:reason})); setNcsModalOpen(false); }}
+          onSave={(reason,tags)=>{ setForm(f=>({...f,cancelReason:reason,cancelTags:tags})); setNcsModalOpen(false); }}
         />
       )}
     </div>
