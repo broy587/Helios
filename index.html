@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b151";
+const APP_BUILD = "b153";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -4661,6 +4661,21 @@ const AC_CHECKLIST_ITEMS = [
   "Clear Expectations Set",
 ];
 
+// "?" explanations for each AC checklist item — works like the VC checklist
+// help: several can be open at once, tap again to hide, resets on lead close.
+const AC_ITEM_HELP = {
+  "Prescreen Approved": 'On the customer in Terros, when the "pre-screen" button is pushed, it shows "pass".',
+  "Contact Info": "Got at least one form of contact to reach customer.",
+  "Bill Acquired": "Retrieved a picture of the full power bill statement.",
+  "Knows solar is / can be involved": "They understand that solar is involved in the appointment.",
+  "Same Day or Next Day Apt": "Closer appointment is set for that same day or the next day.",
+  "Confirmed all decision makers / spouses will be present": "Asked the homeowner to make sure both spouses / all decision makers will be present for consultation.",
+  "Named Drop In Pitch": "Name dropped someone close by that we installed.",
+  "Homeowner Had Objections": "Homeowner had questions and objections that you overcame or put in notes for closer to go over.",
+  "Transitioned Inside": "Homeowner let you inside! (biggest deciding factor that an account will go to install)",
+  "Clear Expectations Set": "Let them know that the closer will need a corner of a table and 20-30 minutes to go over the results with them and see if they qualify.",
+};
+
 // Legacy → current AC checklist item names. Any checked item stored under an
 // old name is migrated to the new name so checkmarks/scores aren't lost.
 const AC_CHECKLIST_RENAMES = {
@@ -5001,6 +5016,8 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
   const normalized = migrateAcChecklist(initialChecked).list || [];
   const [checked, setChecked] = React.useState(normalized);
   const [saving, setSaving] = React.useState(false);
+  const [openHelp, setOpenHelp] = React.useState({}); // which "?" explanations are open — several at once is fine
+  React.useEffect(()=>{ setOpenHelp({}); },[leadId]); // closing / switching leads hides them all again
   const score = checked.length;
   // Re-sync when initialChecked changes (e.g. opening edit after view-mode changes)
   React.useEffect(()=>{ setChecked(migrateAcChecklist(initialChecked).list || []); },[JSON.stringify(initialChecked)]);
@@ -5043,19 +5060,32 @@ function ACChecklist({leadId, initialChecked, onUpdate, readOnly, collapsible:co
       </div>
       {showItems && AC_CHECKLIST_ITEMS.map((item,i)=>{
         const isChecked = checked.includes(item);
+        const help = AC_ITEM_HELP[item];
+        const helpOpen = !!openHelp[item];
         return (
-          <div key={item} onClick={()=>toggle(item)}
-            style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px",cursor:readOnly?"default":"pointer",borderBottom:i<AC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#f5e8b0"}`:"none"}}>
-            {readOnly ? (
-              <span style={{width:20,flexShrink:0,textAlign:"center",fontSize:15,fontWeight:900,lineHeight:1,color:isChecked?"#10b981":"#ef4444"}}>{isChecked?"✓":"✗"}</span>
-            ) : (
-            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#c8b8a2"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-              {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+          <div key={item} style={{borderBottom:i<AC_CHECKLIST_ITEMS.length-1?`1px solid ${dark?"#1e293b":"#f5e8b0"}`:"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 4px"}}>
+              <div onClick={()=>toggle(item)} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:readOnly?"default":"pointer",minWidth:0}}>
+                {readOnly ? (
+                  <span style={{width:20,flexShrink:0,textAlign:"center",fontSize:15,fontWeight:900,lineHeight:1,color:isChecked?"#10b981":"#ef4444"}}>{isChecked?"✓":"✗"}</span>
+                ) : (
+                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${isChecked?"#1a2456":dark?"#475569":"#c8b8a2"}`,background:isChecked?"#1a2456":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                  {isChecked && <span style={{color:"#fff",fontSize:13,fontWeight:800,lineHeight:1}}>✓</span>}
+                </div>
+                )}
+                <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400,transition:"all 0.15s"}}>
+                  {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
+                </span>
+              </div>
+              {help && (
+                <button onClick={(e)=>{e.stopPropagation();setOpenHelp(o=>({...o,[item]:!o[item]}));}}
+                  title="What does this mean?"
+                  style={{flexShrink:0,width:20,height:20,borderRadius:"50%",border:`1.5px solid ${helpOpen?"#1a2456":dark?"#475569":"#c8b8a2"}`,background:helpOpen?"#1a2456":"transparent",color:helpOpen?"#fff":(dark?"#94a3b8":"#64748b"),fontSize:12,fontWeight:800,cursor:"pointer",lineHeight:1,padding:0}}>?</button>
+              )}
             </div>
+            {help && helpOpen && (
+              <div style={{fontSize:12,color:dark?"#cbd5e1":"#475569",background:dark?"#1e293b":"#fdf3cf",borderRadius:8,padding:"8px 10px",margin:"0 4px 8px 34px",lineHeight:1.4}}>{help}</div>
             )}
-            <span style={{fontSize:13,color:isChecked?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),fontWeight:isChecked?600:400,textDecoration:isChecked?"none":"none",transition:"all 0.15s"}}>
-              {item} <span style={{fontSize:11,color:isChecked?"#6b2d4e":"#94a3b8",fontWeight:700}}>1pt</span>
-            </span>
           </div>
         );
       })}
@@ -19278,9 +19308,9 @@ function App() {
     }
   });
   const visibleReps = (isOwner
-    ? profiles.filter(p=>p.id!==user.id&&isMemberRole(p.role))
+    ? profiles.filter(p=>p.id===user.id||isMemberRole(p.role))
     : profiles.filter(p=>{
-        if (p.id===user.id) return false;
+        if (p.id===user.id) return true; // yourself, always — pick "me + these reps"
         if (p.ghost_mode) return false; // ghosted users hidden from non-owners
         // Closers may only see teammates whose role is "rep" (not self-gen, other
         // closers, or managers). Managers see all member roles on their team.
@@ -19288,7 +19318,11 @@ function App() {
         return visibleTeams.some(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===p.id));
       })
   ).slice().sort((a,b)=>{
-    // Reps on my team(s) first, then everyone else; alphabetical within each group.
+    // Yourself pinned to the very top, then reps on my team(s), then everyone
+    // else; alphabetical within each group.
+    const aSelf = a.id===user.id ? 0 : 1;
+    const bSelf = b.id===user.id ? 0 : 1;
+    if (aSelf!==bSelf) return aSelf-bSelf;
     const aMine = myTeamMemberIds.has(a.id) ? 0 : 1;
     const bMine = myTeamMemberIds.has(b.id) ? 0 : 1;
     if (aMine!==bMine) return aMine-bMine;
@@ -19600,7 +19634,7 @@ function App() {
                   return (
                     <button key={r.id} onClick={()=>toggleRep(r.id)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,width:"100%",padding:"10px 14px",border:"none",background:sel?"#f0edf5":dark?"#1e293b":"#fff",color:sel?"#6b2d4e":dark?"#e2e8f0":"#1a2456",fontWeight:sel?700:500,cursor:"pointer",fontSize:13,textAlign:"left",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>
-                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.id===user.id?`${r.name||r.email} (me)`:r.name}</span>
                       <span style={{flexShrink:0,width:18,height:18,borderRadius:5,border:`1.5px solid ${sel?"#6b2d4e":dark?"#475569":"#cbd5e1"}`,background:sel?"#6b2d4e":"transparent",color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{sel?"✓":""}</span>
                     </button>
                   );
