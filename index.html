@@ -571,7 +571,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b129";
+const APP_BUILD = "b130";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -5860,7 +5860,7 @@ function NoteText({text, dark}) {
   );
 }
 
-function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,canBookCap,acWarning,acReq}) {
+function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePriority,repProfiles,onTransfer,onUpdate,onViewInCanvass,onSwitchToCalendar,profiles,me,canBookCap,acWarning,acReq}) {
   const [lead, setLead] = React.useState(leadProp);
   // Tracks the timestamp of our most recent LOCAL edit. The sync-from-parent effect
   // ignores any incoming leadProp that's older than this, so a stale parent snapshot
@@ -6747,7 +6747,14 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <div style={{fontWeight:700,fontSize:14,color:dark?"#93c5fd":"#1e3a8a",marginBottom:8}}>Transfer Lead to Rep</div>
               <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} style={{...inputStyle,marginBottom:10}}>
                 <option value="">Select a rep...</option>
-                {repProfiles.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                {(()=>{
+                  // Include the signed-in viewer too ("transfer to my name"), and hide
+                  // the lead's CURRENT owner — transferring to them is a no-op.
+                  const meP = me && (profiles||[]).find(p=>p.id===me.id);
+                  const base = repProfiles||[];
+                  const list = (meP && !base.some(r=>r.id===meP.id)) ? [{...meP,name:`${meP.name||meP.email||"Me"} (me)`},...base] : base;
+                  return list.filter(r=>r.id!==lead.owner_id).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>);
+                })()}
               </select>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setShowTransfer(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
@@ -9203,7 +9210,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             onLeadView({...l,priority:next},"update");
             await leadPatch(l.id, {priority:next});
           }}
-          repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} canBookCap={canBookCap} acReq={acReq}
+          repProfiles={repProfiles||[]} onTransfer={onTransfer||(()=>{})} profiles={profiles} me={commUser} canBookCap={canBookCap} acReq={acReq}
           onUpdate={updated=>onLeadView(updated,"update")}
           onViewInCanvass={onViewInCanvass}
           onSwitchToCalendar={onSwitchToCalendar}/>
@@ -18923,10 +18930,12 @@ function App() {
   const activeRepId = activeRepIds.length===1 ? activeRepIds[0] : ""; // kept for single-select labels
   // Toggle a rep in/out of the multi-select. Removing the last one falls back to "mine".
   const toggleRep = (repId) => {
-    // Single-select: picking a rep replaces the current selection (one rep at a time).
-    if(activeRepIds.length===1 && activeRepIds[0]===repId){ setPipelineFilter("mine"); return; }
-    setPipelineFilter("rep:"+repId);
-    setRepDropOpen(false);
+    // Multi-select: each tap toggles that rep in or out; the dropdown stays open
+    // so several reps can be picked, then closed with Done / tapping outside.
+    // Removing the last selected rep falls back to "mine".
+    const next = activeRepIds.includes(repId) ? activeRepIds.filter(x=>x!==repId) : [...activeRepIds, repId];
+    if(next.length===0){ setPipelineFilter("mine"); return; }
+    setPipelineFilter("rep:"+next.join(","));
   };
 
   // Reps visible to this user
@@ -19391,7 +19400,7 @@ function App() {
             setLeads(ls=>ls.map(x=>x.id===l.id?{...x,priority:next}:x));
             await leadPatch(l.id, {priority:next});
           }}
-          repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles} canBookCap={canBookCap} acReq={myAcReq}
+          repProfiles={repProfiles} onTransfer={handleTransfer} profiles={profiles} me={user} canBookCap={canBookCap} acReq={myAcReq}
           onUpdate={updated=>{
             setLeads(ls=>ls.map(l=>l.id===updated.id?{...l,...updated}:l));
             setModal(m=>m.open&&m.lead?.id===updated.id?{...m,lead:{...m.lead,...updated}}:m);
