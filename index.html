@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b143";
+const APP_BUILD = "b144";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -1988,6 +1988,11 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           const rCAP = statCountInRange(rLeads,"Permits",range);
           const rInstall = statCountInRange(rLeads,"Install",range); // literal Install, matching everything else
           const rPTO = milestoneCountInRange(rLeads,"PTO",range);
+          // Red until THIS rep's personal commitment is hit, green at/after it —
+          // same period rule as the cards up top (quarterly for quarter filters,
+          // else weekly). Leads keeps its neutral color (no commitment exists).
+          const rCommit = ((personalGoals[rep.id]||{})[commitPeriod]) || {};
+          const rHit = (val,key)=>{ const t=rCommit[key]||0; return (t>0 && (val||0)>=t) ? "#10b981" : "#ef4444"; };
           const cardBg = dark?"#1e293b":"#fff";
           const statBg = dark?"#0f172a":"#f8fafc";
           const labelCol = dark?"#e2e8f0":"#0f172a";
@@ -2028,25 +2033,25 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>Leads</div>
                     </div>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:"#3b82f6"}}>{rAC}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:rHit(rAC,"ac_commit")}}>{rAC}</div>
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>AC</div>
                     </div>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:"#6366f1"}}>{rVC}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:rHit(rVC,"vc_commit")}}>{rVC}</div>
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>VC</div>
                     </div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:"#8b5cf6"}}>{rCAP}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:rHit(rCAP,"cap_commit")}}>{rCAP}</div>
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>Permits</div>
                     </div>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:"#10b981"}}>{rInstall}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:rHit(rInstall,"install_commit")}}>{rInstall}</div>
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>Install</div>
                     </div>
                     <div style={{textAlign:"center",background:statBg,borderRadius:10,padding:"12px 8px"}}>
-                      <div style={{fontSize:20,fontWeight:800,color:"#f59e0b"}}>{rPTO}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:rHit(rPTO,"pto_commit")}}>{rPTO}</div>
                       <div style={{fontSize:11,fontWeight:600,color:labelCol,marginTop:2}}>PTO</div>
                     </div>
                   </div>
