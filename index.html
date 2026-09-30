@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b138";
+const APP_BUILD = "b140";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -853,25 +853,38 @@ function getStageReachedAt(lead, minStageIdx) {
   // If lead never reached this milestone, return null immediately
   if (effectiveIdx < minStageIdx) return null;
 
-  // Scan history (newest-first, so reverse for chronological order)
-  const history = Array.isArray(lead.history) ? [...lead.history].reverse() : [];
+  // Scan history NEWEST-first for the LATEST move INTO this milestone from
+  // below it. Moving a lead backward out of the pile wipes its claim (the
+  // effective-stage guard above already returns null); moving it forward again
+  // counts it fresh from the NEW move's date — not the original one. Moves that
+  // start at-or-past the milestone (e.g. Permitting → Install for the AC
+  // milestone) never reset its date, and when only same/unknown-origin moves
+  // exist (e.g. an ARC recovery), the OLDEST qualifying move keeps the
+  // original date.
+  const history = Array.isArray(lead.history) ? lead.history : []; // newest-first
+  let oldestReach = null;
   for (const entry of history) {
     if (!entry || !Array.isArray(entry.changes)) continue;
     for (const change of entry.changes) {
       if (typeof change !== 'string') continue;
       if (change === 'Lead created') continue;
-      const match = change.match(/Stage: ".*?" to "(.+?)"/);
+      const match = change.match(/Stage: "(.*?)" to "(.+?)"/);
       if (!match) continue;
-      const toStage = match[1];
+      const fromStage = match[1], toStage = match[2];
       // Skip ARC stage — not a real pipeline stage
       if (toStage === 'ARC / Cancels') continue;
       const toIdx = STAGE_PROGRESSION.indexOf(toStage);
       if (toIdx >= minStageIdx) {
         const d = parseHistoryDate(entry.ts);
-        if (d) return d;
+        if (d) {
+          const fromIdx = STAGE_PROGRESSION.indexOf(fromStage);
+          if (fromIdx !== -1 && fromIdx < minStageIdx) return d; // latest entry from below — done
+          oldestReach = d; // keep walking; ends at the oldest qualifying move
+        }
       }
     }
   }
+  if (oldestReach) return oldestReach;
 
   // No history entry found — lead was created at or moved to this stage
   // without a matching history entry (e.g. created directly in this stage).
@@ -1453,8 +1466,13 @@ const LEADERBOARD_STATS = [
   {key:"VC",      label:"VCs"},
   {key:"Permits", label:"Permits"},
   {key:"Install", label:"Installs"}, // literal Install stage or beyond (NOT Install Scheduled)
+  // Assisted stats: same movement counting, but credited to the rep who is the
+  // ASSIST on the account instead of the owner.
+  {key:"aVC",      label:"Assisted VCs"},
+  {key:"aPermits", label:"Assisted Permits"},
+  {key:"aInstall", label:"Assisted Installs"},
 ];
-function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
+function LeaderboardView({reps, leadsByOwner, leadsByAssist, pitchesByOwner, range, timeFilter, setTimeFilter, customRange, onPickCustom, dark, onViewRep}) {
   const [stat,setStat]=React.useState("VC");
   const [statOpen,setStatOpen]=React.useState(false);
   const [listOpen,setListOpen]=React.useState(true);
@@ -1468,6 +1486,21 @@ function LeaderboardView({reps, leadsByOwner, pitchesByOwner, range, timeFilter,
       return ps.filter(p=>{ const t=new Date(p.created_at); return t>=range.start && t<=range.end; }).length;
     }
     if(stat==="leads") return leadsInRange(repLeads, range).length;
+    // Assisted stats: count over the accounts this rep is the ASSIST on.
+    if(stat==="aVC" || stat==="aPermits" || stat==="aInstall"){
+      const aLeads = (leadsByAssist && leadsByAssist[rep.id]) || [];
+      if(stat==="aInstall"){
+        let count=0;
+        for(const l of aLeads){
+          if(getEffectiveStageIndex(l) < LITERAL_INSTALL_IDX) continue;
+          if(!range){ count++; continue; }
+          const at=getStageReachedAt(l, LITERAL_INSTALL_IDX);
+          if(at && at>=range.start && at<=range.end) count++;
+        }
+        return count;
+      }
+      return milestoneCountInRange(aLeads, stat==="aVC"?"VC":"Permits", range);
+    }
     if(stat==="Install"){
       let count=0;
       for(const l of repLeads){
@@ -1691,6 +1724,12 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
     for(const l of teamStatSource){ (map[l.owner_id] = map[l.owner_id] || []).push(l); }
     return map;
   })();
+  // Map of assist_id → the accounts that rep is the assist on (Assisted stats).
+  const leadsByAssist = (()=>{
+    const map={};
+    for(const l of teamStatSource){ if(!l||!l.assist_id) continue; (map[l.assist_id] = map[l.assist_id] || []).push(l); }
+    return map;
+  })();
   const pitchesByOwner = (()=>{
     const map={};
     for(const p of (pitches||[])){ if(!p||!p.owner_id) continue; (map[p.owner_id] = map[p.owner_id] || []).push(p); }
@@ -1723,6 +1762,7 @@ function StatsView({leads, teamStatLeads, pitches, currentUserId, personalGoals,
           <LeaderboardView
             reps={teamReps}
             leadsByOwner={leadsByOwner}
+            leadsByAssist={leadsByAssist}
             pitchesByOwner={pitchesByOwner}
             range={range}
             timeFilter={timeFilter}
@@ -8756,12 +8796,40 @@ function analyzeConversions(leads, opts) {
       closerStat("Set clear expectations", "Customer has crystal clear understanding of what they're agreeing to and what happens next"),
       closerStat("CAP/follow-up locked in", "CAP/follow-up locked in"),
     ],
-    funnel: [
+    funnel: (opts && opts.movedRange) ? (()=>{
+      // Date-range mode: leaderboard-style MOVEMENT stats. An account counts
+      // toward a stage when it was MOVED into that stage within the selected
+      // range — even if it was created long before it — and only while it
+      // still sits at-or-past that pile. Moved backward, it stops counting;
+      // moved forward again, it counts from the new move's date
+      // (getStageReachedAt implements exactly that).
+      const mr = opts.movedRange;
+      const pool = Array.isArray(opts.movedPool) ? opts.movedPool : (leads||[]);
+      const reachedIn = (ms)=>{
+        const idx = CONV_INDEX[ms];
+        let n=0;
+        for(const l of pool){
+          if(getEffectiveStageIndex(l) < idx) continue;
+          const at = getStageReachedAt(l, idx);
+          if(at && at>=mr.start && at<=mr.end) n++;
+        }
+        return n;
+      };
+      const nAC=reachedIn("AC"), nVC=reachedIn("VC"), nPermits=reachedIn("Permits"), nInstall=reachedIn("Install");
+      const pctOf=(a,b)=> b===0?null:Math.round((a/b)*100);
+      return [
+        {label:"AC → VC", pct:pctOf(nVC,nAC), n:nVC, of:nAC},
+        {label:"VC → Permits", pct:pctOf(nPermits,nVC), n:nPermits, of:nVC},
+        {label:"VC → Install", pct:pctOf(nInstall,nVC), n:nInstall, of:nVC},
+        {label:"AC → Install", pct:pctOf(nInstall,nAC), n:nInstall, of:nAC},
+      ];
+    })() : [
       {label:"AC → VC", pct:convPct(acAt,"VC"), n:convN(acAt,"VC"), of:acAt.length},
       {label:"VC → Permits", pct:convPct(vcAt,"Permits"), n:convN(vcAt,"Permits"), of:vcAt.length},
       {label:"VC → Install", pct:convPct(vcAt,"Install"), n:convN(vcAt,"Install"), of:vcAt.length},
       {label:"AC → Install", pct:convPct(acAt,"Install"), n:convN(acAt,"Install"), of:acAt.length},
     ],
+    movedWindow: !!(opts && opts.movedRange),
     giftCard,
   };
 }
@@ -9742,11 +9810,22 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         // Conversions reflect EXACTLY what's on the board right now: the current
         // team/rep scope with every active pipeline filter (stages, appointment
         // type, dates, archive mode…) already applied.
+        // Date-range filter on → the AC-to-Install funnel switches to counting
+        // accounts MOVED into each stage within the range (leaderboard-style).
+        // Its pool keeps every OTHER active filter but drops the created-date
+        // restriction, so an account created months ago still counts.
+        const drOn = !!(pipeFilters && (pipeFilters.after || pipeFilters.before));
+        const movedRange = drOn ? {
+          start: pipeFilters.after ? new Date(pipeFilters.after+"T00:00:00") : new Date(0),
+          end: pipeFilters.before ? new Date(pipeFilters.before+"T23:59:59.999") : new Date(8640000000000000),
+        } : null;
+        const movedPool = drOn ? (leadsAll||[]).filter(l=>matchesPipelineFilters(l, {...pipeFilters, after:"", before:""})) : null;
         const c = analyzeConversions(leads||[], {
           viewerId: commUser?.id,
           // Always split on My Pipeline: an owner who put someone on assist is on
           // a 50% split whether or not the 🤝 Assisted toggle is on.
-          splitAssist: commPipelineFilter==="mine"
+          splitAssist: commPipelineFilter==="mine",
+          movedRange, movedPool
         });
         const Bar = ({label, pct, n, total})=>(
           <div style={{marginBottom:12}}>
@@ -9797,11 +9876,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 {c.vcTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached VC in this view.</div>
                   : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.total!=null?m.total:c.vcTotal}/>)}
 
-                {/* AC to Install Conversions — stage-to-stage progression rates (current stage) */}
+                {/* AC to Install Conversions — stage-to-stage progression rates.
+                    With a date-range filter on, these count accounts MOVED into
+                    each stage within the range (leaderboard-style). */}
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC to Install Conversions</span>
+                  {c.movedWindow && <span style={{fontSize:10.5,fontWeight:700,color:"#0369a1",textAlign:"right"}}>moved into stage within date range</span>}
                 </div>
-                {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached AC in this view.</div>
+                {(c.acTotal===0 && !c.movedWindow) ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached AC in this view.</div>
                   : c.funnel.map(m=>(
                       <Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.of}/>
                     ))}
