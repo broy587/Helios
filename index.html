@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b144";
+const APP_BUILD = "b146";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8695,10 +8695,23 @@ function analyzeHygiene(leads, staleDays) {
 function analyzeConversions(leads, opts) {
   const viewerId = opts && opts.viewerId;
   const splitAssist = !!(opts && opts.splitAssist); // when true, assist-only accounts count at 50%
+  // AC / Setter + VC-or-after pools. With a date-range filter on (movedRange),
+  // these work like the AC-to-Install funnel: an account belongs to the pool
+  // when it REACHED that stage within the range — regardless of when it was
+  // created — and drops out if it was later moved back below the stage.
+  const _mr = opts && opts.movedRange;
+  const _poolSrc = _mr ? (Array.isArray(opts.movedPool) ? opts.movedPool : (leads||[])) : (leads||[]);
   const acPool = [], vcPool = [];
-  for (const lead of (leads||[])) {
-    if (getStageReachedAt(lead, MILESTONE_INDEX.AC) != null) acPool.push(lead);
-    if (getStageReachedAt(lead, MILESTONE_INDEX.VC) != null) vcPool.push(lead);
+  for (const lead of _poolSrc) {
+    const _acAt = getStageReachedAt(lead, MILESTONE_INDEX.AC);
+    const _vcAt = getStageReachedAt(lead, MILESTONE_INDEX.VC);
+    if (_mr) {
+      if (_acAt && _acAt>=_mr.start && _acAt<=_mr.end) acPool.push(lead);
+      if (_vcAt && _vcAt>=_mr.start && _vcAt<=_mr.end) vcPool.push(lead);
+    } else {
+      if (_acAt != null) acPool.push(lead);
+      if (_vcAt != null) vcPool.push(lead);
+    }
   }
   const hasItem = (lead, item) => Array.isArray(lead.ac_checklist) && lead.ac_checklist.includes(item);
   const isYes = (lead, field) => (lead[field]||"") === "Yes";
@@ -8778,27 +8791,39 @@ function analyzeConversions(leads, opts) {
   // for installed leads (Install stage or beyond) and for all leads.
   let commSum = 0, commCount = 0, instSum = 0, instCount = 0;
   let instInRange = 0, instCommPersonal = 0, instCommAssist = 0; // installed total + personal/assist split
+  // "All leads" average stays scoped to the accounts in the current view.
   for (const l of (leads||[])) {
     const raw = l.commission;
     if (raw == null || String(raw).trim() === "") continue;
     const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
     if (isNaN(num)) continue;
     commSum += num; commCount++;
-    // "Installed" = currently sitting in the Install or PTO / REP stage
-    // (not pulled into an ARC / On Hold / Needs-Cancel-Save pile).
-    if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) {
-      instSum += num; instCount++;
-      if (splitAssist && viewerId) {
-        if (l.owner_id === viewerId) {
-          if (l.assist_id && l.assist_id !== viewerId) instCommAssist += num * 0.5;
-          else instCommPersonal += num;
-        }
-        else if (l.assist_id === viewerId) instCommAssist += num * 0.5;
-      }
-    }
   }
-  for (const l of (leads||[])) {
-    if (!l.is_arc && !l.on_hold && !l.needs_cancel_save && (l.stage === "Install" || l.stage === "PTO / REP")) instInRange++;
+  // Installed commission metrics. No date range: currently sitting in Install
+  // or PTO / REP (piles excluded). WITH a date range: the account must have
+  // REACHED Install within the range AND still be at/past it — moved back to
+  // an earlier stage, it no longer counts at all. Creation date is irrelevant.
+  const installedInWindow = (l) => {
+    if (l.is_arc || l.on_hold || l.needs_cancel_save) return false;
+    if (!_mr) return (l.stage === "Install" || l.stage === "PTO / REP");
+    const at = getStageReachedAt(l, CONV_INDEX.Install); // null once moved back below Install
+    return !!(at && at>=_mr.start && at<=_mr.end);
+  };
+  for (const l of (_mr ? _poolSrc : (leads||[]))) {
+    if (!installedInWindow(l)) continue;
+    instInRange++;
+    const raw = l.commission;
+    if (raw == null || String(raw).trim() === "") continue;
+    const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
+    if (isNaN(num)) continue;
+    instSum += num; instCount++;
+    if (splitAssist && viewerId) {
+      if (l.owner_id === viewerId) {
+        if (l.assist_id && l.assist_id !== viewerId) instCommAssist += num * 0.5;
+        else instCommPersonal += num;
+      }
+      else if (l.assist_id === viewerId) instCommAssist += num * 0.5;
+    }
   }
   const avgCommission = commCount > 0 ? commSum / commCount : null;
   const avgCommissionInstalled = instCount > 0 ? instSum / instCount : null;
@@ -8810,7 +8835,9 @@ function analyzeConversions(leads, opts) {
   const pipeHiIdx = STAGE_PROGRESSION.indexOf("Install Scheduled");
   let pipeCommSum = 0, pipeCommCount = 0, pipeInRange = 0;
   let pipeCommPersonal = 0, pipeCommAssist = 0; // split: full for owned, 50% for assist-only
-  for (const l of (leads||[])) {
+  // With a date range on, the pipe is still a RIGHT-NOW snapshot — but across
+  // the full scope, not just accounts created inside the range.
+  for (const l of (_mr ? _poolSrc : (leads||[]))) {
     // Only accounts actually sitting in these stages — skip anything pulled into
     // an ARC / On Hold / Needs-Cancel-Save pile.
     if (l.is_arc || l.on_hold || l.needs_cancel_save) continue;
@@ -9940,14 +9967,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
 
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>AC / Setter</span>
-                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.acTotal} account{c.acTotal===1?"":"s"}</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.acTotal} account{c.acTotal===1?"":"s"}{c.movedWindow?" · reached AC in date range":""}</span>
                 </div>
                 {c.acTotal===0 ? <div style={{fontSize:13,color:"#94a3b8",marginBottom:18}}>No accounts have reached AC in this view.</div>
                   : c.ac.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={c.acTotal}/>)}
 
                 <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginTop:8,marginBottom:10}}>
                   <span style={{fontSize:13,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",textTransform:"uppercase",letterSpacing:"0.05em"}}>VC or after</span>
-                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.vcTotal} account{c.vcTotal===1?"":"s"}</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{c.vcTotal} account{c.vcTotal===1?"":"s"}{c.movedWindow?" · reached VC in date range":""}</span>
                 </div>
                 {c.vcTotal===0 ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have reached VC in this view.</div>
                   : c.vc.map(m=><Bar key={m.label} label={m.label} pct={m.pct} n={m.n} total={m.total!=null?m.total:c.vcTotal}/>)}
@@ -9978,7 +10005,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Average Commission</div>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                     <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>🌞 Installed leads</div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"🌞 Installed in date range":"🌞 Installed leads"}</div>
                       <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
                     </div>
                     <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
@@ -10035,7 +10062,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission Installed</div>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Install - PTO</div>
+                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"Install - PTO · reached Install in date range":"Install - PTO"}</div>
                       <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
                         {c.instInRange>0
                           ? `${c.instInRange} account${c.instInRange===1?"":"s"} in Install / PTO${c.instCount<c.instInRange?` · ${c.instCount} with commission entered`:""}`
