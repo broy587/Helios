@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b149";
+const APP_BUILD = "b151";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8694,7 +8694,14 @@ function analyzeHygiene(leads, staleDays) {
 // so a lead that hit AC then went No-Show still counts toward "AC or after."
 function analyzeConversions(leads, opts) {
   const viewerId = opts && opts.viewerId;
-  const splitAssist = !!(opts && opts.splitAssist); // when true, assist-only accounts count at 50%
+  // Commission-split subjects: who the Personal-vs-Assisted breakdown is FOR —
+  // [me] on My Pipeline, or the selected rep id(s) on a specific-rep view.
+  // (The legacy splitAssist+viewerId pair is still accepted.)
+  const splitSet = (()=>{
+    if (opts && Array.isArray(opts.splitIds) && opts.splitIds.length) return new Set(opts.splitIds);
+    if (opts && opts.splitAssist && opts.viewerId) return new Set([opts.viewerId]);
+    return null;
+  })();
   // AC / Setter + VC-or-after pools. With a date-range filter on (movedRange),
   // these work like the AC-to-Install funnel: an account belongs to the pool
   // when it REACHED that stage within the range — regardless of when it was
@@ -8817,12 +8824,14 @@ function analyzeConversions(leads, opts) {
     const num = parseFloat(String(raw).replace(/[^0-9.\-]/g, ""));
     if (isNaN(num)) continue;
     instSum += num; instCount++;
-    if (splitAssist && viewerId) {
-      if (l.owner_id === viewerId) {
-        if (l.assist_id && l.assist_id !== viewerId) instCommAssist += num * 0.5;
-        else instCommPersonal += num;
-      }
-      else if (l.assist_id === viewerId) instCommAssist += num * 0.5;
+    if (splitSet) {
+      const realAssist = l.assist_id && l.assist_id !== l.owner_id ? l.assist_id : null;
+      const ownerIn = splitSet.has(l.owner_id);
+      const assistIn = !!(realAssist && splitSet.has(realAssist));
+      if (ownerIn && !realAssist) instCommPersonal += num;
+      else if (ownerIn && assistIn) instCommAssist += num;
+      else if (ownerIn) instCommAssist += num * 0.5;
+      else if (assistIn) instCommAssist += num * 0.5;
     }
   }
   const avgCommission = commCount > 0 ? commSum / commCount : null;
@@ -8851,14 +8860,14 @@ function analyzeConversions(leads, opts) {
     pipeCommSum += num; pipeCommCount++;
     // Commission split: when the viewer is only the ASSIST on this account (and
     // split mode is on), they earn 50%; when they OWN it, they earn the full 100%.
-    if (splitAssist && viewerId) {
-      if (l.owner_id === viewerId) {
-        // Owner with an assist attached is ALSO on a 50% split — putting someone
-        // on assist means giving up half. Only solo accounts count at 100%.
-        if (l.assist_id && l.assist_id !== viewerId) pipeCommAssist += num * 0.5;
-        else pipeCommPersonal += num;
-      }
-      else if (l.assist_id === viewerId) pipeCommAssist += num * 0.5;
+    if (splitSet) {
+      const realAssist = l.assist_id && l.assist_id !== l.owner_id ? l.assist_id : null;
+      const ownerIn = splitSet.has(l.owner_id);
+      const assistIn = !!(realAssist && splitSet.has(realAssist));
+      if (ownerIn && !realAssist) pipeCommPersonal += num;      // solo account — full 100%
+      else if (ownerIn && assistIn) pipeCommAssist += num;      // both halves belong to the viewed rep(s)
+      else if (ownerIn) pipeCommAssist += num * 0.5;            // owner gave half to an assist
+      else if (assistIn) pipeCommAssist += num * 0.5;           // assisting on someone else's account
     }
   }
 
@@ -8868,7 +8877,7 @@ function analyzeConversions(leads, opts) {
     avgScore, // out of 10
     avgCommission, commCount, avgCommissionInstalled, instCount,
     pipeCommSum, pipeCommCount, pipeInRange,
-    pipeCommPersonal, pipeCommAssist, pipeCommSplit: splitAssist && !!viewerId,
+    pipeCommPersonal, pipeCommAssist, pipeCommSplit: !!splitSet,
     instCommSum: instSum, instInRange, instCommPersonal, instCommAssist,
     ac: [
       {label:"Bill acquired", pct:pct(countAc("Bill Acquired"), acPool.length), n:countAc("Bill Acquired")},
@@ -9749,7 +9758,10 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           end: pipeFilters.before ? new Date(pipeFilters.before+"T23:59:59.999") : new Date(8640000000000000),
         } : null;
         const convMovedPool = convDrOn ? (leadsAll||[]).filter(x=>matchesPipelineFilters(x, {...pipeFilters, after:"", before:""})) : null;
-        const conv = analyzeConversions(leads||[], { viewerId: commUser?.id, splitAssist: commPipelineFilter==="mine", movedRange: convMovedRange, movedPool: convMovedPool });
+        const convSplitIds = commPipelineFilter==="mine" ? [commUser?.id].filter(Boolean)
+          : (commPipelineFilter||"").startsWith("rep:") ? (commPipelineFilter||"").replace("rep:","").split(",").filter(Boolean)
+          : null;
+        const conv = analyzeConversions(leads||[], { viewerId: commUser?.id, splitIds: convSplitIds, movedRange: convMovedRange, movedPool: convMovedPool });
         const fmtUSD = (n)=> n==null ? "—" : n.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
         const convRangeLabel = convDrOn ? [pipeFilters.after||"…", pipeFilters.before||"…"].join(" → ") : "";
         const exportCsv = ()=>{
@@ -9990,11 +10002,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           end: pipeFilters.before ? new Date(pipeFilters.before+"T23:59:59.999") : new Date(8640000000000000),
         } : null;
         const movedPool = drOn ? (leadsAll||[]).filter(l=>matchesPipelineFilters(l, {...pipeFilters, after:"", before:""})) : null;
+        // Split subjects: me on My Pipeline; the selected rep(s) on a rep view —
+        // there the Personal/Assisted/Total rows are THAT rep's (or group's) cut.
+        const splitIds = commPipelineFilter==="mine" ? [commUser?.id].filter(Boolean)
+          : (commPipelineFilter||"").startsWith("rep:") ? (commPipelineFilter||"").replace("rep:","").split(",").filter(Boolean)
+          : null;
         const c = analyzeConversions(leads||[], {
           viewerId: commUser?.id,
-          // Always split on My Pipeline: an owner who put someone on assist is on
-          // a 50% split whether or not the 🤝 Assisted toggle is on.
-          splitAssist: commPipelineFilter==="mine",
+          splitIds,
           movedRange, movedPool
         });
         const Bar = ({label, pct, n, total})=>(
@@ -10109,11 +10124,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   {c.pipeCommSplit && (
                     <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — your own, no assist)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.pipeCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — yours with an assist, or assisting)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.pipeCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
@@ -10143,11 +10158,11 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   {c.pipeCommSplit && (
                     <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — your own, no assist)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.instCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — yours with an assist, or assisting)</span></span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
                         <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.instCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
@@ -19295,6 +19310,15 @@ function App() {
     (leads||[]).forEach(l=>{ if(l.assist_id===user.id && l.owner_id && l.owner_id!==user.id && assistShows(l)) ids.add(l.owner_id); });
     return Array.from(ids);
   })();
+  // Same list, but for the rep(s) selected in the Reps view: owners whose deals
+  // THOSE reps are the assist on (populates the rep-view assisted dropdown).
+  const repViewAssistIds = pipelineFilter.startsWith("rep:") ? pipelineFilter.replace("rep:","").split(",").filter(Boolean) : [];
+  const repAssistOwnerIds = (()=>{
+    if(!repViewAssistIds.length) return [];
+    const ids = new Set();
+    (leads||[]).forEach(l=>{ if(l.assist_id && repViewAssistIds.includes(l.assist_id) && l.owner_id && !repViewAssistIds.includes(l.owner_id) && assistShows(l)) ids.add(l.owner_id); });
+    return Array.from(ids);
+  })();
   // Compute visible leads
   const getVisibleLeads = () => {
     let out;
@@ -19328,8 +19352,14 @@ function App() {
     else if (pipelineFilter.startsWith("rep:")) {
       const repIds=pipelineFilter.replace("rep:","").split(",").filter(Boolean);
       if (showAssisted && (isCloser||isPrivileged)) {
-        // Specific-rep + Assisted: ONLY that rep's leads I assist on (stage-gated).
-        out = leads.filter(l=>repIds.includes(l.owner_id) && l.assist_id===user.id && assistShows(l));
+        // Rep view + Assisted now works EXACTLY like My Pipeline's: accounts the
+        // SELECTED rep(s) are the assist on (optionally narrowed to picked
+        // owners), and the Personal+assisted switch adds their own leads too.
+        const assisted = leads.filter(l=>l.assist_id && repIds.includes(l.assist_id) && assistShows(l) &&
+          (assistRepFilter.length===0 || assistRepFilter.includes(l.owner_id)));
+        out = (assistMode==="mine")
+          ? leads.filter(l=>repIds.includes(l.owner_id)).concat(assisted.filter(l=>!repIds.includes(l.owner_id)))
+          : assisted;
       } else {
         out = leads.filter(l=>repIds.includes(l.owner_id));
       }
@@ -19500,13 +19530,13 @@ function App() {
                   🤝 Assisted
                 </button>
               )}
-              {showAssisted && (isCloser || isPrivileged) && pipelineSubTab==="mine" && (
+              {showAssisted && (isCloser || isPrivileged) && (pipelineSubTab==="mine"||pipelineSubTab==="rep") && (
                 <>
                   {/* Subtle mine+assisted / just-assisted switch */}
                   <button onClick={()=>setAssistMode(m=>m==="just"?"mine":"just")}
                     title="Toggle between just assisted and mine + assisted"
                     style={{padding:"5px 10px",borderRadius:20,border:`1px solid ${dark?"#334155":"#ded2c0"}`,background:"transparent",color:dark?"#94a3b8":"#6b5d4a",fontWeight:600,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>
-                    {assistMode==="just"?"Just assisted":"Mine + assisted"}
+                    {assistMode==="just"?"Just assisted":(pipelineSubTab==="rep"?"Personal + assisted":"Mine + assisted")}
                   </button>
                   {/* Assisted-rep multi-select dropdown (reps I assist for) */}
                   <button onClick={(e)=>{const r=e.currentTarget.getBoundingClientRect();setAssistDropPos({top:r.bottom+6,left:Math.max(8,Math.min(r.left,window.innerWidth-190))});setAssistDropOpen(o=>!o);}}
@@ -19520,13 +19550,13 @@ function App() {
               {assistDropOpen && (<>
                 <div style={{position:"fixed",inset:0,zIndex:3500}} onClick={()=>setAssistDropOpen(false)}/>
                 <div style={{position:"fixed",top:assistDropPos.top,left:assistDropPos.left,background:dark?"#1e293b":"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,zIndex:3600,minWidth:180,maxHeight:320,overflowY:"auto"}}>
-                  <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>Reps I assist</div>
+                  <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",borderBottom:`1px solid ${dark?"#334155":"#f1f5f9"}`}}>{pipelineSubTab==="rep"?"Reps they assist":"Reps I assist"}</div>
                   <button onClick={()=>setAssistRepFilter([])}
                     style={{display:"block",width:"100%",padding:"9px 12px",border:"none",background:assistRepFilter.length===0?(dark?"#0f172a":"#eff6ff"):(dark?"#1e293b":"#fff"),color:assistRepFilter.length===0?"#0369a1":(dark?"#e2e8f0":"#0f172a"),fontWeight:assistRepFilter.length===0?700:500,cursor:"pointer",fontSize:13,textAlign:"left"}}>
                     All reps
                   </button>
-                  {myAssistRepIds.length===0 && <div style={{padding:"10px 12px",fontSize:12,color:"#94a3b8"}}>You're not assisting on any deals yet.</div>}
-                  {myAssistRepIds.map(id=>{
+                  {(pipelineSubTab==="rep"?repAssistOwnerIds:myAssistRepIds).length===0 && <div style={{padding:"10px 12px",fontSize:12,color:"#94a3b8"}}>{pipelineSubTab==="rep"?"They're not assisting on any deals yet.":"You're not assisting on any deals yet."}</div>}
+                  {(pipelineSubTab==="rep"?repAssistOwnerIds:myAssistRepIds).map(id=>{
                     const p=(profiles||[]).find(x=>x.id===id);
                     const on=assistRepFilter.includes(id);
                     return (
