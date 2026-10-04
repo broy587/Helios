@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b157";
+const APP_BUILD = "b158";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8437,6 +8437,36 @@ function parseApptDate(raw) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// ── Within-column card ordering: appointment-driven ──────────────────────
+// A lead's spot in its stage/pile is decided by its appointments, not when it
+// was created: FUTURE appointments on top (soonest first), then PAST
+// appointments (most recent first), and leads with no appointment at the
+// bottom (newest created first). Any appointment type counts.
+function leadApptSortStamp(l){
+  const times = [];
+  [l.appointment,l.close_appointment,l.cap_appointment,l.install_appointment,l.cs_appointment,
+   l.followup_appointment,l.pto_appointment,l.checkin_appointment,l.site_survey_appointment].forEach(raw=>{
+    const d = parseApptDate(raw); if(d) times.push(d.getTime());
+  });
+  (Array.isArray(l.extra_appointments)?l.extra_appointments:[]).forEach(a=>{
+    if(!a || typeof a.label!=="string") return;
+    const i = a.label.indexOf("— ");
+    const d = parseApptDate(i>-1 ? a.label.slice(i+2) : a.label);
+    if(d) times.push(d.getTime());
+  });
+  const now = Date.now();
+  const future = times.filter(t=>t>=now), past = times.filter(t=>t<now);
+  if(future.length) return {g:0, k:Math.min(...future)}; // soonest upcoming, ascending
+  if(past.length)   return {g:1, k:-Math.max(...past)};  // most recent past, descending
+  const c = Date.parse(l.created_at||"") || 0;
+  return {g:2, k:-c};                                    // no appointment: newest created first
+}
+function sortLeadsByAppt(arr){
+  return (arr||[]).map(l=>({l, s:leadApptSortStamp(l)}))
+    .sort((a,b)=> a.s.g!==b.s.g ? a.s.g-b.s.g : a.s.k-b.s.k)
+    .map(x=>x.l);
+}
+
 // ── Pipeline filters (replaces the old hygiene panel) ─────────────────
 function pfNonEmpty(v){ return !!(v && String(v).trim()); }
 // A lead "has closer notes" if its notes log has any entry with text, or the
@@ -9362,7 +9392,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           if (pickedStages.length) shownStages = shownStages.filter(s=>pickedStages.includes(s));
           // Assisted view now shows the ENTIRE pipeline (all stage columns).
           return shownStages.map(stage=>{
-          const colors=getStageColor(stage),stageLeads=leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save),isOver=dragOver===stage;
+          const colors=getStageColor(stage),stageLeads=sortLeadsByAppt(leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save)),isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#faf6f0",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#c8b8a2"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
@@ -9423,7 +9453,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             Hidden when "Leads / ACs" is selected (flagged piles are VC+ concepts),
             or when specific stage lists are picked and this pile isn't one of them. */}
         {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:ncs")))?null:(()=>{
-          const ncsLeads=leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold);
+          const ncsLeads=sortLeadsByAppt(leads.filter(l=>l.needs_cancel_save && !l.is_arc && !l.on_hold));
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7f1d1d`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
               <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#e0e7ff"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#1e1b3a":"#eef2ff",borderRadius:"12px 12px 0 0"}}>
@@ -9444,7 +9474,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             Positioned between Needs Cancel Save and ARC / Cancels. Hidden when
             specific stage lists are picked and this pile isn't one of them. */}
         {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:on_hold")))?null:(()=>{
-          const holdLeads=leads.filter(l=>l.on_hold && !l.is_arc);
+          const holdLeads=sortLeadsByAppt(leads.filter(l=>l.on_hold && !l.is_arc));
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #7c2d12`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.95}}>
               <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fde68a"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:dark?"#2a2114":"#fffbeb",borderRadius:"12px 12px 0 0"}}>
@@ -9464,7 +9494,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         {/* ARC / Cancels — separate column, no drag-drop. Hidden when specific
             stage lists are picked and this pile isn't one of them. */}
         {((pipeFilters&&pipeFilters.stageView==="leads_acs")||(pipeFilters&&Array.isArray(pipeFilters.stages)&&pipeFilters.stages.length>0&&!pipeFilters.stages.includes("pile:arc")))?null:(()=>{
-          const arcLeads=leads.filter(l=>l.is_arc);
+          const arcLeads=sortLeadsByAppt(leads.filter(l=>l.is_arc));
           return (
             <div style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:dark?"#1e293b":"#fff",borderRadius:12,border:`2px solid #ef4444`,boxShadow:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`,opacity:0.9}}>
               <div style={{padding:"12px 14px 10px",borderBottom:`1.5px solid ${dark?"#334155":"#fee2e2"}`,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff5f5",borderRadius:"12px 12px 0 0"}}>
