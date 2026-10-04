@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b155";
+const APP_BUILD = "b156";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8593,6 +8593,19 @@ function matchesPipelineFilters(lead, filters){
     const dow = leadApptDayOfWeek(lead);
     if(dow===null || dow!==Number(filters.apptDay)) return false;
   }
+  // Appointment DATE: one date = that single day; both set = inclusive range.
+  // Matches the lead's most recently booked appointment (same source as the
+  // time windows and day-of-week above).
+  if(filters.apptDateFrom || filters.apptDateTo){
+    const d = parseApptDate(leadApptRaw(lead));
+    if(!d) return false; // no dated appointment → excluded when filtering by date
+    const fromStr = filters.apptDateFrom || filters.apptDateTo;
+    const toStr   = filters.apptDateTo   || filters.apptDateFrom;
+    const from = new Date(fromStr + "T00:00:00");
+    const to   = new Date(toStr   + "T23:59:59.999");
+    if(!isNaN(from.getTime()) && d < from) return false;
+    if(!isNaN(to.getTime())   && d > to)   return false;
+  }
   // Appointment TYPE (OR within the group): show only leads whose MOST RECENT
   // booked appointment is one of the selected types.
   const apptTypes = Array.isArray(filters.apptType) ? filters.apptType : [];
@@ -11727,13 +11740,14 @@ function leadPinVisual(lead, activeFilters, extrasOn) {
 // appointment windows/day/type, stale) — the same field shapes the pipeline
 // tab's matchesPipelineFilters reads, minus stages/archive (canvass has its
 // own stage & pile sections).
-const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",stale:{on:false,mode:"show",days:14}};
+const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",apptDateFrom:"",apptDateTo:"",stale:{on:false,mode:"show",days:14}};
 function canvassPfxActive(p){
   if(!p) return false;
   return !!(p.after || p.before
     || (Array.isArray(p.appt)&&p.appt.length)
     || (Array.isArray(p.apptType)&&p.apptType.length)
     || (p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")
+    || !!p.apptDateFrom || !!p.apptDateTo
     || (p.stale && p.stale.on));
 }
 function canvassPfxCount(p){
@@ -11742,6 +11756,7 @@ function canvassPfxCount(p){
     +(Array.isArray(p.appt)?p.appt.length:0)
     +(Array.isArray(p.apptType)?p.apptType.length:0)
     +((p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")?1:0)
+    +((p.apptDateFrom||p.apptDateTo)?1:0)
     +((p.stale&&p.stale.on)?1:0);
 }
 function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
@@ -11750,7 +11765,7 @@ function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
   if (!lead) return false;
   // Date / appointment / stale knobs REFINE — run through the pipeline tab's
   // own matcher so semantics stay identical to Filter Pipeline.
-  if (extras && !matchesPipelineFilters(lead, {after:pfx.after, before:pfx.before, appt:pfx.appt, apptDay:pfx.apptDay, apptType:pfx.apptType, stale:pfx.stale})) return false;
+  if (extras && !matchesPipelineFilters(lead, {after:pfx.after, before:pfx.before, appt:pfx.appt, apptDay:pfx.apptDay, apptDateFrom:pfx.apptDateFrom, apptDateTo:pfx.apptDateTo, apptType:pfx.apptType, stale:pfx.stale})) return false;
   // Pipeline filters (pf:) REFINE — the lead must pass every checked one,
   // exactly like Filter Pipeline on the Pipeline tab.
   const pf = (activeFilters||[]).filter(f=>f.startsWith("pf:"));
@@ -13877,7 +13892,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
                 <button onClick={()=>setPfx(p=>({...p,after:undefined,before:undefined}))} style={{marginTop:8,padding:"5px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10.5,fontWeight:700,cursor:"pointer"}}>Clear dates</button>
               )}
             </div>)}
-            {subHead("pf_appt","⏰ Appointment Time",(Array.isArray(pfx.appt)?pfx.appt.length:0)+((pfx.apptDay!==undefined&&pfx.apptDay!=="any"&&pfx.apptDay!=="")?1:0))}
+            {subHead("pf_appt","⏰ Appointment Time",(Array.isArray(pfx.appt)?pfx.appt.length:0)+((pfx.apptDay!==undefined&&pfx.apptDay!=="any"&&pfx.apptDay!=="")?1:0)+((pfx.apptDateFrom||pfx.apptDateTo)?1:0))}
             {openSecs.pf_appt && (<div style={{margin:"2px 0 8px"}}>
               {[["morning","🌅 Morning · 8AM–1PM"],["afternoon","☀️ Afternoon · 1PM–5PM"],["evening","🌆 Evening · 5PM–9PM"]].map(([v,l2])=>{
                 const on=Array.isArray(pfx.appt)&&pfx.appt.includes(v);
@@ -13895,6 +13910,16 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
                 <option value="6">Saturday</option>
                 <option value="0">Sunday</option>
               </select>
+              <div style={{...lbl,marginLeft:8,marginTop:10}}>Appointment date</div>
+              <div style={{display:"flex",alignItems:"center",gap:6,margin:"0 8px"}}>
+                <input type="date" value={pfx.apptDateFrom||""} onChange={e=>setPfx(p=>({...p,apptDateFrom:e.target.value}))} style={{...dIn,flex:1,minWidth:0,margin:0}}/>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.5)",flexShrink:0}}>to</span>
+                <input type="date" value={pfx.apptDateTo||""} onChange={e=>setPfx(p=>({...p,apptDateTo:e.target.value}))} style={{...dIn,flex:1,minWidth:0,margin:0}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,margin:"3px 8px 0"}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",lineHeight:1.35}}>One date = that day only. Add the second for a range.</div>
+                {(pfx.apptDateFrom||pfx.apptDateTo) && <button onClick={()=>setPfx(p=>({...p,apptDateFrom:"",apptDateTo:""}))} style={{background:"none",border:"none",color:"#f87171",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,padding:0}}>Clear</button>}
+              </div>
             </div>)}
             {subHead("pf_type","📌 Appointment Type",Array.isArray(pfx.apptType)?pfx.apptType.length:0)}
             {openSecs.pf_type && (<div style={{margin:"2px 0 8px"}}>
