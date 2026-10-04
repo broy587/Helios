@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b158";
+const APP_BUILD = "b159";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -15591,15 +15591,24 @@ const TeamCalendars = {
       this.myTeams = [...withCal, ...extras];
     } else if(Array.isArray(calendarAccess) && calendarAccess.length>0){
       this.myTeams = [...withCal.filter(t=>calendarAccess.includes(t.id)), ...myExtras];
-    } else {
+    } else if(isOwner || role==="manager"){
+      // Owner and managers keep their team calendars automatically.
       this.myTeams = [...withCal.filter(t=>(teamMembers[t.id]||[]).some(m=>m.user_id===currentUserId)), ...myExtras];
+    } else {
+      // Reps / self-gen / closers: being ON a team no longer grants its
+      // calendar. They get ONLY what's explicitly granted — Calendar Access in
+      // the Team tab (specific calendars or "all"), or standalone-calendar
+      // grants. Keeps reps on the roster without handing them the calendar.
+      this.myTeams = [...myExtras];
     }
     // Remember the resolved calendars on this device. On a bad connection the
     // teams/team_members rows may not have loaded yet, which used to leave a rep
     // staring at "No calendar for your team" mid-street. The calendar IDs are
     // static app config, so a cached copy stays valid and lets them book anyway.
     try{
-      if(this.myTeams.length>0 && currentUserId){
+      if(currentUserId){
+        // Always rewrite (even when empty) so a revoked calendar can't keep
+        // working from a stale cached copy on the device.
         localStorage.setItem("pp_cal_cache_"+currentUserId, JSON.stringify(this.myTeams));
       }
     }catch(e){}
@@ -19321,7 +19330,7 @@ function App() {
   const onCalendarTeam = isOwner
     || profile.calendar_access_all
     || (Array.isArray(profile.calendar_access) && profile.calendar_access.some(tid => TEAM_CALENDARS[tid]))
-    || Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id))
+    || (profile.role==="manager" && Object.keys(TEAM_CALENDARS).some(tid => (teamMembers[tid]||[]).some(m=>m.user_id===user.id)))
     || (ExtraCals.rows||[]).some(r=>Array.isArray(r.rep_ids)&&r.rep_ids.includes(user.id));
 
   // ── Pipeline sub-tabs: mine | team:{id} | rep:{id} ──────────────
