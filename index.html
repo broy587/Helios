@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b163";
+const APP_BUILD = "b165";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8556,6 +8556,17 @@ function sortLeadsByAppt(arr){
 
 // ── Pipeline filters (replaces the old hygiene panel) ─────────────────
 function pfNonEmpty(v){ return !!(v && String(v).trim()); }
+// City pulled from a lead's address: "123 Main St, Dallas, TX 75201" → "Dallas".
+// Trailing state/ZIP fragments are stripped; casing is normalized so "DALLAS"
+// and "dallas" group as one city.
+function leadCity(l){
+  const a = l && l.address ? String(l.address) : "";
+  const parts = a.split(",").map(x=>x.trim()).filter(Boolean);
+  if(parts.length < 2) return "";
+  let c = parts[1].replace(/\b[A-Z]{2}\b\s*\d{5}(-\d{4})?\s*$/,"").replace(/\d{5}(-\d{4})?\s*$/,"").trim();
+  if(!c || /^\d+$/.test(c)) return "";
+  return c.toLowerCase().replace(/\b\w/g,ch=>ch.toUpperCase());
+}
 // A lead "has closer notes" if its notes log has any entry with text, or the
 // legacy closer_notes string is non-empty.
 function pfHasCloserNotes(l){
@@ -8597,7 +8608,9 @@ function pfStaleDays(l){
 }
 const PIPELINE_FILTER_DEFS = [
   {key:"has_phone",    group:"General - Lead Includes",         label:"Phone Number",                          test:l=>pfNonEmpty(l.phone)},
+  {key:"no_phone",     group:"General - Lead Includes",         label:"No Phone Number",                       test:l=>!pfNonEmpty(l.phone)},
   {key:"has_email",    group:"General - Lead Includes",         label:"Email",                                 test:l=>pfNonEmpty(l.email)},
+  {key:"no_email",     group:"General - Lead Includes",         label:"No Email",                              test:l=>!pfNonEmpty(l.email)},
   {key:"has_appt",     group:"General - Lead Includes",         label:"Scheduled Appointment",                 test:pfHasAppt},
   {key:"has_utility",  group:"General - Lead Includes",         label:"Utility Info (Company, ESIID, Meter #)", test:l=>pfNonEmpty(l.utility)&&pfNonEmpty(l.esiid)&&pfNonEmpty(l.meter)},
   {key:"has_comm",     group:"General - Lead Includes",         label:"Commission Input",                      test:l=>pfNonEmpty(l.commission)},
@@ -8668,7 +8681,7 @@ function leadLatestApptType(l){
   for(const e of entries){ if(e.t > best.t) best = e; }
   return best.type;
 }
-const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"],["has_cnotes","no_cnotes"]]; // can't both be on
+const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm"],["has_cnotes","no_cnotes"],["has_phone","no_phone"],["has_email","no_email"]]; // can't both be on
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
   const active = Array.isArray(filters.active) ? filters.active : [];
@@ -8729,6 +8742,12 @@ function matchesPipelineFilters(lead, filters){
   if(apptTypes.length){
     const t = leadLatestApptType(lead);
     if(!t || !apptTypes.includes(t)) return false;
+  }
+  // City (OR within the group): the lead's address city must be one of the picked.
+  const cityF = Array.isArray(filters.city) ? filters.city : [];
+  if(cityF.length){
+    const c = leadCity(lead).toLowerCase();
+    if(!c || !cityF.some(x=>String(x).toLowerCase()===c)) return false;
   }
   // ── Stage / pile selection ──
   // Mirrors exactly what the board renders, so Conversions, the Audit and the
@@ -8799,6 +8818,7 @@ function pipeFilterCount(filters){
     + (filters.after?1:0) + (filters.before?1:0)
     + (Array.isArray(filters.appt)?filters.appt.length:0)
     + (Array.isArray(filters.apptType)?filters.apptType.length:0)
+    + (Array.isArray(filters.city)?filters.city.length:0)
     + ((filters.apptDay!==undefined && filters.apptDay!=="any" && filters.apptDay!=="")?1:0)
     + ((filters.archiveMode==="show_all" || filters.archiveMode==="only")?1:0) + (filters.stageView?1:0)
     + (Array.isArray(filters.stages)?filters.stages.length:0);
@@ -9646,7 +9666,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const setStale = (patch)=> setDraftFilters({...draft, stale:{...stale, ...patch}});
         const todayStr = ()=>{ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
         const dateInput = {width:"100%",padding:"8px 10px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#f1f5f9":"#0f172a",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
-        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + (Array.isArray(draft.apptType)?draft.apptType.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0) + (Array.isArray(draft.stages)?draft.stages.length:0);
+        const draftCount = (draft.active?draft.active.length:0) + (stale.on?1:0) + (draft.after?1:0) + (draft.before?1:0) + (Array.isArray(draft.appt)?draft.appt.length:0) + (Array.isArray(draft.apptType)?draft.apptType.length:0) + (Array.isArray(draft.city)?draft.city.length:0) + ((draft.apptDay!==undefined && draft.apptDay!=="any" && draft.apptDay!=="")?1:0) + ((draft.archiveMode==="show_all"||draft.archiveMode==="only")?1:0) + (draft.stageView?1:0) + (Array.isArray(draft.stages)?draft.stages.length:0);
         // Collapsible section wrapper — each filter section is a dropdown.
         const FilterSection = ({name, title, count, children}) => {
           const isOpen = !!openFilterSections[name];
@@ -9789,6 +9809,29 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                     })}
                   </div>
                 </FilterSection>
+                <FilterSection name="city" title="City" count={Array.isArray(draft.city)?draft.city.length:0}>
+                  <div style={{fontSize:11,color:dark?"#64748b":"#94a3b8",marginBottom:10}}>Only show leads in the selected city or cities (from the lead's address).</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {(()=>{
+                      const counts = {};
+                      (leadsAll||[]).forEach(l=>{ const c=leadCity(l); if(c) counts[c]=(counts[c]||0)+1; });
+                      const cities = Object.keys(counts).sort((a,b)=>a.localeCompare(b));
+                      if(cities.length===0) return <div style={{fontSize:12,color:"#94a3b8"}}>No cities found on these leads yet.</div>;
+                      return cities.map(c=>{
+                        const on = Array.isArray(draft.city) && draft.city.includes(c);
+                        return (
+                          <button key={c} onClick={()=>{
+                            const cur = Array.isArray(draft.city)?draft.city:[];
+                            setDraftFilters({...draft, city: on ? cur.filter(x=>x!==c) : [...cur, c]});
+                          }}
+                            style={{padding:"8px 13px",borderRadius:20,border:`1.5px solid ${on?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,background:on?"#1a2456":(dark?"#0f172a":"#fff"),color:on?"#fff":(dark?"#cbd5e1":"#1a2456"),fontSize:13,fontWeight:on?700:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                            {on && <span style={{fontSize:12}}>✓</span>}{c} <span style={{fontSize:11,color:on?"rgba(255,255,255,0.6)":"#94a3b8"}}>{counts[c]}</span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </FilterSection>
                 {PIPELINE_FILTER_GROUPS.map(group=>{
                   const groupCount = PIPELINE_FILTER_DEFS.filter(d=>d.group===group && activeSet.has(d.key)).length;
                   return (
@@ -9844,7 +9887,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                 </FilterSection>
               </div>
               <div style={{padding:"12px 20px",borderTop:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",gap:10,flexShrink:0}}>
-                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptType:[],apptDay:"any",archiveMode:"default",stageView:undefined,stages:[]}); }}
+                <button onClick={()=>{ setDraftFilters({active:[],stale:{on:false,mode:"show",days:14},appt:[],apptType:[],city:[],apptDay:"any",archiveMode:"default",stageView:undefined,stages:[]}); }}
                   style={{padding:"11px 16px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Clear all</button>
                 <button onClick={()=>{ onSavePipeFilters && onSavePipeFilters(draftFilters); setFilterOpen(false); }}
                   style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save filters{draftCount>0?` (${draftCount})`:""}</button>
@@ -11857,7 +11900,7 @@ function leadPinVisual(lead, activeFilters, extrasOn) {
 // appointment windows/day/type, stale) — the same field shapes the pipeline
 // tab's matchesPipelineFilters reads, minus stages/archive (canvass has its
 // own stage & pile sections).
-const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",apptDateFrom:"",apptDateTo:"",archiveMode:"default",stale:{on:false,mode:"show",days:14}};
+const CANVASS_PFX_EMPTY = {appt:[],apptType:[],city:[],apptDay:"any",apptDateFrom:"",apptDateTo:"",archiveMode:"default",stale:{on:false,mode:"show",days:14}};
 function canvassPfxActive(p){
   if(!p) return false;
   return !!(p.after || p.before
@@ -11866,6 +11909,7 @@ function canvassPfxActive(p){
     || (p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")
     || !!p.apptDateFrom || !!p.apptDateTo
     || (p.archiveMode==="show_all" || p.archiveMode==="only")
+    || (Array.isArray(p.city) && p.city.length>0)
     || (p.stale && p.stale.on));
 }
 function canvassPfxCount(p){
@@ -11876,6 +11920,7 @@ function canvassPfxCount(p){
     +((p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")?1:0)
     +((p.apptDateFrom||p.apptDateTo)?1:0)
     +((p.archiveMode==="show_all"||p.archiveMode==="only")?1:0)
+    +(Array.isArray(p.city)?p.city.length:0)
     +((p.stale&&p.stale.on)?1:0);
 }
 function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
@@ -11892,7 +11937,7 @@ function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
   if (!lead) return false;
   // Date / appointment / stale knobs REFINE — run through the pipeline tab's
   // own matcher so semantics stay identical to Filter Pipeline.
-  if (extras && !matchesPipelineFilters(lead, {after:pfx.after, before:pfx.before, appt:pfx.appt, apptDay:pfx.apptDay, apptDateFrom:pfx.apptDateFrom, apptDateTo:pfx.apptDateTo, apptType:pfx.apptType, stale:pfx.stale})) return false;
+  if (extras && !matchesPipelineFilters(lead, {after:pfx.after, before:pfx.before, appt:pfx.appt, apptDay:pfx.apptDay, apptDateFrom:pfx.apptDateFrom, apptDateTo:pfx.apptDateTo, apptType:pfx.apptType, city:pfx.city, stale:pfx.stale})) return false;
   // Pipeline filters (pf:) REFINE — the lead must pass every checked one,
   // exactly like Filter Pipeline on the Pipeline tab.
   const pf = (activeFilters||[]).filter(f=>f.startsWith("pf:"));
@@ -14055,6 +14100,19 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
                 return (<div key={t.key} onClick={()=>togglePfx("apptType",t.key)} style={rowStyle(on)}>{cbBox(on)}<span style={rowTxt(on)}>{t.label}</span></div>);
               })}
               <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",margin:"2px 8px 0",lineHeight:1.35}}>Matches the lead's most recently booked appointment.</div>
+            </div>)}
+            {subHead("pf_city","🏙️ City",Array.isArray(pfx.city)?pfx.city.length:0)}
+            {openSecs.pf_city && (<div style={{margin:"2px 0 8px"}}>
+              {(()=>{
+                const counts={};
+                (leads||[]).forEach(l=>{ const c=leadCity(l); if(c) counts[c]=(counts[c]||0)+1; });
+                const cities=Object.keys(counts).sort((a,b)=>a.localeCompare(b));
+                if(cities.length===0) return <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",margin:"0 8px"}}>No cities found on these leads yet.</div>;
+                return cities.map(c=>{
+                  const on=Array.isArray(pfx.city)&&pfx.city.includes(c);
+                  return (<div key={c} onClick={()=>setPfx(p=>{const cur=Array.isArray(p.city)?p.city:[];return {...p,city:on?cur.filter(x=>x!==c):[...cur,c]};})} style={rowStyle(on)}>{cbBox(on)}<span style={rowTxt(on)}>{c} ({counts[c]})</span></div>);
+                });
+              })()}
             </div>)}
             {PIPELINE_FILTER_GROUPS.map((g,gi)=>{
               const defs=PIPELINE_FILTER_DEFS.filter(d=>d.group===g);
