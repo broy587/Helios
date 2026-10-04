@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b162";
+const APP_BUILD = "b163";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -11857,7 +11857,7 @@ function leadPinVisual(lead, activeFilters, extrasOn) {
 // appointment windows/day/type, stale) — the same field shapes the pipeline
 // tab's matchesPipelineFilters reads, minus stages/archive (canvass has its
 // own stage & pile sections).
-const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",apptDateFrom:"",apptDateTo:"",stale:{on:false,mode:"show",days:14}};
+const CANVASS_PFX_EMPTY = {appt:[],apptType:[],apptDay:"any",apptDateFrom:"",apptDateTo:"",archiveMode:"default",stale:{on:false,mode:"show",days:14}};
 function canvassPfxActive(p){
   if(!p) return false;
   return !!(p.after || p.before
@@ -11865,6 +11865,7 @@ function canvassPfxActive(p){
     || (Array.isArray(p.apptType)&&p.apptType.length)
     || (p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")
     || !!p.apptDateFrom || !!p.apptDateTo
+    || (p.archiveMode==="show_all" || p.archiveMode==="only")
     || (p.stale && p.stale.on));
 }
 function canvassPfxCount(p){
@@ -11874,9 +11875,18 @@ function canvassPfxCount(p){
     +(Array.isArray(p.apptType)?p.apptType.length:0)
     +((p.apptDay!==undefined && p.apptDay!=="any" && p.apptDay!=="")?1:0)
     +((p.apptDateFrom||p.apptDateTo)?1:0)
+    +((p.archiveMode==="show_all"||p.archiveMode==="only")?1:0)
     +((p.stale&&p.stale.on)?1:0);
 }
 function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
+  // Archive comes FIRST (even with no other filters on): archived pins are
+  // hidden by default; "All accounts" shows both, "Only archived" shows just
+  // them — mirrors the pipeline's Archive filter.
+  const am = (pfx && pfx.archiveMode) || "default";
+  if (lead) {
+    if (am==="only") { if(!lead.archived) return false; }
+    else if (am!=="show_all" && lead.archived) return false;
+  }
   const extras = canvassPfxActive(pfx);
   if ((!activeFilters || activeFilters.length === 0) && !extras) return true;
   if (!lead) return false;
@@ -13113,7 +13123,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           m._visKey = visKey;
         }
       }
-      const shouldShow = !hasFilter || leadMatchesCanvassFilters(lead, activeFilters, pfx);
+      const shouldShow = leadMatchesCanvassFilters(lead, activeFilters, pfx); // matcher handles the no-filter case (and archive)
       const target = shouldShow ? mapInstanceRef.current : null;
       if((m.getMap()||null)!==target) m.setMap(target);
     });
@@ -13429,7 +13439,7 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       }
       if(!(la&&ln)) return;
       if(lead.address && pinnedKeys.some(k=>k && lead.address.toLowerCase().includes(k))) return;
-      if(hasFilter && !leadMatchesCanvassFilters(lead, activeFilters, pfx)) return;
+      if(!leadMatchesCanvassFilters(lead, activeFilters, pfx)) return; // handles no-filter + archive
       const vis=leadPinVisual(lead, activeFilters||[], pfxOn);
       out.push({lat:+la,lng:+ln,emoji:vis.emoji,color:vis.color,lead});
     });
@@ -14079,6 +14089,19 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
                   ))}
                 </div>
               )}
+            </div>)}
+            {subHead("pf_archive","🗄️ Archive",(pfx.archiveMode==="show_all"||pfx.archiveMode==="only")?1:0)}
+            {openSecs.pf_archive && (<div style={{margin:"2px 0 8px"}}>
+              <div style={{display:"flex",gap:8,margin:"0 8px"}}>
+                {[["show_all","All accounts"],["only","Only archived"]].map(([v,l2])=>{
+                  const on=pfx.archiveMode===v;
+                  return (
+                    <button key={v} onClick={()=>setPfx(p=>({...p,archiveMode:on?"default":v}))}
+                      style={{flex:1,padding:"9px 4px",borderRadius:10,border:`1.5px solid ${on?"#f97316":"rgba(255,255,255,0.2)"}`,background:on?"#f97316":"transparent",color:on?"#fff":"rgba(255,255,255,0.65)",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l2}</button>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",margin:"6px 8px 0",lineHeight:1.35}}>Archived pins stay hidden unless one of these is on — same as the pipeline's Archive filter.</div>
             </div>)}
             {(activeFilters.some(f=>f.startsWith("pf:"))||pfxOn) && (
               <button onClick={()=>{setActiveFilters(f=>f.filter(x=>!x.startsWith("pf:")));setPfx(CANVASS_PFX_EMPTY);}}
