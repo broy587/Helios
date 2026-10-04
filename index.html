@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b159";
+const APP_BUILD = "b160";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -3224,6 +3224,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
         );
       })()}
 
+      <TeamCalendarsAccessSection profiles={profiles} isOwner={isOwner} me={currentUser} teams={teams} teamMembers={teamMembers} onToggleAccess={handleToggleCalTeam}/>
       {(isOwner || currentUser.role==="manager") && <StandaloneCalendarsSection profiles={profiles} isOwner={isOwner} me={currentUser} teamMembers={teamMembers}/>}
 
       {calAccessOpen && (()=>{
@@ -3295,6 +3296,80 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
   );
 }
 
+// ── Team calendars access manager (Team tab) ──────────────────────────
+// A collapsible section listing team calendars. Everyone who can view a team
+// calendar sees its card and WHO has access; only the app owner and that
+// TEAM'S manager can change the list. It reads/writes the exact same
+// profiles.calendar_access data as the per-rep "Calendar Access" panel, so the
+// two always match: tick someone here and it appears in their Calendar
+// Access; untick and it's gone there too — and without access they can't see
+// or book that calendar at all.
+function TeamCalendarsAccessSection({profiles, isOwner, me, teams, teamMembers, onToggleAccess}) {
+  const dark=useDark();
+  const [secOpen,setSecOpen]=useState(false);
+  const [openId,setOpenId]=useState(null);
+  const calTeams=(teams||[]).filter(t=>TEAM_CALENDARS[t.id]);
+  const isTeamManager=(tid)=> !!me && me.role==="manager" && (teamMembers[tid]||[]).some(m=>m.user_id===me.id);
+  const canSee=(t)=> isOwner || isTeamManager(t.id) || !!(me&&me.calendar_access_all) || (Array.isArray(me&&me.calendar_access)&&me.calendar_access.includes(t.id));
+  const visible=calTeams.filter(canSee);
+  if(visible.length===0) return null;
+  const people=(profiles||[]).filter(p=>!p.deleted_at && p.id!==OWNER_ID && (isMemberRole(p.role)||p.role==="manager")).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||"")));
+  return (
+    <div style={{marginTop:22,background:dark?"#1e293b":"#fff",borderRadius:14,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,padding:"18px"}}>
+      <div onClick={()=>setSecOpen(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,cursor:"pointer"}}>
+        <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>🗓️ Team Calendars</div>
+        <span style={{fontSize:12,color:"#94a3b8"}}>{secOpen?"▲":"▼"}</span>
+      </div>
+      {secOpen && (<div style={{marginTop:12}}>
+        <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5,marginBottom:10}}>Who can see and book each team calendar. This is the same setting as each person's Calendar Access — change it in either place and both update. Only the team's manager (and the app owner) can change a calendar's list.</div>
+        {visible.map(t=>{
+          const canEdit = isOwner || isTeamManager(t.id);
+          const isMgrOf=(p)=> p.role==="manager" && (teamMembers[t.id]||[]).some(m=>m.user_id===p.id);
+          const hasAccess=(p)=> !!p.calendar_access_all || (Array.isArray(p.calendar_access)&&p.calendar_access.includes(t.id)) || isMgrOf(p);
+          const n = people.filter(hasAccess).length;
+          const isOpen = openId===t.id;
+          return (
+            <div key={t.id} style={{border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,marginBottom:8,overflow:"hidden"}}>
+              <div onClick={()=>setOpenId(isOpen?null:t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",cursor:"pointer",background:dark?"#0f172a":"#f8fafc"}}>
+                {t.logo_url?<img src={t.logo_url} style={{width:30,height:30,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:<span style={{fontSize:16}}>🗓️</span>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:dark?"#f1f5f9":"#0f172a"}}>{t.name||"Team"}</div>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>{canEdit?"You manage access to this calendar":"View only — the team's manager controls access"}</div>
+                </div>
+                <span style={{fontSize:11,fontWeight:800,color:"#0369a1",background:dark?"rgba(3,105,161,0.2)":"#e0f2fe",borderRadius:12,padding:"2px 9px",flexShrink:0}}>{n} {n===1?"person":"people"}</span>
+                <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>{isOpen?"▲":"▼"}</span>
+              </div>
+              {isOpen && (
+                <div style={{padding:"8px 12px",maxHeight:280,overflowY:"auto"}}>
+                  {people.map(p=>{
+                    const viaAll=!!p.calendar_access_all;
+                    const viaMgr=isMgrOf(p);
+                    const on=hasAccess(p);
+                    const togglable=canEdit && !viaAll && !viaMgr;
+                    return (
+                      <div key={p.id} onClick={()=>{ if(togglable) onToggleAccess(p.id, t.id); }}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"8px 2px",borderBottom:`1px solid ${dark?"#1e293b":"#f1f5f9"}`,cursor:togglable?"pointer":"default"}}>
+                        <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${on?"#10b981":(dark?"#475569":"#cbd5e1")}`,background:on?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {on&&<span style={{color:"#fff",fontSize:12,fontWeight:900,lineHeight:1}}>✓</span>}
+                        </div>
+                        <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {p.name||p.email}
+                          {viaAll&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:"#10b981"}}>(all calendars)</span>}
+                          {viaMgr&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:"#f97316"}}>(team manager)</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>)}
+    </div>
+  );
+}
+
 // ── Standalone calendars manager (owner only, Team tab) ────────────────
 // Create calendars that are NOT tied to a team (e.g. one closer's booking
 // calendar) and grant specific reps access. Reps with access see it in the
@@ -3302,6 +3377,7 @@ function TeamManagement({currentUser, profiles, setProfiles, leads, teams, teamM
 function StandaloneCalendarsSection({profiles, isOwner, me, teamMembers}) {
   const dark=useDark();
   const [showHelp,setShowHelp]=useState(false);
+  const [secOpen,setSecOpen]=useState(false); // whole section collapses like Team Calendars
   const [rows,setRows]=useState([]);
   const [openId,setOpenId]=useState(null); // calendar whose rep list is expanded
   const [adding,setAdding]=useState(false);
@@ -3360,16 +3436,18 @@ function StandaloneCalendarsSection({profiles, isOwner, me, teamMembers}) {
   return (
     <div style={{marginTop:22,background:dark?"#1e293b":"#fff",borderRadius:14,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,padding:"18px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
-        <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+        <div onClick={()=>setSecOpen(v=>!v)} style={{display:"flex",alignItems:"center",gap:7,minWidth:0,cursor:"pointer",flex:1}}>
           <div style={{fontWeight:800,fontSize:16,color:dark?"#f1f5f9":"#0f172a"}}>📅 Closer Calendars</div>
+          <span style={{fontSize:12,color:"#94a3b8"}}>{secOpen?"▲":"▼"}</span>
           <button type="button" onClick={()=>setShowHelp(v=>!v)} title="How to add a closer calendar"
             style={{width:18,height:18,borderRadius:"50%",border:"none",cursor:"pointer",fontSize:11,fontWeight:800,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",background:showHelp?"#1a2456":(dark?"#334155":"#e2e8f0"),color:showHelp?"#fff":(dark?"#cbd5e1":"#64748b"),flexShrink:0,padding:0}}>?</button>
         </div>
-        <button onClick={()=>setAdding(a=>!a)}
+        <button onClick={()=>{setSecOpen(true);setAdding(a=>!a);}}
           style={{padding:"7px 12px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
           {adding?"Cancel":"＋ Add Calendar"}
         </button>
       </div>
+      {secOpen && (<>
       {showHelp && (
       <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55,marginBottom:12,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px"}}>
         Personal closer calendars (not team) — Before adding one here: create the calendar in Google Calendar, share it with the pipeline service-account email <span style={{display:"inline-flex",alignItems:"center",gap:4,maxWidth:"100%"}}><b style={{color:dark?"#cbd5e1":"#475569",wordBreak:"break-all"}}>pipeline-push-calendar@pipeline-push-calendar-503318.iam.gserviceaccount.com</b><CopyIcon value="pipeline-push-calendar@pipeline-push-calendar-503318.iam.gserviceaccount.com"/></span> and make sure its access is "Make changes and see all event details", and select "Make available to public – see all event details". Then add its Calendar ID to the ALLOWED_CALENDAR_IDS secret in Supabase (if you're a manager, email the Calendar ID to pipelinepush.crm@gmail.com). Done! You'll get an email confirmation once the calendar has been added to Pipeline Push.
@@ -3439,6 +3517,7 @@ function StandaloneCalendarsSection({profiles, isOwner, me, teamMembers}) {
           </div>
         );
       })}
+      </>)}
     </div>
   );
 }
