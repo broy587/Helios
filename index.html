@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b168";
+const APP_BUILD = "b169";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9499,7 +9499,14 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           if (pickedStages.length) shownStages = shownStages.filter(s=>pickedStages.includes(s));
           // Assisted view now shows the ENTIRE pipeline (all stage columns).
           return shownStages.map(stage=>{
-          const colors=getStageColor(stage),stageLeads=sortLeadsByAppt(leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save)),isOver=dragOver===stage;
+          const colors=getStageColor(stage),
+            // "Lead: Need Bill/Appointment" is the one column ordered purely by
+            // creation date (newest on top) — fresh leads first. Every other
+            // stage keeps the appointment-driven ordering.
+            stageLeads=(stage==="Lead: Need Bill/Appointment"
+              ? leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save).slice().sort((a,b)=>(Date.parse(b.created_at||"")||0)-(Date.parse(a.created_at||"")||0))
+              : sortLeadsByAppt(leads.filter(l=>l.stage===stage&&!l.is_arc&&!l.on_hold&&!l.needs_cancel_save))),
+            isOver=dragOver===stage;
           return (
             <div key={stage} ref={el=>{columnRefs.current[stage]=el;}}
               style={{minWidth:220,maxWidth:240,flex:"0 0 220px",background:isOver?colors.bg:dark?"#1e293b":"#faf6f0",borderRadius:12,border:`2px solid ${isOver?colors.border:dark?"#334155":"#c8b8a2"}`,transition:"border-color 0.15s,background 0.15s",boxShadow:isOver?`0 0 0 3px ${colors.border}33`:`0 1px 4px ${dark?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.06)"}`}}>
