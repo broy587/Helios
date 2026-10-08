@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b169";
+const APP_BUILD = "b170";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6139,8 +6139,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
     // "Change" replaces the current top: remove its calendar event and pop it first.
     if(intent==="change"){
       const top = getApptStack(lead, key).slice(-1)[0];
-      const topEvId = top ? top.event_id : lead[evField];
-      if(topEvId && topEvId!==evId){ try{ await GCal.deletePersonalCB(topEvId); }catch(e){ console.error("change: couldn't delete old event:",e); } }
+      // Prefer the FLAT event id — it's the booking the lead shows as current
+      // (closer-slot CAP/CS bookings from the edit form never land on the stack).
+      const topEvId = lead[evField] || (top ? top.event_id : null);
+      if(topEvId && topEvId!==evId){
+        const okRm = await removeApptEventSmart(topEvId, {team:(key==="cap"||key==="cs")?"auto":"no", capSlot:key==="cap"});
+        if(!okRm) console.error("change: couldn't delete old event:", topEvId);
+      }
       const {stacks} = apptStackPop(lead, key);
       workingLead = {...lead, appt_stacks:stacks};
     }
@@ -6679,11 +6684,31 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     // Stacked removal: pop the top booking, delete ONLY its calendar event,
                     // and revert the flat fields to the previous booking (or clear if empty).
                     // History is left intact (prior bookings stay in the audit trail).
+                    // CAP / Cancel Save can be booked on a CLOSER-calendar slot — those are
+                    // RELEASED back to an open slot via removeApptEventSmart. (The old code
+                    // always deleted from the rep's OWN calendar, which silently did nothing
+                    // for a closer booking and left the event stuck on the closer calendar.)
                     const popAppt = async (key, apptField, evField) => {
-                      const {stacks, top, next} = apptStackPop(lead, key);
-                      const fields = {[apptField]: next ? next.when : "", [evField]: next ? (next.event_id||null) : null, appt_stacks:stacks};
+                      const flatEv = lead[evField]||null;
+                      const curStack = getApptStack(lead, key);
+                      const stackTop = curStack.length ? curStack[curStack.length-1] : null;
+                      let fields, evToRemove;
+                      if(flatEv && !(stackTop && stackTop.event_id===flatEv)){
+                        // The current booking only lives in the flat fields — a closer-slot
+                        // CAP/CS booked from the edit form never pushes onto the stack.
+                        // Remove IT, and surface the stack's top as the previous booking.
+                        evToRemove = flatEv;
+                        fields = {[apptField]: stackTop ? stackTop.when : "", [evField]: stackTop ? (stackTop.event_id||null) : null};
+                      } else {
+                        const {stacks, top, next} = apptStackPop(lead, key);
+                        evToRemove = top ? (top.event_id||null) : null;
+                        fields = {[apptField]: next ? next.when : "", [evField]: next ? (next.event_id||null) : null, appt_stacks:stacks};
+                      }
                       handleUpdate(fields);
-                      if(top && top.event_id){ try{ await GCal.deletePersonalCB(top.event_id); }catch(e){ console.error("Couldn't delete popped event from calendar:",e); } }
+                      if(evToRemove){
+                        const okRm = await removeApptEventSmart(evToRemove, {team:(key==="cap"||key==="cs")?"auto":"no", capSlot:key==="cap"});
+                        if(!okRm) console.error("Couldn't delete popped event from calendar:", evToRemove);
+                      }
                       const r = await leadPatch(lead.id, fields);
                       if(!r.ok && !r.queued) alert("Couldn't update it — check your connection and try again.");
                     };
@@ -6725,8 +6750,8 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                             {!c.noClear && !c.manage && <button onClick={async()=>{
                               const typeName=c.label.replace(/^[^ ]+ /,"");
                               const msg = c.stackCount>1
-                                ? `Remove the current ${typeName} (${c.val})? This deletes just this one from your calendar and reverts to the previous ${typeName} booking. ${c.stackCount-1} earlier booking${c.stackCount-1===1?"":"s"} will remain.`
-                                : `Remove this ${typeName} appointment? It will be cleared from the lead and your calendar.`;
+                                ? `Remove the current ${typeName} (${c.val})? This removes just this one from the calendar and reverts to the previous ${typeName} booking. ${c.stackCount-1} earlier booking${c.stackCount-1===1?"":"s"} will remain.`
+                                : `Remove this ${typeName} appointment? It will be cleared from the lead and the calendar — a closer-slot booking goes back to an open slot.`;
                               if(window.confirm(msg)) await c.clear();
                             }}
                               title={c.stackCount>1?"Remove current booking (reverts to previous)":"Remove this appointment"}
@@ -7673,7 +7698,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                         label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
                         summary={`🟠 CAP - ${form.name||"Lead"}`} accent="#ea580c" colorId="6"
                         onSelect={async(val,evId)=>{
-                          if(form.cap_event_id && form.cap_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cap_event_id); }catch(e){ console.error(e); } }
+                          if(form.cap_event_id && form.cap_event_id!==evId){ try{ await removeApptEventSmart(form.cap_event_id, {team:"auto", capSlot:true}); }catch(e){ console.error(e); } }
                           setForm(f=>({...f,cap_appointment:val,cap_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),cap:new Date().toISOString()}}));
                           if(form.id){ const nts={...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cap:new Date().toISOString()}; await leadPatch(form.id, {cap_appointment:val,cap_event_id:evId||null,appt_ts:nts}); }
                           setCapChoice(false);
@@ -7696,7 +7721,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                       summary={`🔴 CS - ${form.name||"Lead"}`}
                       accent="#dc2626" colorId="11"
                       onSelect={async(val,evId)=>{
-                        if(form.cs_event_id && form.cs_event_id!==evId){ try{ await GCal.deletePersonalCB(form.cs_event_id); }catch(e){ console.error(e); } }
+                        if(form.cs_event_id && form.cs_event_id!==evId){ try{ await removeApptEventSmart(form.cs_event_id, {team:"auto"}); }catch(e){ console.error(e); } }
                         const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),cs:new Date().toISOString()};
                         setForm(f=>({...f,cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}));
                         if(form.id){ await leadPatch(form.id, {cs_appointment:val,cs_event_id:evId||null,appt_ts:nts}); }
@@ -7741,8 +7766,16 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
               {(()=>{
                 const clearAppt = async (fields, evField) => {
                   const evId = form[evField];
-                  if(evId){ try{ await GCal.deletePersonalCB(evId); }catch(e){ console.error("Couldn't delete from calendar (clearing anyway):",e); } }
+                  // Clear the UI first, then do the slow calendar removal. CAP / Cancel
+                  // Save can be closer-slot bookings — release those back to an open slot
+                  // instead of (wrongly) deleting from the rep's own calendar, which
+                  // silently left them stuck as booked on the closer calendar.
                   setForm(f=>({...f,...fields}));
+                  if(evId){
+                    const isTeamType = evField==="cap_event_id" || evField==="cs_event_id";
+                    const okRm = await removeApptEventSmart(evId, {team:isTeamType?"auto":"no", capSlot:evField==="cap_event_id"});
+                    if(!okRm) console.error("Couldn't delete from calendar (cleared on the lead anyway):", evId);
+                  }
                   if(form.id){ await leadPatch(form.id, fields); }
                 };
                 const cards = [
@@ -14913,14 +14946,19 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     try {
       let ok = false;
       const action = release ? "remove" : "deleteEvent";
+      // A released CAP booking goes back to a CAP open slot (🧢), not a plain one.
+      const capBooked = release && ((ev.description||"").includes("CAP BOOKED:") || (ev.summary||"").startsWith("🟠"));
       const r = await CalendarBackend.tryCall(action, {calendarId, eventId:ev.id});
-      if(r && r.ok) ok = true;
+      if(r && r.ok){
+        ok = true;
+        if(capBooked){ try{ await CalendarBackend.tryCall("retitle", {calendarId, eventId:ev.id, summary:"🟧 Open slot 🧢"}); }catch(e2){} }
+      }
       if(r===null){
         // Fallback via the rep's own Google sign-in.
         const token = await GCal.signIn();
         if(release){
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
-            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
+            {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:(capBooked?"🟧 Open slot 🧢":"🟦 Open Slot"),description:"",colorId:"7",visibility:"public"})});
           ok = res.ok;
         } else {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${ev.id}`,
@@ -15837,8 +15875,12 @@ const TeamCalendars = {
 // the wrong calendar and the real slot stayed stuck as booked. Tries the
 // resolved calendar, then every calendar this app knows — backend (service
 // account) first, the rep's own Google sign-in only as a fallback.
-async function releaseSlotEverywhere(eventId){
+async function releaseSlotEverywhere(eventId, relOpts){
   if(!eventId) return false;
+  // Which open-slot title to restore: a released CAP booking goes back to a CAP
+  // open slot ("🟧 Open slot 🧢") so the slot stays bookable as a CAP;
+  // everything else returns to a plain close slot.
+  const slotTitle = (relOpts && relOpts.slotTitle) || "🟦 Open Slot";
   const candidates = [];
   try{ const r = TeamCalendars.resolve(); if(r && r.status==="ok" && r.calendarId) candidates.push(r.calendarId); }catch(e){}
   try{ (TeamCalendars.teams||[]).forEach(t=>{ if(t&&t.calendarId&&!candidates.includes(t.calendarId)) candidates.push(t.calendarId); }); }catch(e){}
@@ -15849,7 +15891,12 @@ async function releaseSlotEverywhere(eventId){
   for(const calId of candidates){
     try{
       const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId});
-      if(br && br.ok) return true;
+      if(br && br.ok){
+        // The backend restores a plain "🟦 Open Slot" title; retitle it when a
+        // CAP slot is being released so the 🧢 marker comes back.
+        if(slotTitle!=="🟦 Open Slot"){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId, summary:slotTitle}); }catch(e){} }
+        return true;
+      }
       if(br===null){ backendDown = true; break; }
     }catch(e){ /* not on this calendar — try the next */ }
   }
@@ -15859,11 +15906,36 @@ async function releaseSlotEverywhere(eventId){
   for(const calId of candidates){
     try{
       const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${eventId}`,
-        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})});
+        {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({summary:slotTitle,description:"",colorId:"7",visibility:"public"})});
       if(res.ok) return true;
     }catch(e){}
   }
   return false;
+}
+
+// Remove a booked appointment's calendar event WHEREVER it lives. CAP and
+// Cancel Save appointments can sit either on a team/closer calendar (booked
+// through an open slot — those must be RELEASED back to an open slot, never
+// left booked) or on the rep's own Google calendar (booked with 👤 Personal —
+// those are simply deleted). The lead doesn't record which way it was booked,
+// so: probe the team calendars first via the backend service account (free, no
+// sign-in), and only if no team calendar claims the event, delete it as a
+// personal one. A personal event can never be harmed by the team probe (it
+// doesn't live on any team calendar), and a team event is untouched by the
+// personal delete (Google answers 404) — so the order is safe both ways.
+// opts.team:    "auto" = try the team release first, then personal delete.
+//               "no"   = personal-only appointment types (follow up, PTO, …).
+// opts.capSlot: true restores a "🟧 Open slot 🧢" instead of a plain slot.
+async function removeApptEventSmart(eventId, opts){
+  if(!eventId) return false;
+  const team = (opts && opts.team) || "no";
+  const capSlot = !!(opts && opts.capSlot);
+  if(team!=="no"){
+    const released = await releaseSlotEverywhere(eventId, capSlot?{slotTitle:"🟧 Open slot 🧢"}:undefined);
+    if(released) return true;
+  }
+  try{ await GCal.deletePersonalCB(eventId); return true; }
+  catch(e){ console.error("Couldn't delete event from calendar:", e); return false; }
 }
 
 // ── Calendar Button Component ─────────────────────────────────────────
@@ -16134,7 +16206,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       // appointments. CAP / Cancel Save bookings show every open slot for now.
       const slotTypeOk = (e)=> (capMode||csMode) ? true : !((e.summary||"").includes("🧢"));
       if(viaBackend){
-        setSlots((viaBackend.items||[]).filter(e=>e.isOpen).filter(slotTypeOk));
+        // Belt & braces: don't trust the backend's isOpen flag alone — any event
+        // titled "open slot" (in ANY casing, e.g. "🟧 Open slot 🧢") that isn't
+        // booked counts, so CAP slots can never vanish from the booking list.
+        const isOpenEvt = (e)=> e.isOpen || (((e.summary||"").toLowerCase().includes("open slot")) && !((e.description||"").includes("BOOKED:")));
+        setSlots((viaBackend.items||[]).filter(isOpenEvt).filter(slotTypeOk));
         setLoadingSlots(false);
         return;
       }
@@ -16173,7 +16249,10 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
   // Revert a booked event back to an open slot. Tries the backend (service account)
   // first so no Google sign-in is needed; only falls back to the rep's own Google
   // login if the backend can't do it. `getToken` is called lazily for that reason.
-  const revertEventToOpenSlot = async(getToken, evId) => {
+  const revertEventToOpenSlot = async(getToken, evId, revOpts) => {
+    // A released CAP booking goes back to a CAP open slot ("🟧 Open slot 🧢")
+    // so the slot stays bookable as a CAP; everything else returns to a plain slot.
+    const slotTitle = (revOpts && revOpts.slotTitle) || "🟦 Open Slot";
     const candidates = [];
     if(calendarId) candidates.push(calendarId);
     try { Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); } catch(e){}
@@ -16184,7 +16263,12 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
     for(const calId of candidates){
       try {
         const r = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:evId});
-        if(r && r.ok) return true;
+        if(r && r.ok){
+          // The backend restores a plain "🟦 Open Slot"; put the 🧢 marker back
+          // when a CAP slot is being released.
+          if(slotTitle!=="🟦 Open Slot"){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId:evId, summary:slotTitle}); }catch(e){} }
+          return true;
+        }
         if(r===null){ backendDown = true; break; } // backend unavailable — fall back
       } catch(e){ /* not on this calendar; try the next */ }
     }
@@ -16197,7 +16281,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
         const r = await fetch(
           `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${evId}`,
           {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-           body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}
+           body:JSON.stringify({summary:slotTitle,description:"",colorId:"7",visibility:"public"})}
         );
         if(r.ok) return true;
       } catch(e){ console.error("revert attempt failed on",calId,e); }
@@ -16213,7 +16297,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       // Restore calendar event back to Open Slot — and confirm it actually worked
       // before clearing the lead, so the two never get out of sync.
       if(evId){
-        const ok = await revertEventToOpenSlot(getToken, evId);
+        const ok = await revertEventToOpenSlot(getToken, evId, capMode?{slotTitle:"🟧 Open slot 🧢"}:undefined);
         if(!ok){
           alert("Couldn't remove this appointment from the calendar — you may not have access to the calendar it's on. It was left on the lead so nothing gets out of sync. Try from an account with access, or ask the calendar's owner to remove it.");
           return;
@@ -16302,7 +16386,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       let booked = false;
       if(useBackend){
         if(oldId && oldId !== selectedSlot.id){
-          try { await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:oldId}); }
+          try {
+            const rr = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:oldId});
+            // Rebooked CAP: put the 🧢 marker back on the freed slot.
+            if(rr && rr.ok && capMode){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId:oldId, summary:"🟧 Open slot 🧢"}); }catch(e2){} }
+          }
           catch(e){ console.error("Error restoring old slot:",e); }
         }
         const r = await CalendarBackend.tryCall("book", {
@@ -16323,7 +16411,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
             await fetch(
               `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${oldId}`,
               {method:"PATCH",headers:{Authorization:`Bearer ${tk}`,"Content-Type":"application/json"},
-               body:JSON.stringify({summary:"🟦 Open Slot",description:"",colorId:"7",visibility:"public"})}
+               body:JSON.stringify({summary:(capMode?"🟧 Open slot 🧢":"🟦 Open Slot"),description:"",colorId:"7",visibility:"public"})}
             );
           } catch(e){ console.error("Error restoring old slot:",e); }
         }
