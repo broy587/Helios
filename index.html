@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b170";
+const APP_BUILD = "b171";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -18459,16 +18459,6 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
             <label style={lbl}>📝 Notes</label>
             <textarea value={f.notes||""} onChange={set("notes")} rows={3} style={{...inp,resize:"vertical"}} placeholder="Situation, context, what happened before…"/>
             <label style={lbl}>🌳 Shading</label>{pills(BANK_SHADING,"shading")}
-            <label style={lbl}>🏠 Roof — age</label>
-            <select value={f.roof_age||""} onChange={set("roof_age")} style={{...inp,cursor:"pointer"}}>
-              <option value="">—</option>
-              {Array.from({length:51},(_,n)=><option key={n} value={`${n} years`}>{n} year{n===1?"":"s"}</option>)}
-            </select>
-            <label style={lbl}>🏠 Roof — remaining useful life</label>
-            <select value={f.roof_life||""} onChange={set("roof_life")} style={{...inp,cursor:"pointer"}}>
-              <option value="">—</option>
-              {Array.from({length:51},(_,n)=><option key={n} value={`${n} years`}>{n} year{n===1?"":"s"}</option>)}
-            </select>
             <label style={lbl}>🏠 Roof — condition</label>{pills(BANK_ROOF_COND,"roof_condition")}
             <label style={lbl}>💳 Credit</label>{pills(BANK_CREDIT,"credit")}
             {f.credit==="Unknown" && (
