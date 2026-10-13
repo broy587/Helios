@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b173";
+const APP_BUILD = "b174";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6694,12 +6694,15 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         fields = {[apptField]: next ? next.when : "", [evField]: next ? (next.event_id||null) : null, appt_stacks:stacks};
                       }
                       handleUpdate(fields);
-                      if(evToRemove){
-                        const okRm = await removeApptEventSmart(evToRemove, {team:(key==="cap"||key==="cs")?"auto":"no", capSlot:key==="cap"});
-                        if(!okRm) console.error("Couldn't delete popped event from calendar:", evToRemove);
-                      }
                       const r = await leadPatch(lead.id, fields);
                       if(!r.ok && !r.queued) alert("Couldn't update it — check your connection and try again.");
+                      if(evToRemove){
+                        const okRm = await removeApptEventSmart(evToRemove, {team:(key==="cap"||key==="cs")?"auto":"no", capSlot:key==="cap"});
+                        if(!okRm){
+                          console.error("Couldn't delete popped event from calendar:", evToRemove);
+                          alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → 🏷️ Tag & Manage if it's still on the calendar.");
+                        }
+                      }
                     };
                     const cards = [
                       lead.close_appointment && {key:"close",label:"📅 Close",val:lead.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",stackCount:getApptStack(lead,"close").length,clear:()=>popAppt("close","close_appointment","close_event_id")},
@@ -7780,12 +7783,15 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                   // instead of (wrongly) deleting from the rep's own calendar, which
                   // silently left them stuck as booked on the closer calendar.
                   setForm(f=>({...f,...fields}));
+                  if(form.id){ await leadPatch(form.id, fields); }
                   if(evId){
                     const isTeamType = evField==="cap_event_id" || evField==="cs_event_id";
                     const okRm = await removeApptEventSmart(evId, {team:isTeamType?"auto":"no", capSlot:evField==="cap_event_id"});
-                    if(!okRm) console.error("Couldn't delete from calendar (cleared on the lead anyway):", evId);
+                    if(!okRm){
+                      console.error("Couldn't delete from calendar (cleared on the lead anyway):", evId);
+                      alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → 🏷️ Tag & Manage if it's still on the calendar.");
+                    }
                   }
-                  if(form.id){ await leadPatch(form.id, fields); }
                 };
                 const cards = [
                   form.close_appointment && {key:"close",label:"📅 Close",val:form.close_appointment,color:"#15803d",bg:dark?"rgba(22,163,74,0.12)":"#f0fdf4",bd:"#bbf7d0",clear:()=>clearAppt({close_appointment:"",close_event_id:null},"close_event_id")},
@@ -15897,24 +15903,57 @@ async function releaseSlotEverywhere(eventId, relOpts){
   // everything else returns to a plain close slot.
   const slotTitle = (relOpts && relOpts.slotTitle) || "🟦 Open Slot";
   const candidates = [];
-  try{ const r = TeamCalendars.resolve(); if(r && r.status==="ok" && r.calendarId) candidates.push(r.calendarId); }catch(e){}
+  // The caller can name the calendar the booking most likely lives on — it gets
+  // probed first so the common case releases on the very first call.
+  if(relOpts && relOpts.firstCalendarId && !candidates.includes(relOpts.firstCalendarId)) candidates.push(relOpts.firstCalendarId);
+  try{ const r = TeamCalendars.resolve(); if(r && r.status==="ok" && r.calendarId && !candidates.includes(r.calendarId)) candidates.push(r.calendarId); }catch(e){}
   try{ (TeamCalendars.teams||[]).forEach(t=>{ if(t&&t.calendarId&&!candidates.includes(t.calendarId)) candidates.push(t.calendarId); }); }catch(e){}
   try{ Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); }catch(e){}
   try{ (ExtraCals.rows||[]).forEach(r2=>{ if(r2&&r2.calendar_id&&!candidates.includes(r2.calendar_id)) candidates.push(r2.calendar_id); }); }catch(e){}
   if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
-  let backendDown = false;
+  // Probe every candidate calendar through the backend DIRECTLY (not tryCall):
+  // a "not on this calendar" error must never abort the scan, pause the backend,
+  // or add retry sleeps. The old loop stopped at the FIRST calendar that
+  // errored, so an event on any later calendar (e.g. a closer calendar) never
+  // got released — the booking stayed stuck on the calendar.
+  const netish = (msg) => /failed to fetch|load failed|networkerror|network request failed|timed out|timeout|cors|failed to send a request/i.test(msg);
+  const savedDown = CalendarBackend._downUntil;
+  const retitleCap = async (calId) => {
+    if(slotTitle==="🟦 Open Slot") return;
+    // The backend restores a plain "🟦 Open Slot" title; put the CAP marker back.
+    try{ await CalendarBackend.call("retitle", {calendarId:calId, eventId, summary:slotTitle}); }catch(e){}
+  };
+  let sawBackend = false; // ANY backend response (even "not found") = backend is up
+  let noSession = false;
   for(const calId of candidates){
     try{
-      const br = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId});
-      if(br && br.ok){
-        // The backend restores a plain "🟦 Open Slot" title; retitle it when a
-        // CAP slot is being released so the 🧢 marker comes back.
-        if(slotTitle!=="🟦 Open Slot"){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId, summary:slotTitle}); }catch(e){} }
-        return true;
+      const br = await CalendarBackend.call("remove", {calendarId:calId, eventId});
+      sawBackend = true;
+      if(br && br.ok){ CalendarBackend._downUntil = savedDown; await retitleCap(calId); return true; }
+    }catch(e){
+      const msg = String((e&&e.message)||e);
+      if(msg==="NO_SESSION"){ noSession = true; break; }
+      if(netish(msg)){
+        // One quick retry for a network blip on THIS calendar, then move on.
+        try{
+          await new Promise(r=>setTimeout(r,400));
+          const br2 = await CalendarBackend.call("remove", {calendarId:calId, eventId});
+          sawBackend = true;
+          if(br2 && br2.ok){ CalendarBackend._downUntil = savedDown; await retitleCap(calId); return true; }
+        }catch(e2){ if(String((e2&&e2.message)||e2)==="NO_SESSION"){ noSession = true; break; } }
       }
-      if(br===null){ backendDown = true; break; }
-    }catch(e){ /* not on this calendar — try the next */ }
+      // Anything else just means "not on this calendar" — keep probing.
+    }
   }
+  CalendarBackend._downUntil = savedDown; // a probe scan never counts as an outage
+  if(sawBackend && !noSession){
+    // The backend is up and the event isn't on any calendar the app knows about,
+    // so it's not a team-slot booking (it's likely a personal-calendar event).
+    // Don't drag the rep through a Google sign-in for nothing.
+    return false;
+  }
+  // Backend unreachable: fall back to the rep's own Google token and release by
+  // PATCHing the event back to an open slot on whichever calendar accepts it.
   let token = null;
   try{ token = await GCal.signIn(); }catch(e){ return false; }
   if(!token) return false;
@@ -16290,43 +16329,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
   // first so no Google sign-in is needed; only falls back to the rep's own Google
   // login if the backend can't do it. `getToken` is called lazily for that reason.
   const revertEventToOpenSlot = async(getToken, evId, revOpts) => {
-    // A released CAP booking goes back to a CAP open slot ("🟧 Open slot 🧢")
-    // so the slot stays bookable as a CAP; everything else returns to a plain slot.
-    const slotTitle = (revOpts && revOpts.slotTitle) || "🟦 Open Slot";
-    const candidates = [];
-    if(calendarId) candidates.push(calendarId);
-    try { Object.values(TEAM_CALENDARS).forEach(c=>{ if(c&&c.calendarId&&!candidates.includes(c.calendarId)) candidates.push(c.calendarId); }); } catch(e){}
-    try { (ExtraCals.rows||[]).forEach(r=>{ if(r&&r.calendar_id&&!candidates.includes(r.calendar_id)) candidates.push(r.calendar_id); }); } catch(e){}
-    if(!candidates.includes(GCAL_CALENDAR_ID)) candidates.push(GCAL_CALENDAR_ID);
-    // Preferred path: our backend (service account) — no Google sign-in needed.
-    let backendDown = false;
-    for(const calId of candidates){
-      try {
-        const r = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:evId});
-        if(r && r.ok){
-          // The backend restores a plain "🟦 Open Slot"; put the 🧢 marker back
-          // when a CAP slot is being released.
-          if(slotTitle!=="🟦 Open Slot"){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId:evId, summary:slotTitle}); }catch(e){} }
-          return true;
-        }
-        if(r===null){ backendDown = true; break; } // backend unavailable — fall back
-      } catch(e){ /* not on this calendar; try the next */ }
-    }
-    // Fallback: use the rep's own Google token (prompts sign-in only if needed).
-    let token;
-    try { token = await getToken(); } catch(e){ return false; }
-    if(!token) return false;
-    for(const calId of candidates){
-      try {
-        const r = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${evId}`,
-          {method:"PATCH",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-           body:JSON.stringify({summary:slotTitle,description:"",colorId:"7",visibility:"public"})}
-        );
-        if(r.ok) return true;
-      } catch(e){ console.error("revert attempt failed on",calId,e); }
-    }
-    return false;
+    // Delegates to the shared release helper, probing THIS booking's calendar
+    // first and then every other calendar the app knows about. (getToken is
+    // kept for call-compatibility — the helper only falls back to the rep's
+    // own Google sign-in when the backend is unreachable.)
+    return await releaseSlotEverywhere(evId, {...(revOpts||{}), firstCalendarId: calendarId||null});
   };
 
   const handleRemoveBooking = async() => {
@@ -16433,10 +16440,11 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       let booked = false;
       if(useBackend){
         if(oldId && oldId !== selectedSlot.id){
+          // The old booking may live on a DIFFERENT calendar than the new slot
+          // (e.g. a CAP moved between closer calendars) — scan them all.
           try {
-            const rr = await CalendarBackend.tryCall("remove", {calendarId:calId, eventId:oldId});
-            // Rebooked CAP: put the 🧢 marker back on the freed slot.
-            if(rr && rr.ok && capMode){ try{ await CalendarBackend.tryCall("retitle", {calendarId:calId, eventId:oldId, summary:"🟧 Open slot 🧢"}); }catch(e2){} }
+            const released = await releaseSlotEverywhere(oldId, {slotTitle: capMode ? "🟧 Open slot 🧢" : "🟦 Open Slot", firstCalendarId: calId});
+            if(!released) console.error("Couldn't restore the old slot to open:", oldId);
           }
           catch(e){ console.error("Error restoring old slot:",e); }
         }
