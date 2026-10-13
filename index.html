@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b171";
+const APP_BUILD = "b172";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6582,7 +6582,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.followup_appointment}
                       label="🔁 Follow Up"
                       title="🟣 Book Follow Up" confirmLabel="Book Follow Up"
-                      summary={`🟣 Follow-Up - ${lead.name||"Lead"}`} accent="#9333ea" colorId="3"
+                      summary={`🟣 Follow-Up - ${lead.name||"Lead"}`} accent="#9333ea" colorId="3" askNote={true}
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"fu",apptField:"followup_appointment",evField:"followup_event_id",tsKey:"followup",kind:"Follow Up",val,evId,intent});
                       }}/>
@@ -6590,7 +6590,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.site_survey_appointment}
                       label="📐 Site Survey" askEndTime={true}
                       title="📐 Book Site Survey" confirmLabel="Book Site Survey"
-                      summary={`📐 Site Survey - ${lead.name||"Lead"}`} accent="#0891b2" colorId="7"
+                      summary={`📐 Site Survey - ${lead.name||"Lead"}`} accent="#0891b2" colorId="7" askNote={true}
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"ss",apptField:"site_survey_appointment",evField:"site_survey_event_id",tsKey:"ss",kind:"Site Survey",val,evId,intent});
                       }}/>
@@ -6612,7 +6612,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                           }} creatorName={creatorName} capMode={true} label="🏢 Closer"/>
                           <PersonalApptButton lead={lead} existing={!!lead.cap_appointment}
                             label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
-                            summary={`🟠 CAP - ${lead.name||"Lead"}`} accent="#ea580c" colorId="6"
+                            summary={`🟠 CAP - ${lead.name||"Lead"}`} accent="#ea580c" colorId="6" askNote={true}
                             onSelect={async(val,evId,intent)=>{
                               await bookApptStacked({key:"cap",apptField:"cap_appointment",evField:"cap_event_id",tsKey:"cap",kind:"CAP",val,evId,intent});
                               setCapChoice(false);
@@ -6632,7 +6632,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         <PersonalApptButton lead={lead} existing={!!lead.cs_appointment}
                           label="👤 Personal"
                           title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
-                          summary={`🔴 CS - ${lead.name||"Lead"}`}
+                          summary={`🔴 CS - ${lead.name||"Lead"}`} noteOverride={csCalNote(lead)}
                           accent="#dc2626" colorId="11"
                           onSelect={async(val,evId,intent)=>{
                             await bookApptStacked({key:"cs",apptField:"cs_appointment",evField:"cs_event_id",tsKey:"cs",kind:"Cancel Save",val,evId,intent});
@@ -6644,7 +6644,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.install_appointment}
                       label="💰 Install"
                       title="🟩 Book Install" confirmLabel="Book Install"
-                      summary={`🟩 Install - ${lead.name||"Lead"}`}
+                      summary={`🟩 Install - ${lead.name||"Lead"}`} askNote={true}
                       fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"in",apptField:"install_appointment",evField:"install_event_id",tsKey:"install",kind:"Install",val,evId,intent});
@@ -6653,7 +6653,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.pto_appointment}
                       label="🔌 PTO Setup"
                       title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
-                      summary={`🟣 PTO Setup - ${lead.name||"Lead"}`} accent="#8b5cf6" colorId="1"
+                      summary={`🟣 PTO Setup - ${lead.name||"Lead"}`} accent="#8b5cf6" colorId="1" askNote={true}
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"pto",apptField:"pto_appointment",evField:"pto_event_id",tsKey:"pto",kind:"PTO Setup",val,evId,intent});
                       }}/>
@@ -6661,7 +6661,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                     <PersonalApptButton lead={lead} existing={!!lead.checkin_appointment}
                       label="🎁 Check In / Referrals"
                       title="🟡 Book Check In / Referrals" confirmLabel="Book Check In"
-                      summary={`🟡 Check In / Referrals - ${lead.name||"Lead"}`} accent="#ca8a04" colorId="5"
+                      summary={`🟡 Check In / Referrals - ${lead.name||"Lead"}`} accent="#ca8a04" colorId="5" askNote={true}
                       onSelect={async(val,evId,intent)=>{
                         await bookApptStacked({key:"ci",apptField:"checkin_appointment",evField:"checkin_event_id",tsKey:"checkin",kind:"Check In / Referrals",val,evId,intent});
                       }}/>
@@ -7666,7 +7666,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.followup_event_id?"🔁 Change Follow Up":"🔁 Follow Up"}
                   title="🟣 Book Follow Up" confirmLabel="Book Follow Up"
-                  summary={`🟣 Follow-Up - ${form.name||"Lead"}`} accent="#9333ea" colorId="3"
+                  summary={`🟣 Follow-Up - ${form.name||"Lead"}`} accent="#9333ea" colorId="3" askNote={true}
                   onSelect={async(val,evId)=>{
                     if(form.followup_event_id && form.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(form.followup_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),followup:new Date().toISOString()};
@@ -7677,7 +7677,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.site_survey_event_id?"📐 Change Site Survey":"📐 Site Survey"} askEndTime={true}
                   title="📐 Book Site Survey" confirmLabel="Book Site Survey"
-                  summary={`📐 Site Survey - ${form.name||"Lead"}`} accent="#0891b2" colorId="7"
+                  summary={`📐 Site Survey - ${form.name||"Lead"}`} accent="#0891b2" colorId="7" askNote={true}
                   onSelect={async(val,evId)=>{
                     if(form.site_survey_event_id && form.site_survey_event_id!==evId){ try{ await GCal.deletePersonalCB(form.site_survey_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),ss:new Date().toISOString()};
@@ -7696,7 +7696,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                       <CalendarSyncButton lead={{...form}} onUpdate={updated=>{ setCapChoice(false); setForm(f=>({...f,...updated})); }} label="🏢 Closer" creatorName={creatorName} capMode={true}/>
                       <PersonalApptButton lead={{...form}}
                         label="👤 Personal" title="📋 Personal CAP" confirmLabel="Book CAP"
-                        summary={`🟠 CAP - ${form.name||"Lead"}`} accent="#ea580c" colorId="6"
+                        summary={`🟠 CAP - ${form.name||"Lead"}`} accent="#ea580c" colorId="6" askNote={true}
                         onSelect={async(val,evId)=>{
                           if(form.cap_event_id && form.cap_event_id!==evId){ try{ await removeApptEventSmart(form.cap_event_id, {team:"auto", capSlot:true}); }catch(e){ console.error(e); } }
                           setForm(f=>({...f,cap_appointment:val,cap_event_id:evId||null,appt_ts:{...((f.appt_ts&&typeof f.appt_ts==="object")?f.appt_ts:{}),cap:new Date().toISOString()}}));
@@ -7718,7 +7718,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     <PersonalApptButton lead={{...form}}
                       label="👤 Personal"
                       title="🔴 Book Cancel Save" confirmLabel="Book Cancel Save"
-                      summary={`🔴 CS - ${form.name||"Lead"}`}
+                      summary={`🔴 CS - ${form.name||"Lead"}`} noteOverride={csCalNote(form)}
                       accent="#dc2626" colorId="11"
                       onSelect={async(val,evId)=>{
                         if(form.cs_event_id && form.cs_event_id!==evId){ try{ await removeApptEventSmart(form.cs_event_id, {team:"auto"}); }catch(e){ console.error(e); } }
@@ -7733,7 +7733,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.install_event_id?"💰 Change Install":"💰 Install"}
                   title="🟩 Book Install" confirmLabel="Book Install"
-                  summary={`🟩 Install - ${form.name||"Lead"}`}
+                  summary={`🟩 Install - ${form.name||"Lead"}`} askNote={true}
                   fixedTime="07:00" fixedDuration={120} fixedTimeLabel="7:00–9:00 AM" accent="#16a34a" colorId="2"
                   onSelect={async(val,evId)=>{
                     if(form.install_event_id && form.install_event_id!==evId){ try{ await GCal.deletePersonalCB(form.install_event_id); }catch(e){ console.error(e); } }
@@ -7743,7 +7743,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.pto_event_id?"🔌 Change PTO Setup":"🔌 PTO Setup"}
                   title="🔵 Book PTO Setup" confirmLabel="Book PTO Setup"
-                  summary={`🟣 PTO Setup - ${form.name||"Lead"}`} accent="#8b5cf6" colorId="1"
+                  summary={`🟣 PTO Setup - ${form.name||"Lead"}`} accent="#8b5cf6" colorId="1" askNote={true}
                   onSelect={async(val,evId)=>{
                     if(form.pto_event_id && form.pto_event_id!==evId){ try{ await GCal.deletePersonalCB(form.pto_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),pto:new Date().toISOString()};
@@ -7754,7 +7754,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                 <PersonalApptButton lead={{...form}}
                   label={form.checkin_event_id?"🎁 Change Check In / Referrals":"🎁 Check In / Referrals"}
                   title="🟡 Book Check In / Referrals" confirmLabel="Book Check In"
-                  summary={`🟡 Check In / Referrals - ${form.name||"Lead"}`} accent="#ca8a04" colorId="5"
+                  summary={`🟡 Check In / Referrals - ${form.name||"Lead"}`} accent="#ca8a04" colorId="5" askNote={true}
                   onSelect={async(val,evId)=>{
                     if(form.checkin_event_id && form.checkin_event_id!==evId){ try{ await GCal.deletePersonalCB(form.checkin_event_id); }catch(e){ console.error(e); } }
                     const nts = {...((form.appt_ts&&typeof form.appt_ts==="object")?form.appt_ts:{}),checkin:new Date().toISOString()};
@@ -9310,7 +9310,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   <PersonalApptButton lead={l}
                     label="🔁" iconOnly={true}
                     title="Book follow up" confirmLabel="Book Follow Up"
-                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
+                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3" askNote={true}
                     onSelect={async(val,evId)=>{
                       const nts = {...((l.appt_ts&&typeof l.appt_ts==="object")?l.appt_ts:{}), followup:new Date().toISOString()};
                       const entry = {ts:formatTs(), by:"appt", appt:{kind:"Follow Up", when:val, id:evId||null}, changes:[`Booked Follow Up: ${val}`]};
@@ -9323,7 +9323,7 @@ function PriorityComebackList({starred, dark, onClose, onOpenLead, onReorder, on
                   <PersonalApptButton lead={l}
                     label="🔁" iconOnly={true} autoOpen={true}
                     title="Reschedule follow up" confirmLabel="Book Follow Up"
-                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3"
+                    summary={`🟣 Follow-Up - ${l.name||"Lead"}`} accent="#9333ea" colorId="3" askNote={true}
                     onClosed={()=>setFuRebookId(null)}
                     onSelect={async(val,evId)=>{
                       if(l.followup_event_id && l.followup_event_id!==evId){ try{ await GCal.deletePersonalCB(l.followup_event_id); }catch(e){ console.error(e); } }
@@ -15684,13 +15684,19 @@ const GCal = {
       start = { date: base };
       end   = { date: `${next.getFullYear()}-${pad(next.getMonth()+1)}-${pad(next.getDate())}` };
     }
+    // Which note goes on the calendar event: close/comeback bookings keep the
+    // lead's setter note (the default); other appointment types pass their own
+    // typed note via opts.note — and an empty one means NO note line at all.
+    const noteText = (opts && opts.note!==undefined && opts.note!==null)
+      ? String(opts.note).trim()
+      : (lead.notes || "");
     const event = {
       summary: (opts && opts.summary) || `CB - ${lead.name || "Lead"}`,
       location: lead.address || "",
       description: [
         lead.phone ? `Phone: ${lead.phone}` : "",
         lead.address ? `Address: ${lead.address}` : "",
-        lead.notes ? `Notes: ${lead.notes}` : "",
+        noteText ? `Notes: ${noteText}` : "",
         `Personal comeback (Pipeline Push)`,
       ].filter(Boolean).join("\n"),
       start,
@@ -15938,6 +15944,15 @@ async function removeApptEventSmart(eventId, opts){
   catch(e){ console.error("Couldn't delete event from calendar:", e); return false; }
 }
 
+// The calendar note for a Cancel Save booking: whatever is entered in the
+// lead's cancel-save reasoning section (selected reasons + the typed note;
+// falls back to the legacy ncs_reason text on older leads).
+function csCalNote(l){
+  const txt = String((l&&(l.cancel_reason||l.ncs_reason))||"").trim();
+  const tags = (l&&Array.isArray(l.cancel_tags)) ? l.cancel_tags.filter(Boolean) : [];
+  return [tags.join(", "), txt].filter(Boolean).join(" — ");
+}
+
 // ── Calendar Button Component ─────────────────────────────────────────
 
 function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode, appendMode, acReq}) {
@@ -15972,18 +15987,19 @@ function CalendarSyncButton({lead, onUpdate, label, creatorName, capMode, csMode
 }
 
 // Personal Appointment / Callback picker
-function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, askEndTime, accent, colorId, iconOnly, autoOpen, onClosed, existing}) {
+function PersonalApptButton({onSelect, label, lead, durationMin, summary, title, confirmLabel, fixedTime, fixedDuration, fixedTimeLabel, askEndTime, accent, colorId, iconOnly, autoOpen, onClosed, existing, askNote, noteOverride}) {
   const [show, setShow] = React.useState(!!autoOpen);
   React.useEffect(()=>{ if(autoOpen) setShow(true); }, [autoOpen]);
   const [intentOpen, setIntentOpen] = React.useState(false); // "additional vs change" chooser
   const intentRef = React.useRef("change"); // which intent the user picked (default change)
-  const closeSheet = ()=>{ setShow(false); setIntentOpen(false); if(onClosed) onClosed(); };
+  const closeSheet = ()=>{ setShow(false); setIntentOpen(false); setNote(""); if(onClosed) onClosed(); };
   // Pressing the trigger: if an appointment already exists, ask additional-vs-change
   // first; otherwise go straight to date/time.
   const openBooking = ()=>{ if(existing){ setIntentOpen(true); } else { intentRef.current="new"; setShow(true); } };
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
   const [endTime, setEndTime] = React.useState(""); // only used when askEndTime
+  const [note, setNote] = React.useState(""); // askNote: the booker's own note for the calendar event
   const [adding, setAdding] = React.useState(false);
   const dark = useDark();
   const iStyle = {width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
@@ -16041,7 +16057,14 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
     setAdding(true);
     let calOk = false, calErr = "", cbEventId = null;
     try {
-      if(lead) { const ev = await GCal.createPersonalCB(lead, times, (summary||colorId)?{summary,colorId}:undefined); cbEventId = ev && ev.id; calOk = true; }
+      if(lead) {
+        // Calendar note: Cancel Save passes the lead's cancel-save reasoning
+        // (noteOverride); note-enabled types pass whatever the booker typed
+        // (askNote); close/comeback pass nothing and keep the setter note.
+        const noteOpt = (noteOverride!==undefined && noteOverride!==null) ? noteOverride : (askNote ? note : undefined);
+        const opts = (summary||colorId||noteOpt!==undefined) ? {summary, colorId, note:noteOpt} : undefined;
+        const ev = await GCal.createPersonalCB(lead, times, opts); cbEventId = ev && ev.id; calOk = true;
+      }
     } catch(e){
       calErr = (e && e.message) || "unknown error";
       console.error("Personal calendar add failed:", e);
@@ -16056,6 +16079,7 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
     }
     onSelect(apptStr, cbEventId, intentRef.current);
     setShow(false);
+    setNote("");
   };
 
   return (
@@ -16122,6 +16146,12 @@ function PersonalApptButton({onSelect, label, lead, durationMin, summary, title,
               )}
               </>
             )}
+            {askNote && (
+              <div style={{marginBottom:22}}>
+                <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>📝 Calendar note (optional)</label>
+                <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="This note goes on the calendar event…" style={{...iStyle,resize:"vertical"}}/>
+              </div>
+            )}
             {(()=>{ const ready = !!date && (fixedTime||time) && (!askEndTime || (endTime && endTime>time)) && !adding; const ac = accent||"#f59e0b"; return (
             <button onClick={handleConfirm} disabled={!ready}
               style={{width:"100%",padding:"13px 0",borderRadius:10,border:"none",background:ready?`linear-gradient(135deg,${ac},${ac})`:"#e2e8f0",color:ready?"#fff":"#94a3b8",fontWeight:700,fontSize:15,cursor:ready?"pointer":"default"}}>
@@ -16171,6 +16201,7 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
   const [selectedDay, setSelectedDay] = React.useState(null);
   const [slots, setSlots] = React.useState([]);
   const [selectedSlot, setSelectedSlot] = React.useState(null);
+  const [bookNote, setBookNote] = React.useState(""); // CAP: the booker's own note for the calendar event
   const [loadingSlots, setLoadingSlots] = React.useState(false);
   const [booking, setBooking] = React.useState(false);
   const [done, setDone] = React.useState(false);
@@ -16379,7 +16410,14 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
       const updatedEvent = {
         summary: doAppend ? `🔵 APPT - ${lead.name||"Lead"}` : (csMode ? `🔴 CS - ${lead.name||"Lead"}` : capMode ? `🟠 CAP - ${lead.name||"Lead"}` : `🟢 AC - ${lead.name||"Lead"}`),
         location: lead.address || "", // puts a tappable address on the calendar event for directions
-        description: `${doAppend?"APPOINTMENT BOOKED":(csMode?"CS BOOKED":capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\nNotes: ${lead.notes||""}\nBooked via Pipeline Push`,
+        // Calendar note: close bookings & extra closer appts keep the lead's
+        // setter note; CAP uses the note typed on the Confirm step; Cancel Save
+        // uses whatever is in the lead's cancel-save reasoning section.
+        description: (()=>{
+          const n = doAppend ? (lead.notes||"") : csMode ? csCalNote(lead) : capMode ? (bookNote||"").trim() : (lead.notes||"");
+          const noteLine = (!doAppend && (capMode||csMode)) ? (n?`Notes: ${n}\n`:"") : `Notes: ${n}\n`;
+          return `${doAppend?"APPOINTMENT BOOKED":(csMode?"CS BOOKED":capMode?"CAP BOOKED":"BOOKED")}:\nLead: ${lead.name||""}\nPhone: ${lead.phone||""}\nAddress: ${lead.address||""}\nCreated by: ${creatorName||lead.creator_name||""}\n${noteLine}Booked via Pipeline Push`;
+        })(),
         colorId: doAppend ? "9" : (csMode ? "11" : capMode ? "6" : "10"), // extra = blueberry, CS = tomato red, CAP = tangerine, AC = basil green
         visibility: "public", // show the appointment title (not "busy") to everyone who can see the team calendar
       };
@@ -16723,6 +16761,13 @@ function CalendarEventModal({lead, onClose, onUpdate, creatorName, capMode, csMo
                 <div style={{fontSize:13,color:"#6b2d4e",fontWeight:600}}>{timeStr}</div>
               </div>
               <div style={{fontSize:12,color:"#94a3b8",marginBottom:16,textAlign:"center"}}>This will book the slot and move the lead to AC / Scheduled.</div>
+              {capMode && !doAppend && (
+                <div style={{marginBottom:16}}>
+                  <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>📝 Calendar note (optional)</label>
+                  <textarea value={bookNote} onChange={e=>setBookNote(e.target.value)} rows={2} placeholder="This note goes on the calendar event…"
+                    style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",resize:"vertical"}}/>
+                </div>
+              )}
               <div style={{display:"flex",gap:10}}>
                 <button onClick={()=>setView("slots")}
                   style={{flex:1,padding:"12px 0",borderRadius:10,border:"1.5px solid #c8b8a2",background:"transparent",color:dark?"#94a3b8":"#475569",fontWeight:600,cursor:"pointer",fontSize:15}}>
