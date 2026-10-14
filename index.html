@@ -65,6 +65,14 @@
       background:var(--bg-input) !important; color:var(--text-primary) !important;
       border-color:var(--border) !important;
     }
+    /* Colored selects that must KEEP their own colors in dark mode (the rule
+       above bleaches every select). They publish their colors as CSS variables
+       inline, and this higher-priority rule reads them back. */
+    body.dark select.fsel-colored {
+      background:var(--fsel-bg) !important;
+      color:var(--fsel-fg) !important;
+      border-color:var(--fsel-bd) !important;
+    }
     /* Universal card/surface override */
     body.dark .dp-card { background:var(--bg-card) !important; border-color:var(--border) !important; color:var(--text-primary) !important; }
     body.dark .dp-subtle { background:var(--bg-subtle) !important; }
@@ -593,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b178";
+const APP_BUILD = "b179";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17948,8 +17956,8 @@ function LeadBankTab({user, profile, profiles}) {
   // Five colored filters — each its own hue + emoji.
   const selBase={flex:"1 1 155px",minWidth:0,height:60,padding:"9px 10px",borderRadius:11,fontSize:12,fontWeight:800,outline:"none",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.07)",boxSizing:"border-box",WebkitAppearance:"none",appearance:"none"};
   const fsel=(key,emoji,label,options,accent,bgL,bgD,txtL,txtD,optVal)=>(
-    <select value={F[key]} onChange={e=>setFilters(x=>({...x,[key]:e.target.value}))}
-      style={{...selBase,border:`2px solid ${accent}`,background:dark?bgD:bgL,color:F[key]?(dark?txtD:txtL):(dark?txtD:txtL)}}>
+    <select value={F[key]} onChange={e=>setFilters(x=>({...x,[key]:e.target.value}))} className="fsel-colored"
+      style={{...selBase,border:`2px solid ${accent}`,background:dark?bgD:bgL,color:dark?txtD:txtL,"--fsel-bg":dark?bgD:bgL,"--fsel-fg":dark?txtD:txtL,"--fsel-bd":accent}}>
       <option value="">{emoji} {label} — All</option>
       {options.map(o=><option key={optVal?optVal(o):o} value={optVal?optVal(o):o}>{typeof o==="object"?`${o.emoji} ${o.name}`:o}</option>)}
     </select>
