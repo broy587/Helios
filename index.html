@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b175";
+const APP_BUILD = "b176";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17810,7 +17810,7 @@ const BANK_SOURCES = [
   {key:"other",          name:"Other / unknown",              emoji:"❓", g1:"#94a3b8", g2:"#64748b"},
 ];
 const BANK_GENERATORS = ["Setter","Closer"];
-const BANK_OPportunities = ["Past customer","Existing system / roof available","Existing system / no roof available","Moving / new homeowner","High utility bill","Power bill contract expiring","Recent rate increase"];
+const BANK_OPportunities = ["Past customer","Existing system / roof available","Existing system / no roof available","Moving / new homeowner","High utility bill","Power bill contract expiring","Recent rate increase","Customer cancelled contract"];
 // A lead's opportunity types (multi-select; falls back to the old single-value column).
 const bankOppsOf = (r)=>Array.isArray(r&&r.opportunity_types)?r.opportunity_types:((r&&r.opportunity_type)?[r.opportunity_type]:[]);
 // "Lead stage" (stored in the rehash_type column) — where this lead sits in its journey.
