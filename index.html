@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b179";
+const APP_BUILD = "b180";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -20109,7 +20109,7 @@ function App() {
           </div>
         )}
         {tab==="calendar"&&onCalendarTeam&&(
-          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canManageMeetings={isPrivileged} canManageEvents={isPrivileged || isCloser} canAddOpenSlot={canAddOpenSlot} isSelfGen={(profile&&profile.role)==="self_gen"} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
+          <CalendarView newEventUrl={calendarEventUrl} onEventUrlUsed={()=>setCalendarEventUrl(null)} canManageMeetings={isPrivileged || isCloser} canManageEvents={isPrivileged || isCloser} canAddOpenSlot={canAddOpenSlot} isSelfGen={(profile&&profile.role)==="self_gen"} creatorName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}/>
         )}
         {tab==="canvass"&&(
           <CanvassTab gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU"
