@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b176";
+const APP_BUILD = "b177";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17810,9 +17810,13 @@ const BANK_SOURCES = [
   {key:"other",          name:"Other / unknown",              emoji:"❓", g1:"#94a3b8", g2:"#64748b"},
 ];
 const BANK_GENERATORS = ["Setter","Closer"];
-const BANK_OPportunities = ["Past customer","Existing system / roof available","Existing system / no roof available","Moving / new homeowner","High utility bill","Power bill contract expiring","Recent rate increase","Customer cancelled contract"];
+const BANK_OPportunities = ["Our installed customer","Existing system / roof available","Existing system / no roof available","Moving / new homeowner","Power bill contract expiring","Recent rate increase","Customer cancelled contract"];
 // A lead's opportunity types (multi-select; falls back to the old single-value column).
-const bankOppsOf = (r)=>Array.isArray(r&&r.opportunity_types)?r.opportunity_types:((r&&r.opportunity_type)?[r.opportunity_type]:[]);
+const bankOppsOf = (r)=>{
+  const raw = Array.isArray(r&&r.opportunity_types)?r.opportunity_types:((r&&r.opportunity_type)?[r.opportunity_type]:[]);
+  // "Past customer" was renamed "Our installed customer" (Oct 2026) — migrate on read.
+  return [...new Set(raw.map(v=> v==="Past customer" ? "Our installed customer" : v))];
+};
 // "Lead stage" (stored in the rehash_type column) — where this lead sits in its journey.
 const BANK_REHASH = ["Created","Not now","Not interested","Follow up","Scheduled","No show / no contact","No show / in contact","Stale / no reschedule","No close / no offer","No close / offer given","Closed","CAP / final results","Permitting","Permits in / install scheduled","Installed","PTO / REP ✔️"];
 const BANK_FAILURES = ["Failed credit","Failed welcome call","Failed site survey","Roof issue","HOA issue","Utility / interconnection issue","Ownership mismatch","Uneconomic usage / too little offset"];
