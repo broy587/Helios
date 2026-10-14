@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b180";
+const APP_BUILD = "b181";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8514,30 +8514,6 @@ function LeadCard({lead,onView,onTouchDragStart,isDragging,profiles,meId}) {
             {lead.confirmed==="Yes" && <span style={{fontSize:10,fontWeight:600,color:"#065f46",background:"#d1fae5",borderRadius:20,padding:"1px 7px"}}>✓ Confirmed</span>}
           </div>
         )}
-        {lead.follow_up_date && (()=>{
-          let label = lead.follow_up_date;
-          try {
-            const parts = lead.follow_up_date.split("-"); // YYYY-MM-DD
-            if(parts.length===3){
-              const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
-              const today = new Date(); today.setHours(0,0,0,0);
-              const diff = Math.round((d - today)/86400000);
-              const md = `${parts[1]}/${parts[2]}`;
-              if(diff===0) label = `Today (${md})`;
-              else if(diff===1) label = `Tomorrow (${md})`;
-              else if(diff<0) label = `${md} (overdue)`;
-              else label = md;
-            }
-          } catch(e){}
-          const overdue = (()=>{ try { const p=lead.follow_up_date.split("-"); const d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2])); const t=new Date(); t.setHours(0,0,0,0); return d<t; } catch(e){ return false; } })();
-          return (
-            <div style={{display:"flex",marginTop:3}}>
-              <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:overdue?"#b91c1c":"#92400e",background:overdue?"#fee2e2":"#fef3c7",borderRadius:20,padding:"1px 8px"}}>
-                🔔 Follow up: {label}
-              </span>
-            </div>
-          );
-        })()}
       </div>
       <div style={{fontSize:16,color:"#cbd5e1",flexShrink:0,marginLeft:8}}>≡</div>
     </div>
