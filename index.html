@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b177";
+const APP_BUILD = "b178";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -17792,7 +17792,7 @@ function SongOfDay({url}) {
   );
 }
 
-// ═══════════════════ LEAD BANK (owner-only "Leads" tab) ═══════════════════
+// ═══════ LEAD BANK ("Leads" tab — owner, managers, and granted access) ═══════
 // A vibrant bank of second-chance / opportunity leads, organized by SOURCE.
 // Separate from the pipeline: rows live in the bank_leads table.
 const BANK_SOURCES = [
@@ -17829,7 +17829,6 @@ function LeadBankTab({user, profile, profiles}) {
   const dark = useDark();
   const isOwner = user && user.id === OWNER_ID;
   const bankRole = (profile && profile.role) || "";
-  const canView = isOwner || bankRole === "manager"; // reps stay locked out for now, even with a grant
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [loadErr, setLoadErr] = React.useState("");
@@ -17844,12 +17843,18 @@ function LeadBankTab({user, profile, profiles}) {
   const repName = (id)=>{ const pp=(profiles||[]).find(x=>x.id===id); return pp?(pp.name||pp.email):null; };
   const [modal, setModal] = React.useState(null); // {row} edit | {source} create
   const [access, setAccess] = React.useState([]);  // bank_access rows: {granter_id, grantee_id}
+  const [accessLoaded, setAccessLoaded] = React.useState(false); // grants fetched (gates the lock screen)
   const [viewSel, setViewSel] = React.useState([user && user.id]); // whose leads are showing (owner ids)
   const [viewOpen, setViewOpen] = React.useState(false);
   const [viewQ, setViewQ] = React.useState("");
   const [accOpen, setAccOpen] = React.useState(false);
   const [accQ, setAccQ] = React.useState("");
   const [accBusy, setAccBusy] = React.useState("");
+  // Who granted ME access to their leads (person→person — role doesn't matter).
+  const granters = access.filter(a=>a && a.grantee_id===(user&&user.id)).map(a=>a.granter_id);
+  // The owner and managers always get in; everyone else gets in as soon as
+  // somebody grants them access to their leads — rank doesn't matter.
+  const canView = isOwner || bankRole === "manager" || granters.length>0;
   const load = async ()=>{
     setLoading(true); setLoadErr("");
     try{
@@ -17868,15 +17873,44 @@ function LeadBankTab({user, profile, profiles}) {
     setLoading(false);
   };
   React.useEffect(()=>{ if(canView) load(); },[canView]);
+  // Load the access grants up front — BEFORE the lock screen decides anything —
+  // so a rep who's been granted access gets in instead of bouncing off the lock.
+  React.useEffect(()=>{ (async()=>{
+    try{
+      const {data:acc,error:ae} = await sb.from("bank_access").select("*");
+      if(!ae) setAccess(Array.isArray(acc)?acc:[]);
+    }catch(e2){ console.warn("bank_access preload (run the bank_access SQL if you haven't):", e2); }
+    setAccessLoaded(true);
+  })(); },[]);
+  // First time the grants arrive: a viewer who came in through a grant starts
+  // out viewing their own leads PLUS everyone who granted them, so the tab
+  // doesn't open onto an empty list.
+  const seededViewRef = React.useRef(false);
+  React.useEffect(()=>{
+    if(seededViewRef.current || isOwner || granters.length===0) return;
+    seededViewRef.current = true;
+    setViewSel(v=>{
+      const cur = Array.isArray(v)?v.filter(Boolean):[];
+      const justMe = cur.length<=1 && (!cur[0] || cur[0]===(user&&user.id));
+      return justMe ? [user&&user.id, ...granters].filter(Boolean) : cur;
+    });
+  },[granters.length]);
 
-  // ── Locked for everyone but the owner ──
+  // ── Locked until a grant (or the right role) says otherwise ──
   if(!canView){
+    if(!accessLoaded){
+      return (
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:30}}>
+          <div style={{fontSize:13,color:"#94a3b8",fontWeight:600}}>Loading…</div>
+        </div>
+      );
+    }
     return (
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:30}}>
         <div style={{textAlign:"center",maxWidth:340}}>
           <div style={{fontSize:54,marginBottom:14}}>🔒</div>
           <div style={{fontSize:18,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",marginBottom:8}}>You don't have access to this tab</div>
-          <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.6}}>The Leads bank is for the owner and managers right now. Ask Bronson if you think you should be in here.</div>
+          <div style={{fontSize:13,color:dark?"#94a3b8":"#64748b",lineHeight:1.6}}>The Leads bank is open to the owner, managers, and anyone who's been granted access to someone's leads. Ask the person whose leads you work with (or Bronson) to add you under Access in their Leads tab.</div>
         </div>
       </div>
     );
@@ -17886,15 +17920,17 @@ function LeadBankTab({user, profile, profiles}) {
   const F = filters;
   // ── Whose leads can this viewer see? Owner: everyone. Others: themselves plus
   // anyone who explicitly granted them access (person→person, role doesn't matter).
-  const granters = access.filter(a=>a && a.grantee_id===(user&&user.id)).map(a=>a.granter_id);
   const allowedIds = isOwner ? null : new Set([user&&user.id, ...granters].filter(Boolean));
   const effSel = (viewSel||[]).filter(id=> id && (!allowedIds || allowedIds.has(id)));
   const scopeIds = effSel.length ? effSel : [user&&user.id];
   const myGrantees = access.filter(a=>a && a.granter_id===(user&&user.id)).map(a=>a.grantee_id);
-  // Owner's Viewing list: only people who can actually HAVE leads here — managers
-  // (and the owner) for now, since they're the only ones who can enter this tab.
+  // Owner's Viewing list: anyone who can actually HAVE leads here — the owner,
+  // managers, anyone holding an access grant (they can enter and create), and
+  // anyone who already owns a lead or material in the bank.
+  const _granteeIds = new Set(access.map(a=>a&&a.grantee_id).filter(Boolean));
+  const _bankOwnerIds = new Set([...rows.map(r=>r&&r.owner_id), ...mats.map(m=>m&&m.owner_id)].filter(Boolean));
   const viewablePeople = isOwner
-    ? repList.filter(pp=>pp.id===(user&&user.id) || pp.role==="manager")
+    ? repList.filter(pp=>pp.id===(user&&user.id) || pp.role==="manager" || _granteeIds.has(pp.id) || _bankOwnerIds.has(pp.id))
     : repList.filter(pp=>pp.id===(user&&user.id) || granters.includes(pp.id));
   const matchesFilters = (r)=>
     (!F.src||r.source===F.src)
