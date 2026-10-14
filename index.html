@@ -593,7 +593,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b174";
+const APP_BUILD = "b175";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8660,7 +8660,6 @@ const PIPELINE_FILTER_DEFS = [
   {key:"has_email",    group:"General - Lead Includes",         label:"Email",                                 test:l=>pfNonEmpty(l.email)},
   {key:"no_email",     group:"General - Lead Includes",         label:"No Email",                              test:l=>!pfNonEmpty(l.email)},
   {key:"has_appt",     group:"General - Lead Includes",         label:"Scheduled Appointment",                 test:pfHasAppt},
-  {key:"has_utility",  group:"General - Lead Includes",         label:"Utility Info (Company, ESIID, Meter #)", test:l=>pfNonEmpty(l.utility)&&pfNonEmpty(l.esiid)&&pfNonEmpty(l.meter)},
   {key:"has_comm",     group:"General - Lead Includes",         label:"Commission Input",                      test:l=>pfNonEmpty(l.commission)},
   {key:"no_comm",      group:"General - Lead Includes",         label:"Commission Not Input",                  test:l=>!pfNonEmpty(l.commission)},
   {key:"has_notes",    group:"General - Lead Includes",         label:"Setter Notes",                          test:l=>pfNonEmpty(l.notes)||(Array.isArray(l.setter_notes_log)&&l.setter_notes_log.length>0)},
