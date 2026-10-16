@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b181";
+const APP_BUILD = "b182";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6914,6 +6914,13 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         Open ›
                       </button>
                     </div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginTop:10,paddingBottom:12}}>
+                      <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em"}}>📄 Proposal</div>
+                      <button onClick={()=>window.open("https://sunruntx.com/","_blank","noopener,noreferrer")}
+                        style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"6px 14px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+                        Open ›
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -7421,6 +7428,13 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
         <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Smart Meter Texas</label>
           <button onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+            style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+            Open ›
+          </button>
+        </div>
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <label style={{fontSize:12,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:"0.05em"}}>Proposal</label>
+          <button onClick={()=>{const a=document.createElement("a");a.href="https://sunruntx.com/";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
             style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
             Open ›
           </button>
@@ -18503,6 +18517,13 @@ function BankLeadModal({modal, onClose, rows, setRows, profile, user, profiles})
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
                 <label style={{...lbl,margin:0}}>Smart Meter Texas</label>
                 <button type="button" onClick={()=>{const a=document.createElement("a");a.href="https://www.smartmetertexas.com/home";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
+                  style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
+                  Open ›
+                </button>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
+                <label style={{...lbl,margin:0}}>Proposal</label>
+                <button type="button" onClick={()=>{const a=document.createElement("a");a.href="https://sunruntx.com/";a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}
                   style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"5px 12px",borderRadius:8,background:"#e8e2f0",border:"none",fontSize:12,fontWeight:700,color:"#1a2456",flexShrink:0,cursor:"pointer"}}>
                   Open ›
                 </button>
