@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b187";
+const APP_BUILD = "b188";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -10373,96 +10373,6 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
                   ? <div style={{fontSize:13,color:"#94a3b8"}}>No accounts have a gift card dropped off in this view.</div>
                   : <Bar label="Gift card dropped → Install" pct={c.giftCard.pct} n={c.giftCard.toInstall} total={c.giftCard.dropped}/>}
 
-                {/* Avg commission — pinned to the very bottom of the list */}
-                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:20}}>
-                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Average Commission</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"🌞 Installed in date range":"🌞 Installed leads"}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.avgCommissionInstalled==null?"—":c.avgCommissionInstalled.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:`1px solid ${dark?"#1e293b":"#e2e8f0"}`,paddingTop:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>All leads</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.commCount>0?`${c.commCount} with commission entered`:"None with commission entered"}</div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.avgCommission==null?"—":c.avgCommission.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Commission in the pipe — total commission for VC / SRA → Install Scheduled */}
-                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:12}}>
-                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission In The Pipe</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>VC / SRA → Install Scheduled</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
-                        {c.pipeInRange>0
-                          ? `${c.pipeInRange} account${c.pipeInRange===1?"":"s"} in the pipe${c.pipeCommCount<c.pipeInRange?` · ${c.pipeCommCount} with commission entered`:""}`
-                          : "No accounts in this stage range"}
-                      </div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.pipeCommCount>0?c.pipeCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
-                    </div>
-                  </div>
-                  {c.pipeCommSplit && (
-                    <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
-                        <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.pipeCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
-                        <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.pipeCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
-                        <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
-                        <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.pipeCommPersonal+c.pipeCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Commission installed — total commission for accounts sitting in Install / PTO */}
-                <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:12}}>
-                  <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission Installed</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"Install - PTO · reached Install in date range":"Install - PTO"}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
-                        {c.instInRange>0
-                          ? `${c.instInRange} account${c.instInRange===1?"":"s"} in Install / PTO${c.instCount<c.instInRange?` · ${c.instCount} with commission entered`:""}`
-                          : "No accounts in Install / PTO"}
-                      </div>
-                    </div>
-                    <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
-                      {c.instCount>0?c.instCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
-                    </div>
-                  </div>
-                  {c.pipeCommSplit && (
-                    <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
-                        <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.instCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
-                        <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.instCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
-                        <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
-                        <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.instCommPersonal+c.instCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           </div>
@@ -17957,6 +17867,127 @@ function SongOfDay({url}) {
   );
 }
 
+
+// ═══════════ PAY TAB — commission breakdowns (moved out of Conversions) ═══════════
+// Mirrors the Pipeline tab's CURRENT view: whoever is picked in the rep
+// dropdown (and the 🤝 Assisted view) plus whatever Filter Pipeline has on —
+// date range included — sets these numbers, exactly like the old commission
+// section at the bottom of Conversions did.
+function PayTab({leadsAll, pipeFilters, commUser, commPipelineFilter}) {
+  const dark = useDark();
+  const leads = React.useMemo(()=>(leadsAll||[]).filter(l=>matchesPipelineFilters(l, pipeFilters)), [leadsAll, pipeFilters]);
+  const drOn = !!(pipeFilters && (pipeFilters.after || pipeFilters.before));
+  const movedRange = drOn ? {
+    start: pipeFilters.after ? new Date(pipeFilters.after+"T00:00:00") : new Date(0),
+    end: pipeFilters.before ? new Date(pipeFilters.before+"T23:59:59.999") : new Date(8640000000000000),
+  } : null;
+  const movedPool = drOn ? (leadsAll||[]).filter(l=>matchesPipelineFilters(l, {...pipeFilters, after:"", before:""})) : null;
+  // Split subjects: me on My Pipeline; the selected rep(s) on a rep view —
+  // there the Personal/Assisted/Total rows are THAT rep's (or group's) cut.
+  const splitIds = commPipelineFilter==="mine" ? [commUser?.id].filter(Boolean)
+    : (commPipelineFilter||"").startsWith("rep:") ? (commPipelineFilter||"").replace("rep:","").split(",").filter(Boolean)
+    : null;
+  const c = analyzeConversions(leads||[], { viewerId: commUser?.id, splitIds, movedRange, movedPool });
+  return (
+    <div style={{flex:1,overflowY:"auto",padding:"16px 14px 40px",WebkitOverflowScrolling:"touch"}}>
+      <div style={{maxWidth:560,margin:"0 auto"}}>
+        <div style={{fontSize:24,fontWeight:900,background:"linear-gradient(135deg,#16a34a,#0ea5e9)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.02em",lineHeight:1.15}}>Pay</div>
+        <div style={{fontSize:12,color:"#94a3b8",margin:"2px 0 4px",lineHeight:1.5}}>Commission for the leads in your Pipeline view — the rep dropdown and Filter Pipeline (date range included) set what counts here.</div>
+        {/* Avg commission — pinned to the very bottom of the list */}
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:20}}>
+          <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:10}}>Average Commission</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"🌞 Installed in date range":"🌞 Installed leads"}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.instCount>0?`${c.instCount} installed with commission`:"None installed with commission"}</div>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+              {c.avgCommissionInstalled==null?"—":c.avgCommissionInstalled.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:`1px solid ${dark?"#1e293b":"#e2e8f0"}`,paddingTop:10}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>All leads</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{c.commCount>0?`${c.commCount} with commission entered`:"None with commission entered"}</div>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+              {c.avgCommission==null?"—":c.avgCommission.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}
+            </div>
+          </div>
+        </div>
+
+        {/* Commission in the pipe — total commission for VC / SRA → Install Scheduled */}
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission In The Pipe</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>VC / SRA → Install Scheduled</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
+                {c.pipeInRange>0
+                  ? `${c.pipeInRange} account${c.pipeInRange===1?"":"s"} in the pipe${c.pipeCommCount<c.pipeInRange?` · ${c.pipeCommCount} with commission entered`:""}`
+                  : "No accounts in this stage range"}
+              </div>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+              {c.pipeCommCount>0?c.pipeCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
+            </div>
+          </div>
+          {c.pipeCommSplit && (
+            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
+                <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.pipeCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
+                <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.pipeCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
+                <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
+                <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.pipeCommPersonal+c.pipeCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Commission installed — total commission for accounts sitting in Install / PTO */}
+        <div style={{background:dark?"#0f172a":"#f8fafc",borderRadius:14,padding:"16px",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,marginTop:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:dark?"#f1f5f9":"#0f172a",marginBottom:4}}>Commission Installed</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>{c.movedWindow?"Install - PTO · reached Install in date range":"Install - PTO"}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
+                {c.instInRange>0
+                  ? `${c.instInRange} account${c.instInRange===1?"":"s"} in Install / PTO${c.instCount<c.instInRange?` · ${c.instCount} with commission entered`:""}`
+                  : "No accounts in Install / PTO"}
+              </div>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:dark?"#f1f5f9":"#1a2456",whiteSpace:"nowrap"}}>
+              {c.instCount>0?c.instCommSum.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}):"—"}
+            </div>
+          </div>
+          {c.pipeCommSplit && (
+            <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${dark?"#334155":"#e2e8f0"}`,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,fontWeight:600,color:dark?"#e2e8f0":"#334155"}}>Personal <span style={{color:"#94a3b8",fontWeight:500}}>(100% — owned, no assist)</span></span>
+                <span style={{fontSize:16,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>{c.instCommPersonal.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,fontWeight:600,color:"#0369a1"}}>🤝 Assisted <span style={{color:"#94a3b8",fontWeight:500}}>(50% split — owned with an assist, or assisting)</span></span>
+                <span style={{fontSize:16,fontWeight:800,color:"#0369a1"}}>{c.instCommAssist.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px dashed ${dark?"#334155":"#e2e8f0"}`}}>
+                <span style={{fontSize:14,fontWeight:800,color:dark?"#f1f5f9":"#0f172a"}}>Total</span>
+                <span style={{fontSize:18,fontWeight:900,color:"#16a34a"}}>{(c.instCommPersonal+c.instCommAssist).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0})}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════ LEAD BANK ("Leads" tab — owner, managers, and granted access) ═══════
 // A vibrant bank of second-chance / opportunity leads, organized by SOURCE.
 // Separate from the pipeline: rows live in the bank_leads table.
@@ -20037,7 +20068,8 @@ function App() {
     ["canvass","Canvass"],
     ["team","Team"],
     ["recruits","Recruits"],
-    ["leadbank","Leads"]
+    ["leadbank","Leads"],
+    ["pay","Pay"]
   ];
 
   return (
@@ -20249,6 +20281,9 @@ function App() {
         )}
         {tab==="leadbank"&&(
           <LeadBankTab user={user} profile={profile} profiles={profiles}/>
+        )}
+        {tab==="pay"&&(
+          <PayTab leadsAll={visibleLeads} pipeFilters={pipeFilters} commUser={user} commPipelineFilter={pipelineFilter}/>
         )}
         {tab==="recruits"&&(
           <RecruitsDashboard
