@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b182";
+const APP_BUILD = "b185";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -8652,6 +8652,19 @@ function pfStaleDays(l){
   if(!d) return Infinity;
   return Math.floor((Date.now() - d.getTime())/86400000);
 }
+// Commission bracket helpers: parse the commission text to a number. A lead
+// with NO commission entered (or junk text) never matches any bracket.
+// Ranges are [min, max) except the top "+" bracket.
+function pfCommNum(l){
+  if(!pfNonEmpty(l && l.commission)) return null;
+  const n = parseFloat(String(l.commission).replace(/[^0-9.]/g,""));
+  return isNaN(n) ? null : n;
+}
+function pfCommIn(l, min, max){
+  const n = pfCommNum(l);
+  if(n===null) return false;
+  return n>=min && (max===null ? true : n<max);
+}
 const PIPELINE_FILTER_DEFS = [
   {key:"has_phone",    group:"General - Lead Includes",         label:"Phone Number",                          test:l=>pfNonEmpty(l.phone)},
   {key:"no_phone",     group:"General - Lead Includes",         label:"No Phone Number",                       test:l=>!pfNonEmpty(l.phone)},
@@ -8685,6 +8698,14 @@ const PIPELINE_FILTER_DEFS = [
   {key:"has_utility",     group:"Utility and sold system info", label:"Includes utility info",    test:pfHasUtility},
   {key:"missing_sold",    group:"Utility and sold system info", label:"Missing sold system info", test:pfMissingSold},
   {key:"has_sold",        group:"Utility and sold system info", label:"Includes sold system info",test:pfHasSold},
+  // ── Commission brackets (multi-select; OR'd among themselves) ──────────
+  // Only leads with a commission ENTERED can match. Pick several brackets and
+  // a lead shows if its commission lands in ANY selected one.
+  {key:"comm_0_2500",      group:"Utility and sold system info", label:"Commission $0 – $2,500",       test:l=>pfCommIn(l,0,2500)},
+  {key:"comm_2500_5000",   group:"Utility and sold system info", label:"Commission $2,500 – $5,000",   test:l=>pfCommIn(l,2500,5000)},
+  {key:"comm_5000_10000",  group:"Utility and sold system info", label:"Commission $5,000 – $10,000",  test:l=>pfCommIn(l,5000,10000)},
+  {key:"comm_10000_15000", group:"Utility and sold system info", label:"Commission $10,000 – $15,000", test:l=>pfCommIn(l,10000,15000)},
+  {key:"comm_15000_up",    group:"Utility and sold system info", label:"Commission $15,000+",          test:l=>pfCommIn(l,15000,null)},
 ];
 const PIPELINE_FILTER_GROUPS = ["General - Lead Includes","Setters AC Checklist","Closers VC Checklist","Utility and sold system info"];
 
@@ -8730,7 +8751,16 @@ const PIPELINE_FILTER_EXCLUSIVE = [["has_notes","no_notes"],["has_comm","no_comm
 function matchesPipelineFilters(lead, filters){
   if(!filters) return true;
   const active = Array.isArray(filters.active) ? filters.active : [];
+  // Commission brackets are OR'd among themselves (a commission can only sit in
+  // one bracket, so ANDing them would always come up empty); everything else
+  // stays AND as before.
+  const commKeys = active.filter(k=>String(k).indexOf("comm_")===0);
+  if(commKeys.length){
+    const hit = commKeys.some(k=>{ const d=PIPELINE_FILTER_DEFS.find(x=>x.key===k); return d && d.test(lead); });
+    if(!hit) return false;
+  }
   for(const key of active){
+    if(String(key).indexOf("comm_")===0) continue;
     const def = PIPELINE_FILTER_DEFS.find(d=>d.key===key);
     if(def && !def.test(lead)) return false; // AND: must match every selected filter
   }
@@ -11993,7 +12023,14 @@ function leadMatchesCanvassFilters(lead, activeFilters, pfx) {
   // Pipeline filters (pf:) REFINE — the lead must pass every checked one,
   // exactly like Filter Pipeline on the Pipeline tab.
   const pf = (activeFilters||[]).filter(f=>f.startsWith("pf:"));
+  // Commission brackets are OR'd among themselves — same as Filter Pipeline.
+  const commPf = pf.filter(f=>f.indexOf("pf:comm_")===0);
+  if(commPf.length){
+    const hit = commPf.some(f=>{ const d=PIPELINE_FILTER_DEFS.find(x=>("pf:"+x.key)===f); return d && d.test(lead); });
+    if(!hit) return false;
+  }
   for(const f of pf){
+    if(f.indexOf("pf:comm_")===0) continue;
     const def = PIPELINE_FILTER_DEFS.find(d=>("pf:"+d.key)===f);
     if(def && !def.test(lead)) return false;
   }
@@ -13388,21 +13425,44 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
       ()=>{}, {enableHighAccuracy:false, maximumAge:15000, timeout:20000});
     return ()=>navigator.geolocation.clearWatch(id);
   },[]);
+  // Google Maps caps one directions link at ~10 stops (9 waypoints + the
+  // destination) — a hard Google limit. More pins get split into back-to-back
+  // routes below, picked from a chooser sheet.
+  const [routeLegs, setRouteLegs] = React.useState(null); // null | {legs:[{stops:[{lat,lng,label,off}], opened, savedId}]}
+  // Saved routes survive app refreshes (stored on this device).
+  const [savedRoutes, setSavedRoutes] = React.useState([]);
+  const SAVED_ROUTES_KEY = "pp_saved_routes_v1";
+  const loadSavedRoutes = () => { try{ const r=JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY)||"[]"); return Array.isArray(r)?r:[]; }catch(e){ return []; } };
+  const writeSavedRoutes = (rs) => { setSavedRoutes(rs); try{ localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(rs)); }catch(e){} };
+  const routeUrlFor = (legStops) => {
+    const fmt=(st)=>st.lat.toFixed(6)+","+st.lng.toFixed(6);
+    const dest=legStops[legStops.length-1];
+    const wps=legStops.slice(0,-1).map(fmt).join("|");
+    let url="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+encodeURIComponent(fmt(dest));
+    if(wps) url+="&waypoints="+encodeURIComponent(wps);
+    return url;
+  };
+  const openUrlNow = (url) => {
+    // Open synchronously via a real anchor tap — reliable on iOS / in the PWA.
+    const a=document.createElement("a"); a.href=url; a.target="_blank"; a.rel="noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+  };
   const buildRoute = () => {
     const stops = []; const seen = new Set();
     const collect = (m) => {
       try{
         if(!m || !m.getMap || !m.getMap()) return;
         const p = m.getPosition && m.getPosition(); if(!p) return;
+        const t = (m.getTitle && m.getTitle()) || "";
+        if(t==="Your Location") return; // never route to the blue location dot
         const key = p.lat().toFixed(6)+","+p.lng().toFixed(6);
         if(seen.has(key)) return; seen.add(key);
-        stops.push({lat:p.lat(), lng:p.lng()});
+        stops.push({lat:p.lat(), lng:p.lng(), label:t});
       }catch(e){}
     };
     (leadMarkersRef.current||[]).forEach(collect);
     (markersRef.current||[]).forEach(collect);
     if(stops.length < 2){ window.alert("Need at least 2 pins showing on the map to build a route. Adjust Filter Pins / Viewing Leads first."); return; }
-    if(!window.confirm("Build the most efficient driving route for the "+stops.length+" pins showing on the map?")) return;
     // Starting point for ORDERING only: last GPS fix, else the map center.
     let origin = lastFixRef.current;
     if(!origin){
@@ -13412,17 +13472,14 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     const dist=(a,b)=>{ const dLa=rad(b.lat-a.lat), dLn=rad(b.lng-a.lng); const h=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLn/2)*Math.sin(dLn/2); return 2*R*Math.asin(Math.sqrt(h)); };
     const remaining=[...stops]; const ordered=[]; let cur=origin||remaining[0];
     while(remaining.length){ let bi=0,bd=Infinity; remaining.forEach((st,i)=>{ const d=dist(cur,st); if(d<bd){bd=d;bi=i;} }); cur=remaining.splice(bi,1)[0]; ordered.push(cur); }
-    const MAX=10;
-    const take=ordered.slice(0,MAX);
-    if(ordered.length>MAX) window.alert("Google Maps tops out around "+MAX+" stops per route — routing the closest "+MAX+" of "+ordered.length+". Knock those out, then run Route Planner again for the rest.");
-    const fmt=(st)=>st.lat.toFixed(6)+","+st.lng.toFixed(6);
-    const dest=take[take.length-1];
-    const wps=take.slice(0,-1).map(fmt).join("|");
-    let url="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+encodeURIComponent(fmt(dest));
-    if(wps) url+="&waypoints="+encodeURIComponent(wps);
-    // Open synchronously via a real anchor tap — reliable on iOS / in the PWA.
-    const a=document.createElement("a"); a.href=url; a.target="_blank"; a.rel="noopener";
-    document.body.appendChild(a); a.click(); a.remove();
+    const MAX=10; // Google Maps' hard ceiling per directions link
+    // One efficient nearest-neighbor path, carved into routes of up to 10
+    // stops. The chooser sheet opens for EVERY route build now: review the
+    // addresses, remove some, save routes for later, then jump to Maps.
+    const legs=[];
+    for(let i=0;i<ordered.length;i+=MAX) legs.push({stops:ordered.slice(i,i+MAX).map(st=>({...st,off:false})), opened:false, savedId:null});
+    setSavedRoutes(loadSavedRoutes());
+    setRouteLegs({legs});
   };
   const renderHomesRef = React.useRef(()=>{});
   renderHomesRef.current = () => {
@@ -13861,6 +13918,114 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
           </button>}
         </div>
       )}
+      {routeLegs && (()=>{
+        const activeStops=(stops)=>(stops||[]).filter(st=>!st.off);
+        const stopRow=(st, idx, onToggle)=>(
+          <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(148,163,184,0.15)"}}>
+            <span style={{flexShrink:0,width:20,textAlign:"right",fontSize:11,fontWeight:800,color:st.off?"#475569":"#94a3b8"}}>{idx+1}.</span>
+            <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:st.off?"#64748b":"#e2e8f0",textDecoration:st.off?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.label||(st.lat.toFixed(5)+", "+st.lng.toFixed(5))}</span>
+            <button onClick={onToggle}
+              style={{flexShrink:0,padding:"4px 10px",borderRadius:8,border:`1.5px solid ${st.off?"#10b981":"#f87171"}`,background:"transparent",color:st.off?"#34d399":"#f87171",fontSize:11,fontWeight:800,cursor:"pointer"}}>
+              {st.off?"Add":"Remove"}
+            </button>
+          </div>
+        );
+        const toggleLegStop=(i,si)=>setRouteLegs(rl=>{
+          if(!rl) return rl;
+          const legs=rl.legs.map((l,j)=> j===i ? {...l, stops:l.stops.map((st,k)=>k===si?{...st,off:!st.off}:st)} : l);
+          // A saved copy of this route follows the edit live.
+          const leg=legs[i];
+          if(leg.savedId){ writeSavedRoutes(loadSavedRoutes().map(r=>r.id===leg.savedId?{...r,stops:leg.stops}:r)); }
+          return {legs};
+        });
+        const openLeg=(i)=>{
+          const leg=routeLegs.legs[i]; const act=activeStops(leg.stops);
+          if(act.length<1){ window.alert("Every address on this route is removed — add at least one back first."); return; }
+          openUrlNow(routeUrlFor(act));
+          setRouteLegs(rl=>rl?{legs:rl.legs.map((l,j)=>j===i?{...l,opened:true}:l)}:rl);
+        };
+        const saveLeg=(i)=>setRouteLegs(rl=>{
+          if(!rl || rl.legs[i].savedId) return rl;
+          const leg=rl.legs[i];
+          const id="rt_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);
+          const name="Route "+(i+1)+" — "+new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"});
+          writeSavedRoutes([...loadSavedRoutes(), {id, name, ts:Date.now(), stops:leg.stops}]);
+          return {legs:rl.legs.map((l,j)=>j===i?{...l,savedId:id}:l)};
+        });
+        const toggleSavedStop=(rid,si)=>writeSavedRoutes(loadSavedRoutes().map(r=>r.id===rid?{...r,stops:(r.stops||[]).map((st,k)=>k===si?{...st,off:!st.off}:st)}:r));
+        const openSaved=(rid)=>{
+          const r=loadSavedRoutes().find(x=>x.id===rid); if(!r) return;
+          const act=activeStops(r.stops);
+          if(act.length<1){ window.alert("Every address on this route is removed — add at least one back first."); return; }
+          openUrlNow(routeUrlFor(act));
+        };
+        const deleteSaved=(rid)=>{
+          if(!window.confirm("Delete this saved route?")) return;
+          writeSavedRoutes(loadSavedRoutes().filter(r=>r.id!==rid));
+          setRouteLegs(rl=>rl?{legs:rl.legs.map(l=>l.savedId===rid?{...l,savedId:null}:l)}:rl);
+        };
+        const cardStyle={border:"1.5px solid #334155",background:"#0f172a",borderRadius:12,padding:"12px 14px",marginBottom:10};
+        const actBtn=(bd,fg,bg)=>({flexShrink:0,padding:"7px 13px",borderRadius:9,border:`1.5px solid ${bd}`,background:bg||"transparent",color:fg,fontSize:12,fontWeight:800,cursor:"pointer"});
+        const total=routeLegs.legs.reduce((n,l)=>n+l.stops.length,0);
+        return (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setRouteLegs(null)}>
+          <div style={{background:"#1e293b",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"min(100vw,520px)",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:17,fontWeight:800,color:"#f1f5f9"}}>🛣️ Route Planner</div>
+              <button onClick={()=>setRouteLegs(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.55,marginBottom:16}}>
+              {routeLegs.legs.length>1
+                ? <>Google Maps fits <b style={{color:"#e2e8f0"}}>10 stops per route</b>, so your {total} pins are split into {routeLegs.legs.length} routes along one efficient path. Remove any address you want to skip, 💾 save a route to keep it after a refresh, then open it in Maps — each route continues where the last ended.</>
+                : <>One efficient route through your {total} pins. Remove any address you want to skip, 💾 save it to keep it after a refresh, then open it in Maps.</>}
+            </div>
+            {routeLegs.legs.map((leg,i)=>{
+              const first = routeLegs.legs.slice(0,i).reduce((n,l)=>n+l.stops.length,0)+1;
+              const act = activeStops(leg.stops).length;
+              return (
+                <div key={i} style={cardStyle}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <div style={{flex:1,minWidth:0,fontSize:14,fontWeight:800,color:"#f1f5f9"}}>🧭 Route {i+1} <span style={{fontWeight:600,fontSize:12,color:"#94a3b8"}}>· {act} of {leg.stops.length} stops on</span></div>
+                    {leg.opened && <span style={{flexShrink:0,fontSize:11,fontWeight:800,color:"#10b981"}}>✓ opened</span>}
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    {leg.stops.map((st,si)=>stopRow(st, si, ()=>toggleLegStop(i,si)))}
+                  </div>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                    <button onClick={()=>saveLeg(i)} disabled={!!leg.savedId}
+                      style={actBtn(leg.savedId?"#10b981":"#64748b", leg.savedId?"#34d399":"#cbd5e1")}>
+                      {leg.savedId?"✓ Saved":"💾 Save Route"}
+                    </button>
+                    <button onClick={()=>openLeg(i)} style={actBtn("#3b82f6","#fff","#2563eb")}>🗺️ Open in Maps ›</button>
+                  </div>
+                </div>
+              );
+            })}
+            {savedRoutes.length>0 && (<>
+              <div style={{fontSize:12,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",margin:"18px 0 8px"}}>💾 Saved Routes</div>
+              {savedRoutes.map(r=>{
+                const act = activeStops(r.stops).length;
+                return (
+                  <div key={r.id} style={cardStyle}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <div style={{flex:1,minWidth:0,fontSize:14,fontWeight:800,color:"#f1f5f9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"Saved route"} <span style={{fontWeight:600,fontSize:12,color:"#94a3b8"}}>· {act} of {(r.stops||[]).length} stops on</span></div>
+                      <button onClick={()=>deleteSaved(r.id)} title="Delete this saved route"
+                        style={{flexShrink:0,background:"none",border:"none",color:"#f87171",fontSize:15,cursor:"pointer",padding:"0 2px"}}>🗑️</button>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      {(r.stops||[]).map((st,si)=>stopRow(st, si, ()=>toggleSavedStop(r.id,si)))}
+                    </div>
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                      <button onClick={()=>openSaved(r.id)} style={actBtn("#3b82f6","#fff","#2563eb")}>🗺️ Open in Maps ›</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>)}
+          </div>
+        </div>
+        );
+      })()}
 
       {/* Area draw banner */}
       {mapLoaded && areaDrawMode && (
