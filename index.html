@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b188";
+const APP_BUILD = "b189";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -13374,7 +13374,15 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
     };
     (leadMarkersRef.current||[]).forEach(collect);
     (markersRef.current||[]).forEach(collect);
-    if(stops.length < 2){ window.alert("Need at least 2 pins showing on the map to build a route. Adjust Filter Pins / Viewing Leads first."); return; }
+    if(stops.length < 2){
+      // Not enough pins to BUILD a route — but the planner still opens so
+      // saved routes stay reachable (e.g. all leads deselected on purpose).
+      const saved = loadSavedRoutes();
+      if(saved.length===0 && stops.length<2){ window.alert("Need at least 2 pins showing on the map to build a route — and there are no saved routes yet. Adjust Filter Pins / Viewing Leads first."); return; }
+      setSavedRoutes(saved);
+      setRouteLegs({legs:[]});
+      return;
+    }
     // Starting point for ORDERING only: last GPS fix, else the map center.
     let origin = lastFixRef.current;
     if(!origin){
@@ -13887,7 +13895,9 @@ function CanvassTab({gmapsKey, leads:leadsProp, onCreateLead, onStageChange, can
               <button onClick={()=>setRouteLegs(null)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.55,marginBottom:16}}>
-              {routeLegs.legs.length>1
+              {routeLegs.legs.length===0
+                ? <>No pins are showing on the map right now, so there's nothing new to route — here are your 💾 saved routes. Turn pins back on (🦅 Viewing Leads / Filter Pins) to build a fresh route.</>
+                : routeLegs.legs.length>1
                 ? <>Google Maps fits <b style={{color:"#e2e8f0"}}>10 stops per route</b>, so your {total} pins are split into {routeLegs.legs.length} routes along one efficient path. Remove any address you want to skip, 💾 save a route to keep it after a refresh, then open it in Maps — each route continues where the last ended.</>
                 : <>One efficient route through your {total} pins. Remove any address you want to skip, 💾 save it to keep it after a refresh, then open it in Maps.</>}
             </div>
