@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b186";
+const APP_BUILD = "b187";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -12138,20 +12138,21 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
   const filters = Array.isArray(canvassLeadFilter) ? canvassLeadFilter : [canvassLeadFilter||"mine"];
   const toggle = (key) => {
     if(key==="all"){
-      setCanvassLeadFilter(["all"]);
+      // Tapping All Reps again clears it — an empty selection = NO leads shown.
+      setCanvassLeadFilter(filters.includes("all")?[]:["all"]);
     } else if(key==="mine"||key==="assist"){
       // Personal family: My Leads and Assisted-to-me combine with each other
       // (mine only / assisted only / both) and replace team, rep or all picks.
       const cur = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
       const personal = cur.filter(k=>k==="mine"||k==="assist");
       const next = personal.includes(key) ? personal.filter(k=>k!==key) : [...personal, key];
-      setCanvassLeadFilter(next.length?next:["mine"]);
+      setCanvassLeadFilter(next); // empty is allowed — the map just shows no leads
     } else {
       const cur = Array.isArray(canvassLeadFilter)?canvassLeadFilter:[canvassLeadFilter||"mine"];
       const withoutSpecial = cur.filter(k=>k!=="mine"&&k!=="all"&&k!=="assist");
       if(withoutSpecial.includes(key)){
         const next = withoutSpecial.filter(k=>k!==key);
-        setCanvassLeadFilter(next.length?next:["mine"]);
+        setCanvassLeadFilter(next); // empty is allowed — the map just shows no leads
       } else {
         setCanvassLeadFilter([...withoutSpecial, key]);
       }
@@ -12159,6 +12160,7 @@ function CanvassViewPicker({isOwner, isPrivileged, visibleTeams, repProfiles, my
   };
 
   const label = ()=>{
+    if(filters.length===0) return "No Leads";
     if(filters.includes("all")) return "All Reps";
     if(filters.length===1&&filters[0]==="mine") return "My Leads";
     if(filters.length===1&&filters[0]==="assist") return "My Assisted";
