@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b189";
+const APP_BUILD = "b192";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -9420,6 +9420,23 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
   const [convOpen,setConvOpen]=useState(false);
   const [priorityOpen,setPriorityOpen]=useState(false);
   const [auditOpen,setAuditOpen]=useState(false);
+  // Which leads ACTUALLY have a bill photo uploaded. bill_photos never rides
+  // along with the lead list (too heavy), so when the audit opens we ask the
+  // database once for every lead id with at least one photo — in-memory flags
+  // alone under-count and made outside analyses look wrong.
+  const [auditPhotoIds,setAuditPhotoIds]=useState(null); // null = still loading
+  React.useEffect(()=>{
+    if(!auditOpen) return;
+    let dead=false;
+    (async()=>{
+      try{
+        const {data,error} = await sb.from("leads").select("id").not("bill_photos->0","is",null);
+        if(error) throw error;
+        if(!dead) setAuditPhotoIds(new Set((data||[]).map(r=>r.id)));
+      }catch(e){ console.error("audit photo-flag load:",e); if(!dead) setAuditPhotoIds(new Set()); }
+    })();
+    return ()=>{ dead=true; };
+  },[auditOpen]);
   const AUDIT_ALL_STAGES = STAGES; // every stage in the pipeline
   const [auditStages,setAuditStages]=useState(STAGES);
   const [dragId,setDragId]=useState(null);
@@ -9988,6 +10005,12 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         // To include them, turn on "All accounts" in the filter's Archive section.
         const activeStages = Array.isArray(auditStages) ? auditStages : AUDIT_ALL_STAGES;
         const pool = (leads||[]).filter(l=>activeStages.includes(l.stage));
+        // Photo truth: the database id-set first, memory signals as backup.
+        const hasBillPhotoAudit = (l)=> (auditPhotoIds!==null && auditPhotoIds.has(l.id))
+          || (Array.isArray(l.bill_photos)&&l.bill_photos.length>0)
+          || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0)
+          || l.has_bill_photo===true;
+        const billAcquiredChecked = (l)=> (migrateAcChecklist(l.ac_checklist).list||[]).includes("Bill Acquired");
         const repName = (id)=>((profiles||[]).find(p=>p.id===id)||{}).name || "—";
         const fmtDate = (d)=>{ if(!d) return "—"; try{ return new Date(d).toLocaleDateString(); }catch(e){ return String(d); } };
         const val = (v)=>{
@@ -10034,7 +10057,7 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
           ["Status", [["Stage",l.stage],["Temperature",l.temperature],["Soft/Solid",l.soft_solid],["Confirmed",l.confirmed],["Contact status",l.contact_status],["Priority",l.priority],["ARC/Cancel",l.is_arc],["ARC stage",l.arc_stage],["On hold",l.on_hold],["On hold stage",l.on_hold_stage],["Needs cancel save",l.needs_cancel_save],["Cancel-save stage",l.ncs_stage],["Gift card dropped",l.gift_card_dropped],["Bill retrieved",l.bill_retrieved]]],
           ["Utility", [["Utility",l.utility],["ESIID",l.esiid],["Meter #",l.meter],["Usage input",l.usage_input],["¢/kWh",l.cents_kwh],["Annual kWh",l.annual_kwh],["Average bill",l.average_bill],["Autopay",l.autopay_input],["Knew solar",l.knew_solar],["Closer inside",l.closer_inside]]],
           ["Sold system", [["Commission",commissionVal(l)],["System size",l.system_size],["Batteries",l.battery_count],["Sun hours",l.sold_sun_hours],["kWh rate",l.kwh_rate],["Monthly",l.monthly],["Offset %",l.offset_pct],["Span panel",l.span_panel],["Flex",l.flex]]],
-          ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers]]],
+          ["Checklists", [["AC checklist",l.ac_checklist],["Closer checklist",l.closer_checklist],["Decision makers",l.decision_makers],["Bill photo uploaded",auditPhotoIds===null?"checking…":(hasBillPhotoAudit(l)?"Yes":"No")],["Bill Acquired but NO photo",auditPhotoIds===null?"checking…":((billAcquiredChecked(l)&&!hasBillPhotoAudit(l))?"Yes":"No")]]],
           ["Appointments", [["Closer/CB",l.appointment],["Close",l.close_appointment],["CAP",l.cap_appointment],["Install",l.install_appointment],["Cancel Save",l.cs_appointment],["Follow-up appt",l.followup_appointment],["Site Survey",l.site_survey_appointment],["PTO Setup",l.pto_appointment],["Check In / Referrals",l.checkin_appointment],["Extra",extraAppts(l)],["Follow-up",l.follow_up_agreed?fmtDate(l.follow_up_date):"—"]]],
           ["Rapport / Preferences", rapportEntries(l.rapport)],
           ["Objections", objectionEntries(l.objections)],
@@ -10055,7 +10078,22 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
         const conv = analyzeConversions(leads||[], { viewerId: commUser?.id, splitIds: convSplitIds, movedRange: convMovedRange, movedPool: convMovedPool });
         const fmtUSD = (n)=> n==null ? "—" : n.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
         const convRangeLabel = convDrOn ? [pipeFilters.after||"…", pipeFilters.before||"…"].join(" → ") : "";
-        const exportCsv = ()=>{
+        const exportCsv = async ()=>{
+          // Make sure the photo flags are REAL before writing the file — if the
+          // id-set hasn't landed yet, fetch it now rather than exporting guesses.
+          let photoSet = auditPhotoIds;
+          if(photoSet===null){
+            try{
+              const {data,error} = await sb.from("leads").select("id").not("bill_photos->0","is",null);
+              if(error) throw error;
+              photoSet = new Set((data||[]).map(r=>r.id));
+              setAuditPhotoIds(photoSet);
+            }catch(e){ console.error("photo-flag load for CSV:",e); photoSet = null; }
+          }
+          const csvHasPhoto = (l)=> (photoSet!==null && photoSet.has(l.id))
+            || (Array.isArray(l.bill_photos)&&l.bill_photos.length>0)
+            || (Array.isArray(l.billPhotos)&&l.billPhotos.length>0)
+            || l.has_bill_photo===true;
           const keys = ["name","address","phone","email","secondary_name","secondary_phone","secondary_email","stage","archived","temperature","soft_solid","confirmed","contact_status","priority","is_arc","arc_stage","on_hold","on_hold_stage","needs_cancel_save","ncs_stage","gift_card_dropped","bill_retrieved","utility","esiid","meter","usage_input","cents_kwh","annual_kwh","average_bill","autopay_input","knew_solar","closer_inside","setter_notes_log","commission","system_size","battery_count","sold_sun_hours","kwh_rate","monthly","offset_pct","span_panel","flex","ac_checklist","closer_checklist","decision_makers","lead_files","appointment","close_appointment","cap_appointment","install_appointment","cs_appointment","followup_appointment","follow_up_agreed","follow_up_date","pto_appointment","checkin_appointment","site_survey_appointment","extra_appointments","cancel_reason","cancel_tags","on_hold_reason","on_hold_until","ncs_reason","rapport","objections","created_at","updated_at","notes"];
           const esc = (s)=>{
             let v = (s===null||s===undefined) ? "" : s;
@@ -10070,8 +10108,8 @@ function PipelineBoard({leads:leadsAll,onAddLead,onStageChange,onLeadView,allLea
             return [l.notes||"", slog, log, legacy].filter(Boolean).join("  ||  ");
           };
           const histText = (l)=>Array.isArray(l.history)?l.history.map(h=>`[${h.ts||""} ${h.by||""}] ${Array.isArray(h.changes)?h.changes.join("; "):(h.change||h.text||"")}`).join("  ||  "):"";
-          const header = ["owner","assist",...keys,"closer_notes","history"].join(",");
-          const rows = pool.map(l=>[esc(repName(l.owner_id)),esc(l.assist_id?repName(l.assist_id):""),...keys.map(k=>{
+          const header = ["owner","assist","bill_photo_uploaded","bill_acquired_checked","bill_acquired_but_no_photo",...keys,"closer_notes","history"].join(",");
+          const rows = pool.map(l=>[esc(repName(l.owner_id)),esc(l.assist_id?repName(l.assist_id):""),esc(csvHasPhoto(l)?"Yes":"No"),esc(billAcquiredChecked(l)?"Yes":"No"),esc((billAcquiredChecked(l)&&!csvHasPhoto(l))?"Yes":"No"),...keys.map(k=>{
             let v = l[k];
             if(k==="commission" && !pfNonEmpty(v)) v = "not input";
             if(k==="rapport") v = rapportEntries(l.rapport).map(([a,b])=>a+": "+b).join(" | ");
@@ -11804,17 +11842,6 @@ function HomePopup({home, onClose, onDelete, onDisposition, onSaveNote, onSaveOw
                 if(missing.length>0){
                   window.alert("Can't move this account forward yet. Please complete the following:\n\n• "+missing.join("\n• "));
                   e.target.value=linkedLead.stage||""; // revert the dropdown (stays in first lead stage)
-                  return;
-                }
-              }
-              // VC/SRA or after: all closer notes must be answered (everyone).
-              const vcIdx=STAGE_PROGRESSION.indexOf("VC / SRA");
-              if(targetIdx>=vcIdx){
-                const cc = Array.isArray(linkedLead.closer_checklist) ? linkedLead.closer_checklist : deriveCloserChecklist(linkedLead);
-                const closerDone = Array.isArray(cc) && cc.length > 0;
-                if(!closerDone){
-                  window.alert("Mark at least one item in the VC Checklist to move this account to VC/SRA or after.");
-                  e.target.value=linkedLead.stage||"";
                   return;
                 }
               }
@@ -15181,13 +15208,13 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
             {canManageMeetings && (
               <button onClick={()=>{setMenuOpen(false);resetMeet();setMeetOpen(true);}}
                 style={{width:"100%",textAlign:"left",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",border:"none",borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff"}}>
-                ➕ Add Meeting
+                ➕ Meeting
               </button>
             )}
             {canAddOpenSlot && (
               <button onClick={()=>{setMenuOpen(false);resetSlot();setSlotDate(todayStr());setSlotOpen(true);}}
                 style={{width:"100%",textAlign:"left",background:"linear-gradient(135deg,#0f766e,#10b981)",border:"none",borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#fff"}}>
-                ➕ Add Open Slot
+                ➕ Open Slot
               </button>
             )}
             {/* "📢 Publish Slots" button removed — redundant now that the backend
@@ -19488,17 +19515,6 @@ function App() {
         return; // block the save (stays in the first lead stage)
       }
     }
-    // Guard: moving to VC/SRA or after (from before VC) requires all closer notes (everyone).
-    const vcIdx = STAGE_PROGRESSION.indexOf("VC / SRA");
-    const movingIntoVcPlus = newStageIdx >= vcIdx && prevStageIdx < vcIdx;
-    if (movingIntoVcPlus) {
-      const ccForm = Array.isArray(form.closerChecklist) ? form.closerChecklist : deriveCloserChecklist({autopay_input:form.autopayInput,knew_solar:form.knewSolar,closer_inside:form.closerInside,decision_makers:form.decisionMakers});
-      const closerDone = Array.isArray(ccForm) && ccForm.length > 0;
-      if (!closerDone) {
-        window.alert("Mark at least one item in the VC Checklist to move this account to VC/SRA or after.");
-        return; // block the save
-      }
-    }
     const changes=[];
     if(existing){
       const fields={name:"Name",address:"Address",phone:"Phone",email:"Email",appointment:"Appointment",utility:"Utility",esiid:"ESIID",meter:"Meter",notes:"Notes",stage:"Stage"};
@@ -19802,16 +19818,6 @@ function App() {
       }
       if (missing.length > 0) {
         setAcWarning({ id, missing }); // shows the invalid banner; the card stays in the first lead stage
-        return;
-      }
-    }
-    // Guard: crossing INTO VC/SRA (or later, from before VC) requires the full
-    // Closers VC Checklist (everyone).
-    if (crossingIntoVc) {
-      const ccLead = Array.isArray(lead.closer_checklist) ? lead.closer_checklist : deriveCloserChecklist(lead);
-      const closerDone = Array.isArray(ccLead) && ccLead.length > 0;
-      if (!closerDone) {
-        setAcWarning({ id, missing: ["Mark at least one item in the Closers VC Checklist"] });
         return;
       }
     }
