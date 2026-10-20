@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b192";
+const APP_BUILD = "b193";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -14658,7 +14658,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
       setMeetEnd(`${String(end.getHours()).padStart(2,"0")}:${String(end.getMinutes()).padStart(2,"0")}`);
     }
   };
-  const resetMeet = () => { setMeetType("");setMeetCustomName("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg("");setMeetRepeat("none");setMeetRepeatDays([]); };
+  const [meetLocation, setMeetLocation] = React.useState(""); // optional address → Google Calendar's location field
+  const resetMeet = () => { setMeetType("");setMeetCustomName("");setMeetDate("");setMeetStart("");setMeetEnd("");setMeetMsg("");setMeetRepeat("none");setMeetRepeatDays([]);setMeetLocation(""); };
   const submitMeeting = async (calendarId) => {
     if(!meetType || !meetDate || !meetStart || !meetEnd) return;
     const meetTitle = meetType==="Custom" ? (meetCustomName||"").trim() : meetType;
@@ -14682,7 +14683,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         const days = meetRepeatDays.slice().sort((a,b)=>a-b).map(d=>RRULE_DAYS[d]).join(",");
         recurrence = [`RRULE:FREQ=WEEKLY;BYDAY=${days}`];
       }
-      await GCal.createMeeting(`🟡 ${meetTitle}`, startD.toISOString(), endD.toISOString(), calendarId, recurrence);
+      await GCal.createMeeting(`🟡 ${meetTitle}`, startD.toISOString(), endD.toISOString(), calendarId, recurrence, (meetLocation||"").trim());
       setMeetSaving(false);
       setMeetOpen(false);
       resetMeet();
@@ -15466,6 +15467,12 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid #6b2d4e`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:18}}/>
             )}
 
+            {/* Location — lands on the Google Calendar event's location field */}
+            <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>📍 Location <span style={{textTransform:"none",fontWeight:500,color:"#64748b"}}>optional</span></label>
+            <input type="text" value={meetLocation} onChange={e=>setMeetLocation(e.target.value)}
+              placeholder="Address or place — shows on the calendar event"
+              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:14}}/>
+
             {/* Date */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
             <input type="date" value={meetDate} onChange={e=>setMeetDate(e.target.value)}
@@ -15726,16 +15733,26 @@ const GCal = {
 
   // Create a meeting event on a specific team calendar.
   // title = the meeting name; startISO/endISO = ISO datetime strings.
-  async createMeeting(title, startISO, endISO, calendarId, recurrence) {
+  async createMeeting(title, startISO, endISO, calendarId, recurrence, location) {
     // Prefer the backend (service account) so no Google sign-in is needed.
     const viaBackend = await CalendarBackend.tryCall("createMeeting", {
       calendarId: calendarId || GCAL_CALENDAR_ID,
       summary: title, startISO, endISO, recurrence: recurrence || null,
+      location: location || "",
     });
-    if(viaBackend && viaBackend.ok) return viaBackend;
+    if(viaBackend && viaBackend.ok){
+      // Older backend builds don't know the location field — if the created
+      // event came back with an id, patch the location on so it always lands.
+      const evId = viaBackend.id || (viaBackend.event && viaBackend.event.id);
+      if(location && evId){
+        try{ await CalendarBackend.call("patchEvent", {calendarId: calendarId || GCAL_CALENDAR_ID, eventId: evId, patch:{location}}); }catch(e){}
+      }
+      return viaBackend;
+    }
     const token = await this.signIn();
     const event = {
       summary: title,
+      location: location || "",
       start: { dateTime: startISO, timeZone: "America/Chicago" },
       end:   { dateTime: endISO,   timeZone: "America/Chicago" },
       colorId: (title && title.toLowerCase().includes("open slot")) ? "7" : "5", // open slots = peacock, meetings = banana
