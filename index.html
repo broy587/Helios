@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b194";
+const APP_BUILD = "b195";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -14601,6 +14601,14 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
   const [tagMsg, setTagMsg] = React.useState("");
   const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
+  // Step the picked day back/forward. With no day picked, ◀/▶ start from today.
+  const shiftTagDate = (delta)=>{
+    const p=(n)=>String(n).padStart(2,"0");
+    const base = tagDate || (()=>{ const d=new Date(); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
+    const [y,m,dd] = base.split("-").map(Number);
+    const nd = new Date(y, m-1, dd+delta);
+    setTagDate(`${nd.getFullYear()}-${p(nd.getMonth()+1)}-${p(nd.getDate())}`);
+  };
   const [showOpenSlots, setShowOpenSlots] = React.useState(true); // now default: show everything
   const [tagKinds, setTagKinds] = React.useState([]); // selected marker filters ([] = show all kinds)
   const [editEvent, setEditEvent] = React.useState(null); // {ev, calendarId} being rescheduled
@@ -15300,11 +15308,17 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                     background:(!tagDate&&tagFilter===v)?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),
                     color:(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#94a3b8":"#475569")}}>{label}</button>
               ))}
-              <span style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:dark?"#94a3b8":"#64748b"}}>Pick a date:</span>
+            </div>
+            {/* Day picker — big, centered, with one-day arrows on both sides */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12}}>
+              <button onClick={()=>shiftTagDate(-1)} title="Back one day"
+                style={{flexShrink:0,width:44,height:44,borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#cbd5e1":"#475569",fontSize:17,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>◀</button>
               <input type="date" value={tagDate} onChange={e=>setTagDate(e.target.value)}
                 title="Show a specific day"
-                style={{fontSize:12,fontWeight:600,color:tagDate?(dark?"#cbd5e1":"#1a2456"):(dark?"#64748b":"#94a3b8"),background:dark?"#0f172a":"#fff",border:`1.5px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:8,padding:"5px 8px",cursor:"pointer"}}/>
-              {tagDate && <button onClick={()=>setTagDate("")} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
+                style={{flex:"0 1 230px",minWidth:0,textAlign:"center",fontSize:15,fontWeight:700,color:tagDate?(dark?"#f1f5f9":"#1a2456"):(dark?"#64748b":"#94a3b8"),background:dark?"#0f172a":"#fff",border:`2px solid ${tagDate?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,borderRadius:10,padding:"9px 10px",cursor:"pointer",boxSizing:"border-box",fontFamily:"inherit"}}/>
+              <button onClick={()=>shiftTagDate(1)} title="Forward one day"
+                style={{flexShrink:0,width:44,height:44,borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#cbd5e1":"#475569",fontSize:17,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>▶</button>
+              {tagDate && <button onClick={()=>setTagDate("")} style={{flexShrink:0,background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
             {/* Key-item filter — multi-select. None selected = show everything. */}
             <div style={{marginBottom:12}}>
