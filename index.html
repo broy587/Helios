@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b201";
+const APP_BUILD = "b203";
 // Google Maps / Places key — same one the Canvass map uses.
 const GMAPS_KEY = "AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU";
 
@@ -6357,7 +6357,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
           <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           <div className="pp-lead-head" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div className="pp-lead-info" style={{flex:1,minWidth:0}}>
-              <div className="pp-lead-name" style={{fontSize:20,fontWeight:800,color:dark?"#f1f5f9":"#0f172a",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>{lead.name||"Unnamed Lead"}{lead.name && <CopyIcon value={lead.name}/>}</div>
               {lead.owner_id && (()=>{
                 const owner=(profiles||[]).find(p=>p.id===lead.owner_id);
                 const ownerName=owner?(owner.name||owner.email):"Unknown";
@@ -6398,34 +6397,23 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
             })()}
             </div>
             <div className="pp-lead-actions" style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+                <button className="pp-btn-edit" onClick={()=>onEdit(lead)}
+                  style={{padding:"7px 21px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>
+                  Edit
+                </button>
                 <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
-
                   {onTogglePriority && (
                     <button className="pp-btn-priority" onClick={()=>{ handleUpdate({priority:!lead.priority}); onTogglePriority(lead); }}
                       title={lead.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
-                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.priority?"#eab308":"#c8b8a2"}`,background:lead.priority?"#fef9c3":"none",color:lead.priority?"#a16207":"#6b2d4e",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      {lead.priority?"⭐ Priority":"☆ Priority"}
+                      style={{width:37,height:34,borderRadius:8,border:`1.5px solid ${lead.priority?"#eab308":(dark?"#334155":"#c8b8a2")}`,background:lead.priority?"#fef9c3":"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,color:lead.priority?"#a16207":"#6b2d4e"}}>
+                      {lead.priority?"⭐":"☆"}
                     </button>
                   )}
-                  <button className="pp-btn-edit" onClick={()=>onEdit(lead)}
-                    style={{flex:1,padding:"7px 16px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#1a2456,#6b2d4e)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    Edit
-                  </button>
-                </div>
-                <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
-
                   {lead.address&&onViewInCanvass&&(
-                    <button className="pp-btn-map" onClick={()=>onViewInCanvass(lead)}
-                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid #c8b8a2",background:"none",color:"#1a2456",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      🗺️ Map
-                    </button>
-                  )}
-                  {onArchive && (
-                    <button className="pp-btn-archive" onClick={()=>onArchive(lead)}
-                      title={lead.archived?"Unarchive — show in the pipeline again":"Archive — hide from the pipeline (not deleted)"}
-                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${lead.archived?"#16a34a":"#c8b8a2"}`,background:"none",color:lead.archived?"#16a34a":"#6b2d4e",fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>
-                      {lead.archived?"📤 Unarchive":"🗄️ Archive"}
+                    <button className="pp-btn-map" onClick={()=>onViewInCanvass(lead)} title="See on the Canvass map"
+                      style={{width:37,height:34,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:"none",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
+                      🗺️
                     </button>
                   )}
                 </div>
@@ -6433,16 +6421,19 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <button className="pp-lead-close" onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
           </div>
-          {[["Address",lead.address],["Phone",lead.phone],["Email",lead.email]].map(([label,value])=>value?(
+          {[["Name",lead.name],["Address",lead.address],["Phone",lead.phone],["Email",lead.email]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                 {label==="Address" ? (
                   <FitText style={{flex:1,minWidth:0,color:dark?"#f1f5f9":"#1e293b"}}>{value}</FitText>
                 ) : (
-                  <div style={{fontSize:14,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>
+                  <div style={{fontSize:label==="Name"?19:14,fontWeight:label==="Name"?800:400,color:dark?"#f1f5f9":"#1e293b",flex:1,minWidth:0}}>
                     {value||""}
                   </div>
+                )}
+                {label==="Name" && (
+                  <CopyIcon value={value}/>
                 )}
                 {label==="Address" && (
                   <CopyIcon value={value}/>
@@ -7291,13 +7282,15 @@ function ReasoningModal({title, initialReason, accent, onSave, onClose}) {
     </div>
   );
 }
-function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,currentUserName,canBookCap,acReq,allProfiles}) {
+function LeadModal({open,onClose,onSave,onDelete,onArchive,onTogglePriority,initial,gmapsKey,creatorName,currentUserName,canBookCap,acReq,allProfiles}) {
   const dark=useDark();
   const [form,setForm]=useState(initial||emptyForm);
   const [saving,setSaving]=useState(false);
   const [showSecondary,setShowSecondary]=useState(false);
   const [showUtilInfo,setShowUtilInfo]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [hdrAssistEdit,setHdrAssistEdit]=useState(false);
+  const [hdrStageEdit,setHdrStageEdit]=useState(false);
   const fileInputRef=useRef(null);
   const leadFileRef=useRef(null);
   const [uploadingFile,setUploadingFile]=useState(false);
@@ -7563,13 +7556,96 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}{!(initial&&initial.id) && <span style={{marginLeft:8,fontSize:11,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap"}}><span style={{color:"#dc2626",fontWeight:900}}>*</span> required</span>}</h2>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
-              {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save":"Add")}
-            </button>
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+          <div style={{flex:1,minWidth:0}}>
+            <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}{!(initial&&initial.id) && <span style={{marginLeft:8,fontSize:11,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap"}}><span style={{color:"#dc2626",fontWeight:900}}>*</span> required</span>}</h2>
+            {initial&&initial.id&&(()=>{
+              const ownerP=(allProfiles||[]).find(p=>p.id===initial.owner_id);
+              const ownerName=ownerP?(ownerP.name||ownerP.email):(creatorName||"Unknown");
+              const assistP=(allProfiles||[]).find(p=>p.id===form.assistId);
+              const assistName=assistP?(assistP.name||assistP.email):"";
+              const stEmoji=STAGE_EMOJIS[form.stage]||"📊";
+              const rowStyle={display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:12,color:dark?"#94a3b8":"#64748b"};
+              const selStyle={fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:200};
+              return (<>
+                <div style={{...rowStyle,marginTop:8}}>
+                  <span style={{fontSize:13}}>👤</span>
+                  <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={{fontSize:13}}>🤝</span>
+                  <span>Assist: </span>
+                  {hdrAssistEdit ? (
+                    <select autoFocus value={form.assistId||""}
+                      onChange={e=>{ const v=e.target.value; setForm(f=>({...f,assistId:v})); setHdrAssistEdit(false); }}
+                      onBlur={()=>setHdrAssistEdit(false)} style={selStyle}>
+                      <option value="">— none —</option>
+                      {(allProfiles||[]).filter(p=>!p.deleted_at&&p.id!==initial.owner_id).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||""))).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
+                    </select>
+                  ) : (
+                    <span onClick={()=>setHdrAssistEdit(true)} title="Click to change assist"
+                      style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                      {assistName||"—"}
+                    </span>
+                  )}
+                </div>
+                <div style={rowStyle}>
+                  <span style={{fontSize:13}}>{stEmoji}</span>
+                  <span>Stage: </span>
+                  {hdrStageEdit ? (
+                    <select autoFocus value={form.stage||""}
+                      onChange={e=>{ const v=e.target.value; setForm(f=>({...f,stage:v})); setHdrStageEdit(false); }}
+                      onBlur={()=>setHdrStageEdit(false)} style={selStyle}>
+                      {STAGES.map(s2=><option key={s2} value={s2}>{s2}</option>)}
+                    </select>
+                  ) : (
+                    <span onClick={()=>setHdrStageEdit(true)} title="Click to change stage"
+                      style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                      {form.stage||"—"}
+                    </span>
+                  )}
+                </div>
+              </>);
+            })()}
+          </div>
+          <div style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
+            {initial&&initial.id ? (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:6}}>
+                  {onArchive && (
+                    <button onClick={()=>onArchive({...initial,...form,id:initial.id})}
+                      title={form.archived?"Bring this lead back from the archive":"Archive this lead"}
+                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:"none",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                      {form.archived?"📤 Unarchive":"🗄️ Archive"}
+                    </button>
+                  )}
+                  <button onClick={handleSave} disabled={saving} style={{flex:1,padding:"8px 14px",borderRadius:10,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                    {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Save"}
+                  </button>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  {onTogglePriority && (
+                    <button onClick={()=>{ onTogglePriority({...initial,...form,id:initial.id}); setForm(f=>({...f,priority:!f.priority})); }}
+                      title={form.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
+                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${form.priority?"#eab308":(dark?"#334155":"#c8b8a2")}`,background:form.priority?"#fef9c3":"none",color:form.priority?"#a16207":(dark?"#e2e8f0":"#6b2d4e"),fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                      {form.priority?"⭐ Priority":"☆ Priority"}
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button onClick={()=>{ if(window.confirm("Delete this lead? This cannot be undone.")) onDelete(initial.id); }}
+                      title="Delete this lead"
+                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:"1.5px solid #fca5a5",background:"none",color:"#ef4444",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                      🗑️ Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Add"}
+              </button>
+            )}
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
           </div>
         </div>
         {/* ── Homeowner / secondary info ── */}
@@ -8225,24 +8301,6 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
             {saving?<><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:(initial&&initial.id?"Save Changes":"Add Lead")}
           </button>
         </div>
-        {/* Delete — only for existing leads, at the very bottom of the form. */}
-        {initial && initial.id && onDelete && (
-          confirmDelete ? (
-            <div style={{background:dark?"rgba(239,68,68,0.10)":"#fff5f5",border:"1.5px solid #fca5a5",borderRadius:10,padding:"14px 16px",marginTop:16}}>
-              <div style={{fontWeight:700,fontSize:14,color:"#b91c1c",marginBottom:4}}>Delete this lead?</div>
-              <div style={{fontSize:13,color:dark?"#fca5a5":"#7f1d1d",marginBottom:12,lineHeight:1.5}}>This cannot be undone.</div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setConfirmDelete(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1.5px solid #e2e8f0",background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#475569",fontWeight:600,cursor:"pointer",fontSize:14}}>Cancel</button>
-                <button onClick={()=>onDelete(initial.id)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>Delete</button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={()=>setConfirmDelete(true)}
-              style={{width:"100%",marginTop:16,padding:"10px 0",borderRadius:8,border:"1.5px solid #fee2e2",background:dark?"transparent":"#fff",color:"#ef4444",fontWeight:600,cursor:"pointer",fontSize:13}}>
-              🗑️ Delete Lead
-            </button>
-          )
-        )}
       </div>
       {editImgOpen!==null && form.billPhotos && form.billPhotos[editImgOpen] && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:2000}}>
@@ -20443,7 +20501,9 @@ function App() {
       </div>
 
       <MapsChooser/>
-      <LeadModal open={modal.open} allProfiles={profiles} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} onDelete={id=>{setModal({open:false,lead:null});setDetailId(null);deleteLead(id);}} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
+      <LeadModal open={modal.open} allProfiles={profiles} onClose={()=>setModal({open:false,lead:null})} onSave={saveLead} onDelete={id=>{setModal({open:false,lead:null});setDetailId(null);deleteLead(id);}}
+        onArchive={async(l)=>{ const next=!l.archived; if(next && !window.confirm("Are you sure you'd like to archive this lead? This action is reversible — you can bring it back anytime with the Archive section in the filters.")) return; setLeads(ls=>ls.map(x=>x.id===l.id?{...x,archived:next}:x)); setModal({open:false,lead:null}); setDetailId(null); await leadPatch(l.id,{archived:next}); }}
+        onTogglePriority={async(l)=>{ const next=!l.priority; setLeads(ls=>ls.map(x=>x.id===l.id?{...x,priority:next}:x)); await leadPatch(l.id,{priority:next}); }} gmapsKey="AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU" canBookCap={canBookCap} acReq={myAcReq}
         creatorName={(()=>{ const o = modal.lead && modal.lead.owner_id ? profiles.find(p=>p.id===modal.lead.owner_id) : null; return (o && (o.name||o.email)) || (profile && (profile.name||profile.email)) || (user && user.email) || ""; })()}
         currentUserName={(profile&&(profile.name||profile.email))||(user&&user.email)||""}
         initial={modal.lead?{...modal.lead,email:modal.lead.email||"",commission:modal.lead.commission||"",giftCardDropped:modal.lead.gift_card_dropped||false,secondaryName:modal.lead.secondary_name||"",secondaryPhone:modal.lead.secondary_phone||"",secondaryEmail:modal.lead.secondary_email||"",utility:modal.lead.utility||"",usageInput:modal.lead.usage_input||"",centsKwh:modal.lead.cents_kwh||"",annualKwh:modal.lead.annual_kwh||"",averageBill:modal.lead.average_bill||"",billPhotos:modal.lead.bill_photos||[],closerNotes:modal.lead.closer_notes||"",closerNotesLog:(Array.isArray(modal.lead.closer_notes_log)&&modal.lead.closer_notes_log.length)?modal.lead.closer_notes_log:(modal.lead.closer_notes?[{id:makeNoteId(),text:modal.lead.closer_notes,ts:modal.lead.updated_at||modal.lead.created_at||new Date().toISOString()}]:[]),setterNotesLog:Array.isArray(modal.lead.setter_notes_log)?modal.lead.setter_notes_log:[],rapport:(modal.lead.rapport&&typeof modal.lead.rapport==="object")?modal.lead.rapport:{},objections:(modal.lead.objections&&typeof modal.lead.objections==="object")?modal.lead.objections:{items:[],other:""},notesCreatedAt:modal.lead.notes_created_at||null,notesCreatedBy:modal.lead.notes_created_by||null,temperature:modal.lead.temperature||"",billRetrieved:modal.lead.bill_retrieved||"",autopayInput:modal.lead.autopay_input||"",knewSolar:modal.lead.knew_solar||"",closerInside:modal.lead.closer_inside||"",decisionMakers:modal.lead.decision_makers||"",closerChecklist:Array.isArray(modal.lead.closer_checklist)?modal.lead.closer_checklist:deriveCloserChecklist(modal.lead),contactStatus:modal.lead.contact_status||"",softSolid:modal.lead.soft_solid||"",confirmed:modal.lead.confirmed||"",isArc:modal.lead.is_arc||false,arcStage:modal.lead.arc_stage||"",onHold:modal.lead.on_hold||false,onHoldStage:modal.lead.on_hold_stage||"",needsCancelSave:modal.lead.needs_cancel_save||false,ncsStage:modal.lead.ncs_stage||"",acChecklist:modal.lead.ac_checklist||[],followUpAgreed:modal.lead.follow_up_agreed||"",followUpDate:modal.lead.follow_up_date||"",systemSize:modal.lead.system_size||"",batteryCount:modal.lead.battery_count||"",soldSunHours:modal.lead.sold_sun_hours||"",kwhRate:modal.lead.kwh_rate||"",monthly:modal.lead.monthly||"",offset:modal.lead.offset_pct||"",spanPanel:modal.lead.span_panel||"",flex:modal.lead.flex||"",leadFiles:Array.isArray(modal.lead.lead_files)?modal.lead.lead_files:[],cancelReason:modal.lead.cancel_reason||"",cancelTags:Array.isArray(modal.lead.cancel_tags)?modal.lead.cancel_tags:[],onHoldReason:modal.lead.on_hold_reason||"",onHoldUntil:modal.lead.on_hold_until||"",ncsReason:modal.lead.ncs_reason||"",assistId:modal.lead.assist_id||""}:null}/>
