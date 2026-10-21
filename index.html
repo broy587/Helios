@@ -601,7 +601,9 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b199";
+const APP_BUILD = "b200";
+// Google Maps / Places key — same one the Canvass map uses.
+const GMAPS_KEY = "AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -7089,7 +7091,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
   );
 }
 
-function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
+function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder,types:typesProp}) {
   const [ready,setReady]=React.useState(!!(window.google&&window.google.maps&&window.google.maps.places));
   const [predictions,setPredictions]=React.useState([]);
   const [showList,setShowList]=React.useState(false);
@@ -7129,7 +7131,7 @@ function AddressAutocomplete({value,onChange,gmapsKey,inputStyle,placeholder}) {
     if(!value||value.trim().length<3){setPredictions([]);return;}
     const handle=setTimeout(()=>{
       serviceRef.current.getPlacePredictions(
-        {input:value,componentRestrictions:{country:"us"},types:["address"],sessionToken:tokenRef.current},
+        {input:value,componentRestrictions:{country:"us"},...(typesProp===null?{}:{types:(Array.isArray(typesProp)&&typesProp.length?typesProp:["address"])}),sessionToken:tokenRef.current},
         (preds,status)=>{
           if(status===window.google.maps.places.PlacesServiceStatus.OK&&preds){
             setPredictions(preds.slice(0,5));
@@ -14558,7 +14560,7 @@ function RescheduleModal({dark, title, initDate, initTime, initDur, initLocation
           </select>
         </div>
         <div style={{marginBottom:18}}><label style={lbl}>📍 Location <span style={{fontWeight:500,color:"#94a3b8"}}>optional</span></label>
-          <input type="text" value={loc} onChange={e=>{setLoc(e.target.value);setLocTouched(true);}} placeholder="Address or place — shows on the calendar event" style={fld}/>
+          <AddressAutocomplete value={loc} onChange={v=>{setLoc(v);setLocTouched(true);}} gmapsKey={GMAPS_KEY} types={null} placeholder="Address or place — shows on the calendar event" inputStyle={fld}/>
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose} style={{flex:1,padding:"12px 0",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:"transparent",color:dark?"#cbd5e1":"#475569",fontWeight:700,fontSize:14,cursor:"pointer"}}>Cancel</button>
@@ -15489,9 +15491,9 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
 
             {/* Location — lands on the Google Calendar event's location field */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>📍 Location <span style={{textTransform:"none",fontWeight:500,color:"#64748b"}}>optional</span></label>
-            <input type="text" value={meetLocation} onChange={e=>setMeetLocation(e.target.value)}
+            <AddressAutocomplete value={meetLocation} onChange={setMeetLocation} gmapsKey={GMAPS_KEY} types={null}
               placeholder="Address or place — shows on the calendar event"
-              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:14}}/>
+              inputStyle={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#f1f5f9":"#1a2456",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:14}}/>
 
             {/* Date */}
             <label style={{display:"block",fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Date</label>
