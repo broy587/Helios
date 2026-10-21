@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b195";
+const APP_BUILD = "b197";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -6708,7 +6708,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
                         const okRm = await removeApptEventSmart(evToRemove, {team:(key==="cap"||key==="cs")?"auto":"no", capSlot:key==="cap"});
                         if(!okRm){
                           console.error("Couldn't delete popped event from calendar:", evToRemove);
-                          alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → 🏷️ Tag & Manage if it's still on the calendar.");
+                          alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → ✏️ Edit if it's still on the calendar.");
                         }
                       }
                     };
@@ -7811,7 +7811,7 @@ function LeadModal({open,onClose,onSave,onDelete,initial,gmapsKey,creatorName,cu
                     const okRm = await removeApptEventSmart(evId, {team:isTeamType?"auto":"no", capSlot:evField==="cap_event_id"});
                     if(!okRm){
                       console.error("Couldn't delete from calendar (cleared on the lead anyway):", evId);
-                      alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → 🏷️ Tag & Manage if it's still on the calendar.");
+                      alert("The appointment was removed from the lead, but its calendar event couldn't be removed.\n\nCheck your signal and try again, or delete it from the Calendar tab → ✏️ Edit if it's still on the calendar.");
                     }
                   }
                 };
@@ -14594,12 +14594,20 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     "🟣":"Follow-Up",
   };
   const stripMarker = (t)=> (t||"").replace(/^(?:🟢|🟠|🔵|🟡|🔴|🟣|⚪|🟤|🟩|🟧|🟦|🟨)\s*/u, "");
+  // Automatic appointment colors — mirrors the calendar's own color coding.
+  const APPT_TYPE_COLOR = {"🟢":"#16a34a","🟠":"#ea580c","🔵":"#2563eb","🟡":"#ca8a04","🔴":"#dc2626","🟣":"#7c3aed"};
+  const apptColorOf = (ev)=>{
+    const sum = ev.summary||"";
+    if(ev.isOpen || sum.toLowerCase().includes("open slot")) return sum.includes("🧢") ? "#ea580c" : "#0891b2";
+    const m = sum.match(/^(🟢|🟠|🔵|🟡|🔴|🟣)/u);
+    return (m && APPT_TYPE_COLOR[m[1]]) || "#94a3b8";
+  };
   const [tagOpen, setTagOpen] = React.useState(false);
   const [tagLoading, setTagLoading] = React.useState(false);
   const [tagEvents, setTagEvents] = React.useState([]);
   const [tagBusyId, setTagBusyId] = React.useState(null);
   const [tagMsg, setTagMsg] = React.useState("");
-  const [tagFilter, setTagFilter] = React.useState("all"); // all | today | upcoming | past
+  const [tagFilter, setTagFilter] = React.useState("today"); // today | week (a picked date overrides both)
   const [tagDate, setTagDate] = React.useState("");        // specific YYYY-MM-DD (overrides tagFilter)
   // Step the picked day back/forward. With no day picked, ◀/▶ start from today.
   const shiftTagDate = (delta)=>{
@@ -14610,7 +14618,8 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
     setTagDate(`${nd.getFullYear()}-${p(nd.getMonth()+1)}-${p(nd.getDate())}`);
   };
   const [showOpenSlots, setShowOpenSlots] = React.useState(true); // now default: show everything
-  const [tagKinds, setTagKinds] = React.useState([]); // selected marker filters ([] = show all kinds)
+  const [tagKinds, setTagKinds] = React.useState([]); // selected type filters ([] = show all kinds)
+  const [tagFiltersOpen, setTagFiltersOpen] = React.useState(false); // the little filter dropdown
   const [editEvent, setEditEvent] = React.useState(null); // {ev, calendarId} being rescheduled
   const [removingId, setRemovingId] = React.useState(null);
   const createdByMe = (ev)=>{
@@ -14894,17 +14903,15 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
       const d1 = d0 + 24*60*60*1000;
       return base.filter(e=>{ const t=startMs(e); return t>=d0 && t<d1; });
     }
-    if(tagFilter==="all") return base;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
     const todayEnd = todayStart + 24*60*60*1000;
-    return base.filter(e=>{
-      const t = startMs(e);
-      if(tagFilter==="today") return t>=todayStart && t<todayEnd;
-      if(tagFilter==="upcoming") return t>=todayStart;
-      if(tagFilter==="past") return t<todayStart;
-      return true;
-    });
+    if(tagFilter==="week"){
+      // Rolling week: today through the next 6 days.
+      const weekEnd = todayStart + 7*24*60*60*1000;
+      return base.filter(e=>{ const t=startMs(e); return t>=todayStart && t<weekEnd; });
+    }
+    return base.filter(e=>{ const t=startMs(e); return t>=todayStart && t<todayEnd; }); // today
   },[tagEvents,tagFilter,tagDate,tagKinds]);
 
   // Remove an event: booked appointments are released back to an open slot (and the
@@ -15240,7 +15247,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 is kept in code in case it's ever needed again. */}
             <button onClick={()=>{ setMenuOpen(false); setTagMsg(""); setTagOpen(true); loadTagEvents((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)); }}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
-              🏷️ Tag & Manage
+              ✏️ Edit
             </button>
             <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
@@ -15292,22 +15299,29 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:3000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setTagOpen(false)}>
           <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:"20px 20px 0 0",padding:"22px 18px 32px",width:"min(100vw,480px)",maxHeight:"88vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>🏷️ Tag & Manage</div>
+              <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>✏️ Edit</div>
               <button onClick={()=>setTagOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
             <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:12,lineHeight:1.4}}>
-              Tap a marker to color-tag an appointment (one at a time — tap it again to clear).{canRemoveAny?" Use 🗑️ to remove an event from the calendar.":""}
-              {!canManageEvents && <span> You can only tag/remove appointments you created.</span>}
+              Appointments color-code automatically — the dot matches the calendar. ✏️ edits, 🗑️ deletes{canRemoveAny?", ↩️ releases a booked slot back to open":""}.
+              {!canManageEvents && <span> You can only edit/remove appointments you created.</span>}
             </div>
-            {/* Day filter */}
+            {/* View: Today / Week — picking a specific date below overrides both */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
-              {[["all","All"],["today","Today"],["upcoming","Upcoming"],["past","Past"]].map(([v,label])=>(
+              {[["today","Today"],["week","Week"]].map(([v,label])=>(
                 <button key={v} onClick={()=>{ setTagFilter(v); setTagDate(""); }}
-                  style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",
+                  style={{padding:"7px 16px",borderRadius:99,fontSize:12.5,fontWeight:700,cursor:"pointer",
                     border:`1.5px solid ${(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#334155":"#e2e8f0")}`,
                     background:(!tagDate&&tagFilter===v)?(dark?"#3a1d2e":"#f3e8ef"):(dark?"#0f172a":"#fff"),
                     color:(!tagDate&&tagFilter===v)?"#6b2d4e":(dark?"#94a3b8":"#475569")}}>{label}</button>
               ))}
+              <button onClick={()=>setTagFiltersOpen(v=>!v)}
+                style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,padding:"7px 13px",borderRadius:99,fontSize:12.5,fontWeight:700,cursor:"pointer",
+                  border:`1.5px solid ${(tagFiltersOpen||tagKinds.length>0)?"#0369a1":(dark?"#334155":"#e2e8f0")}`,
+                  background:(tagFiltersOpen||tagKinds.length>0)?(dark?"#0c4a6e":"#e0f2fe"):(dark?"#0f172a":"#fff"),
+                  color:(tagFiltersOpen||tagKinds.length>0)?(dark?"#7dd3fc":"#0369a1"):(dark?"#94a3b8":"#475569")}}>
+                Filter{tagKinds.length>0?` (${tagKinds.length})`:""} {tagFiltersOpen?"▲":"▼"}
+              </button>
             </div>
             {/* Day picker — big, centered, with one-day arrows on both sides */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12}}>
@@ -15320,9 +15334,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 style={{flexShrink:0,width:44,height:44,borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:dark?"#0f172a":"#fff",color:dark?"#cbd5e1":"#475569",fontSize:17,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>▶</button>
               {tagDate && <button onClick={()=>setTagDate("")} style={{flexShrink:0,background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer",padding:0}}>clear</button>}
             </div>
-            {/* Key-item filter — multi-select. None selected = show everything. */}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Filter by type <span style={{textTransform:"none",fontWeight:500}}>· tap to toggle, none = all</span></div>
+            {/* Filter dropdown — appointment types, tucked away until needed */}
+            {tagFiltersOpen && (
+            <div style={{marginBottom:12,background:dark?"#0f172a":"#f8fafc",border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,borderRadius:12,padding:"10px 12px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Appointment type <span style={{textTransform:"none",fontWeight:500}}>· tap to toggle, none = all</span></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {[["🟢","AC / Closer"],["🟠","CAP"],["🔵","Extra Appt"],["🟡","Meeting"],["🔴","Needs Reschedule"],["🟣","Follow-Up"],["open","Open Slots"]].map(([k,label])=>{
                   const on = tagKinds.includes(k);
@@ -15339,6 +15354,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 {tagKinds.length>0 && <button onClick={()=>setTagKinds([])} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,fontWeight:700,cursor:"pointer"}}>clear</button>}
               </div>
             </div>
+            )}
             {tagLoading ? (
               <div style={{fontSize:13,color:"#94a3b8",textAlign:"center",padding:"24px 0"}}>Loading appointments…</div>
             ) : tagMsg && tagEvents.length===0 ? (
@@ -15351,10 +15367,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                 {filteredTagEvents.map(ev=>{
                   const allowed = canTagEvent(ev);
                   const isOpenSlot = ev.isOpen || (ev.summary||"").toLowerCase().includes("open slot");
-                  const current = (ev.summary||"").match(/^(🟢|🟠|🔵|🟡|🔴|🟣|⚪|🟤|🟩|🟧|🟦|🟨)/u);
-                  const curMark = current ? current[0] : null;
                   const when = ev.start && (ev.start.dateTime||ev.start.date) ? new Date(ev.start.dateTime||ev.start.date) : null;
-                  const busy = tagBusyId===ev.id;
                   const recurring = !!ev.recurringEventId;
                   const removable = canRemoveEvent(ev);
                   const isRemoving = removingId===ev.id;
@@ -15362,10 +15375,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                   // can only be edited/tagged by owner/managers — same rule as removing one.
                   const isMeetingEvent = !isOpenSlot && !(ev.description||"").includes("BOOKED:");
                   const canEditEvent = isMeetingEvent ? canManageMeetings : allowed;
-                  const canTag = (isMeetingEvent ? canManageMeetings : allowed) && !isOpenSlot; // open slots aren't tagged, only removed
                   return (
-                    <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:(canTag||removable)?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:(canTag||removable)?1:0.55}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:canTag?10:0}}>
+                    <div key={ev.id} style={{padding:"12px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#e2e8f0"}`,background:(canEditEvent||removable)?(dark?"#0f172a":"#fff"):(dark?"#0b1220":"#f1f5f9"),opacity:(canEditEvent||removable)?1:0.55}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span title="Appointment color (automatic — matches the calendar)" style={{flexShrink:0,width:12,height:12,borderRadius:"50%",background:apptColorOf(ev),boxShadow:"0 0 0 2px rgba(148,163,184,0.25)"}}/>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:14,fontWeight:700,color:dark?"#f1f5f9":"#1a2456",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isOpenSlot?((ev.summary||"").includes("🧢")?"🟧 Open Slot 🧢":"🟦 Open Slot"):(stripMarker(ev.summary)||"(untitled)")}</div>
                           <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>
@@ -15373,8 +15386,7 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                             {recurring && <span title="Repeating event — tagging updates the whole series"> · 🔁 repeats</span>}
                           </div>
                         </div>
-                        {!canTag && !isOpenSlot && !removable && <span title="You can only tag appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
-                        {busy && <span style={{fontSize:11,color:"#94a3b8",flexShrink:0}}>saving…</span>}
+                        {!canEditEvent && !isOpenSlot && !removable && <span title="You can only edit or remove appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {removable && (
                           <button onClick={()=>{ const cal=(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId); if(recurring){ setRecurAction({kind:"delete", ev, calendarId:cal}); } else { removeEventFromList(cal, ev, "delete"); } }} disabled={isRemoving}
                             title="Delete this appointment from the calendar"
@@ -15397,17 +15409,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                           </button>
                         )}
                       </div>
-                      {canTag && (
-                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                          {APPT_MARKERS.map(m=>(
-                            <button key={m} disabled={busy} onClick={()=>applyMarker((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, curMark===m?null:m)}
-                              style={{width:38,height:38,borderRadius:9,fontSize:18,cursor:busy?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                                border:`2px solid ${curMark===m?"#1a2456":(dark?"#334155":"#e2e8f0")}`,
-                                background:curMark===m?(dark?"#1e293b":"#e8e2f0"):(dark?"#0f172a":"#fff"),
-                                boxShadow:curMark===m?"0 0 0 2px rgba(26,36,86,0.15)":"none"}}>{m}</button>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
