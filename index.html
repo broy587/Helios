@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b197";
+const APP_BUILD = "b199";
 
 // ── Role helpers ───────────────────────────────────────────────────────
 // Hierarchy: rep  <  closer  <  manager  <  owner
@@ -15302,10 +15302,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               <div style={{fontSize:17,fontWeight:800,color:dark?"#f1f5f9":"#1a2456"}}>✏️ Edit</div>
               <button onClick={()=>setTagOpen(false)} style={{background:"none",border:"none",fontSize:22,color:"#94a3b8",cursor:"pointer"}}>✕</button>
             </div>
-            <div style={{fontSize:12,color:dark?"#94a3b8":"#64748b",marginBottom:12,lineHeight:1.4}}>
-              Appointments color-code automatically — the dot matches the calendar. ✏️ edits, 🗑️ deletes{canRemoveAny?", ↩️ releases a booked slot back to open":""}.
-              {!canManageEvents && <span> You can only edit/remove appointments you created.</span>}
-            </div>
             {/* View: Today / Week — picking a specific date below overrides both */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
               {[["today","Today"],["week","Week"]].map(([v,label])=>(
@@ -15389,21 +15385,21 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
                         {!canEditEvent && !isOpenSlot && !removable && <span title="You can only edit or remove appointments you created" style={{fontSize:15,flexShrink:0}}>🔒</span>}
                         {removable && (
                           <button onClick={()=>{ const cal=(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId); if(recurring){ setRecurAction({kind:"delete", ev, calendarId:cal}); } else { removeEventFromList(cal, ev, "delete"); } }} disabled={isRemoving}
-                            title="Delete this appointment from the calendar"
+                            title="Delete"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fecaca`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ef4444",fontWeight:700}}>
                             {isRemoving?"…":"🗑️"}
                           </button>
                         )}
                         {removable && (ev.description||"").includes("BOOKED:") && !isOpenSlot && (
                           <button onClick={()=>removeEventFromList((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId), ev, "release")} disabled={isRemoving}
-                            title="Remove lead from this slot (returns it to an open slot & clears the appointment on the lead)"
+                            title="Release Appointment"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid #fdba74`,borderRadius:8,padding:"6px 9px",cursor:isRemoving?"default":"pointer",fontSize:13,color:"#ea580c",fontWeight:700}}>
                             {isRemoving?"…":"↩️"}
                           </button>
                         )}
                         {canEditEvent && (
                           <button onClick={()=>{ const cal=(teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId); if(recurring){ setRecurAction({kind:"edit", ev, calendarId:cal}); } else { setEditEvent({ev, calendarId:cal}); } }}
-                            title="Edit date, time & length"
+                            title="Edit"
                             style={{flexShrink:0,background:dark?"transparent":"#fff",border:`1.5px solid ${dark?"#334155":"#cbd5e1"}`,borderRadius:8,padding:"6px 9px",cursor:"pointer",fontSize:13,color:dark?"#94a3b8":"#475569",fontWeight:700}}>
                             ✏️
                           </button>
