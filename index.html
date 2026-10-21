@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b200";
+const APP_BUILD = "b201";
 // Google Maps / Places key — same one the Canvass map uses.
 const GMAPS_KEY = "AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU";
 
@@ -15217,6 +15217,10 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
           <option value="WEEK">Week</option>
           <option value="MONTH">Month</option>
         </select>
+        <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer" title="Open in Google Calendar"
+          style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:36,height:36,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",fontSize:15,cursor:"pointer",textDecoration:"none"}}>
+          📅
+        </a>
         <button onClick={()=>{setCalKey(k=>k+1);}} title="Refresh calendar"
           style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:36,height:36,borderRadius:8,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:dark?"#1e293b":"#fff",color:dark?"#cbd5e1":"#6b2d4e",fontSize:15,cursor:"pointer"}}>
           🔄
@@ -15251,10 +15255,6 @@ function CalendarView({newEventUrl, onEventUrlUsed, canManageMeetings, canManage
               style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",cursor:"pointer",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e"}}>
               ✏️ Edit
             </button>
-            <a href="https://calendar.google.com/calendar/r" target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
-              style={{width:"100%",textAlign:"left",background:dark?"#0f172a":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,color:dark?"#e2e8f0":"#6b2d4e",textDecoration:"none",display:"block",boxSizing:"border-box"}}>
-              ↗ Open in Google
-            </a>
             {((teamCfg && teamCfg.calendarId) || (selectedTeam && selectedTeam.calendarId)) && (
               <a href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent((teamCfg && teamCfg.calendarId) || selectedTeam.calendarId)}`} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)}
                 title="Add this calendar to your own Google Calendar so its appointments show on your phone and laptop"
