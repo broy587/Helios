@@ -601,7 +601,7 @@ const OWNER_ID = "697a724c-7979-4c1f-b7c1-0a9162a48dc7";
 const ORG_NAME = "Sunrun";
 // Bump on every release — shows tiny in the header so "which build am I on?"
 // is answerable at a glance (stale home-screen apps were masking fixes).
-const APP_BUILD = "b203";
+const APP_BUILD = "b205";
 // Google Maps / Places key — same one the Canvass map uses.
 const GMAPS_KEY = "AIzaSyCvNBb2HPuzSCV7Ml53uvITXw2GSvCISdU";
 
@@ -6354,7 +6354,6 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <div style={{fontSize:13,fontWeight:600,color:"#92400e",lineHeight:1.5,whiteSpace:"pre-line"}}>{acWarning}</div>
             </div>
           )}
-          <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           <div className="pp-lead-head" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div className="pp-lead-info" style={{flex:1,minWidth:0}}>
               {lead.owner_id && (()=>{
@@ -6421,6 +6420,7 @@ function DetailModal({lead:leadProp,onClose,onEdit,onDelete,onArchive,onTogglePr
               <button className="pp-lead-close" onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
             </div>
           </div>
+          <div style={vzone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
           {[["Name",lead.name],["Address",lead.address],["Phone",lead.phone],["Email",lead.email]].map(([label,value])=>value?(
             <div key={label} style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}}>{label}</div>
@@ -7556,97 +7556,100 @@ function LeadModal({open,onClose,onSave,onDelete,onArchive,onTogglePriority,init
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:dark?"#1e293b":"#faf6f0",borderRadius:16,padding:28,width:"min(96vw,500px)",boxShadow:"0 20px 60px rgba(0,0,0,0.4)",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-          <div style={{flex:1,minWidth:0}}>
+        <div style={{marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
             <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#0f172a"}}>{initial&&initial.id?"Edit Lead":"Add New Lead"}{!(initial&&initial.id) && <span style={{marginLeft:8,fontSize:11,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap"}}><span style={{color:"#dc2626",fontWeight:900}}>*</span> required</span>}</h2>
-            {initial&&initial.id&&(()=>{
-              const ownerP=(allProfiles||[]).find(p=>p.id===initial.owner_id);
-              const ownerName=ownerP?(ownerP.name||ownerP.email):(creatorName||"Unknown");
-              const assistP=(allProfiles||[]).find(p=>p.id===form.assistId);
-              const assistName=assistP?(assistP.name||assistP.email):"";
-              const stEmoji=STAGE_EMOJIS[form.stage]||"📊";
-              const rowStyle={display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:12,color:dark?"#94a3b8":"#64748b"};
-              const selStyle={fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:200};
-              return (<>
-                <div style={{...rowStyle,marginTop:8}}>
-                  <span style={{fontSize:13}}>👤</span>
-                  <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
-                </div>
-                <div style={rowStyle}>
-                  <span style={{fontSize:13}}>🤝</span>
-                  <span>Assist: </span>
-                  {hdrAssistEdit ? (
-                    <select autoFocus value={form.assistId||""}
-                      onChange={e=>{ const v=e.target.value; setForm(f=>({...f,assistId:v})); setHdrAssistEdit(false); }}
-                      onBlur={()=>setHdrAssistEdit(false)} style={selStyle}>
-                      <option value="">— none —</option>
-                      {(allProfiles||[]).filter(p=>!p.deleted_at&&p.id!==initial.owner_id).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||""))).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
-                    </select>
-                  ) : (
-                    <span onClick={()=>setHdrAssistEdit(true)} title="Click to change assist"
-                      style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
-                      {assistName||"—"}
-                    </span>
-                  )}
-                </div>
-                <div style={rowStyle}>
-                  <span style={{fontSize:13}}>{stEmoji}</span>
-                  <span>Stage: </span>
-                  {hdrStageEdit ? (
-                    <select autoFocus value={form.stage||""}
-                      onChange={e=>{ const v=e.target.value; setForm(f=>({...f,stage:v})); setHdrStageEdit(false); }}
-                      onBlur={()=>setHdrStageEdit(false)} style={selStyle}>
-                      {STAGES.map(s2=><option key={s2} value={s2}>{s2}</option>)}
-                    </select>
-                  ) : (
-                    <span onClick={()=>setHdrStageEdit(true)} title="Click to change stage"
-                      style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
-                      {form.stage||"—"}
-                    </span>
-                  )}
-                </div>
-              </>);
-            })()}
+            <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+              {!(initial&&initial.id) && (
+                <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                  {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Add"}
+                </button>
+              )}
+              <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"flex-start",gap:8,flexShrink:0}}>
-            {initial&&initial.id ? (
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <div style={{display:"flex",gap:6}}>
-                  {onArchive && (
-                    <button onClick={()=>onArchive({...initial,...form,id:initial.id})}
-                      title={form.archived?"Bring this lead back from the archive":"Archive this lead"}
-                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:"none",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                      {form.archived?"📤 Unarchive":"🗄️ Archive"}
-                    </button>
-                  )}
-                  <button onClick={handleSave} disabled={saving} style={{flex:1,padding:"8px 14px",borderRadius:10,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
-                    {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Save"}
-                  </button>
+          {initial&&initial.id&&(()=>{
+            const ownerP=(allProfiles||[]).find(p=>p.id===initial.owner_id);
+            const ownerName=ownerP?(ownerP.name||ownerP.email):(creatorName||"Unknown");
+            const assistP=(allProfiles||[]).find(p=>p.id===form.assistId);
+            const assistName=assistP?(assistP.name||assistP.email):"";
+            const stEmoji=STAGE_EMOJIS[form.stage]||"📊";
+            const rowStyle={display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:12,color:dark?"#94a3b8":"#64748b"};
+            const selStyle={fontSize:12,fontWeight:700,color:dark?"#e2e8f0":"#1a2456",background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,borderRadius:8,padding:"3px 6px",cursor:"pointer",maxWidth:200};
+            return (
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginTop:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{...rowStyle,marginTop:0}}>
+                    <span style={{fontSize:13}}>👤</span>
+                    <span>Owner: <span style={{fontWeight:700,color:dark?"#e2e8f0":"#1a2456"}}>{ownerName}</span></span>
+                  </div>
+                  <div style={rowStyle}>
+                    <span style={{fontSize:13}}>🤝</span>
+                    <span>Assist: </span>
+                    {hdrAssistEdit ? (
+                      <select autoFocus value={form.assistId||""}
+                        onChange={e=>{ const v=e.target.value; setForm(f=>({...f,assistId:v})); setHdrAssistEdit(false); }}
+                        onBlur={()=>setHdrAssistEdit(false)} style={selStyle}>
+                        <option value="">— none —</option>
+                        {(allProfiles||[]).filter(p=>!p.deleted_at&&p.id!==initial.owner_id).sort((a,b)=>((a.name||a.email||"").localeCompare(b.name||b.email||""))).map(r=><option key={r.id} value={r.id}>{r.name||r.email}</option>)}
+                      </select>
+                    ) : (
+                      <span onClick={()=>setHdrAssistEdit(true)} title="Click to change assist"
+                        style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                        {assistName||"—"}
+                      </span>
+                    )}
+                  </div>
+                  <div style={rowStyle}>
+                    <span style={{fontSize:13}}>{stEmoji}</span>
+                    <span>Stage: </span>
+                    {hdrStageEdit ? (
+                      <select autoFocus value={form.stage||""}
+                        onChange={e=>{ const v=e.target.value; setForm(f=>({...f,stage:v})); setHdrStageEdit(false); }}
+                        onBlur={()=>setHdrStageEdit(false)} style={selStyle}>
+                        {STAGES.map(s2=><option key={s2} value={s2}>{s2}</option>)}
+                      </select>
+                    ) : (
+                      <span onClick={()=>setHdrStageEdit(true)} title="Click to change stage"
+                        style={{fontWeight:700,color:"#0369a1",cursor:"pointer",borderBottom:"1px dotted #0369a1"}}>
+                        {form.stage||"—"}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:6}}>
-                  {onTogglePriority && (
-                    <button onClick={()=>{ onTogglePriority({...initial,...form,id:initial.id}); setForm(f=>({...f,priority:!f.priority})); }}
-                      title={form.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
-                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${form.priority?"#eab308":(dark?"#334155":"#c8b8a2")}`,background:form.priority?"#fef9c3":"none",color:form.priority?"#a16207":(dark?"#e2e8f0":"#6b2d4e"),fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                      {form.priority?"⭐ Priority":"☆ Priority"}
+                <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                  <div style={{display:"flex",gap:6}}>
+                    {onArchive && (
+                      <button onClick={()=>onArchive({...initial,...form,id:initial.id})}
+                        title={form.archived?"Bring this lead back from the archive":"Archive this lead"}
+                        style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${dark?"#334155":"#c8b8a2"}`,background:"none",color:dark?"#e2e8f0":"#1a2456",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                        {form.archived?"📤 Unarchive":"🗄️ Archive"}
+                      </button>
+                    )}
+                    <button onClick={handleSave} disabled={saving} style={{flex:1,padding:"8px 14px",borderRadius:10,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                      {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Save"}
                     </button>
-                  )}
-                  {onDelete && (
-                    <button onClick={()=>{ if(window.confirm("Delete this lead? This cannot be undone.")) onDelete(initial.id); }}
-                      title="Delete this lead"
-                      style={{flex:1,padding:"8px 10px",borderRadius:10,border:"1.5px solid #fca5a5",background:"none",color:"#ef4444",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                      🗑️ Delete
-                    </button>
-                  )}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    {onTogglePriority && (
+                      <button onClick={()=>{ onTogglePriority({...initial,...form,id:initial.id}); setForm(f=>({...f,priority:!f.priority})); }}
+                        title={form.priority?"Remove Priority Comeback":"Mark as Priority Comeback"}
+                        style={{flex:1,padding:"8px 10px",borderRadius:10,border:`1.5px solid ${form.priority?"#eab308":(dark?"#334155":"#c8b8a2")}`,background:form.priority?"#fef9c3":"none",color:form.priority?"#a16207":(dark?"#e2e8f0":"#6b2d4e"),fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                        {form.priority?"⭐ Priority":"☆ Priority"}
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button onClick={()=>{ if(window.confirm("Delete this lead? This cannot be undone.")) onDelete(initial.id); }}
+                        title="Delete this lead"
+                        style={{flex:1,padding:"8px 10px",borderRadius:10,border:"1.5px solid #fca5a5",background:"none",color:"#ef4444",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                        🗑️ Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            ) : (
-              <button onClick={handleSave} disabled={saving} style={{padding:"8px 16px",borderRadius:8,border:"none",background:saving?"#f9a97e":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontWeight:700,cursor:saving?"default":"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6,opacity:saving?0.85:1,transition:"all 0.15s",whiteSpace:"nowrap"}}>
-                {saving?<><span style={{width:13,height:13,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",display:"inline-block",animation:"spin 0.7s linear infinite"}}></span>Saving...</>:"Add"}
-              </button>
-            )}
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>✕</button>
-          </div>
+            );
+          })()}
         </div>
         {/* ── Homeowner / secondary info ── */}
         <div style={zone("#fefce8","#fde68a","rgba(245,158,11,0.10)","rgba(245,158,11,0.4)")}>
